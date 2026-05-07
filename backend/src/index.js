@@ -294,9 +294,16 @@ app.get('/api/health', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Heybo Lux Backend v2.0 running on port ${PORT}`);
-  console.log(`   Recipes: ${recipesDb.length} | Breeds: ${breedsDb.length}`);
-  console.log(`   Gemini AI: ${process.env.GEMINI_API_KEY ? '✅' : '❌ Missing key'}`);
-  console.log(`   Tuya API:  ${process.env.TUYA_ACCESS_ID ? '✅' : '❌ Missing key'}`);
-});
+
+// Only start the server locally. Vercel will use the exported app directly.
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ Heybo Lux Backend v2.0 running on port ${PORT}`);
+    console.log(`   Recipes: ${recipesDb.length} | Breeds: ${breedsDb.length}`);
+    console.log(`   Gemini AI: ${process.env.GEMINI_API_KEY ? '✅' : '❌ Missing key'}`);
+    console.log(`   Tuya API:  ${process.env.TUYA_ACCESS_ID ? '✅' : '❌ Missing key'}`);
+  });
+}
+
+// Export the Express API for Vercel Serverless
+module.exports = app;
