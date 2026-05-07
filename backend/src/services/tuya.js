@@ -1,5 +1,6 @@
 // tuya.js — 涂鸦 IoT API 客户端封装
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const crypto = require('crypto');
 const axios = require('axios');
 

@@ -1,5 +1,6 @@
 // index.js — 后端主入口（修复 CommonJS 兼容）
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const express = require('express');
 const cors = require('cors');
 
@@ -240,11 +241,13 @@ app.post('/api/tuya/start', async (req, res) => {
     const result = await startCooking({ temperature, power: parseInt(power), speed, cook_time: parseInt(cook_time) });
     res.json({ success: true, result });
   } catch (err) {
+    console.error('Tuya start error:', err.message, err.response?.data);
     // 模拟模式（涂鸦不可用时）
     res.json({
       success: true,
       simulated: true,
       message: '鲜食机指令已发送（模拟模式）',
+      error_detail: err.message,
       params: { temperature, power, speed, cook_time },
     });
   }
@@ -258,7 +261,8 @@ app.post('/api/tuya/pause', async (req, res) => {
     const result = await pauseCooking();
     res.json({ success: true, result });
   } catch (err) {
-    res.json({ success: true, simulated: true, message: '已暂停（模拟）' });
+    console.error('Tuya pause error:', err.message);
+    res.json({ success: true, simulated: true, message: '已暂停（模拟）', error_detail: err.message });
   }
 });
 
@@ -270,7 +274,8 @@ app.post('/api/tuya/stop', async (req, res) => {
     const result = await stopCooking();
     res.json({ success: true, result });
   } catch (err) {
-    res.json({ success: true, simulated: true, message: '已停止（模拟）' });
+    console.error('Tuya stop error:', err.message);
+    res.json({ success: true, simulated: true, message: '已停止（模拟）', error_detail: err.message });
   }
 });
 
@@ -282,7 +287,8 @@ app.get('/api/tuya/status', async (req, res) => {
     const result = await getDeviceStatus();
     res.json({ success: true, status: result });
   } catch (err) {
-    res.json({ success: true, simulated: true, status: { online: true, cooking: false } });
+    console.error('Tuya status error:', err.message);
+    res.json({ success: true, simulated: true, status: { online: true, cooking: false }, error_detail: err.message });
   }
 });
 
