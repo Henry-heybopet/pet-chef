@@ -1,4 +1,4 @@
-// tuya.js — 涂鸦 IoT API 客户端封装
+// tuya.js — 涂鸦 IoT API 客户端封装（Vercel Serverless 优化版）
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const crypto = require('crypto');
@@ -9,8 +9,13 @@ const SECRET = process.env.TUYA_SECRET;
 const DEVICE_ID = process.env.TUYA_DEVICE_ID;
 const BASE_URL = process.env.TUYA_BASE_URL || 'https://openapi.tuyacn.com';
 
+// Serverless 环境中跨请求的 token 缓存（同一实例内有效）
 let cachedToken = null;
 let tokenExpiry = 0;
+
+// 超时设置：Vercel 跨境到中国 API 需要更长超时
+const REQUEST_TIMEOUT = 25000;
+const MAX_RETRIES = 2;
 
 /**
  * 生成涂鸦 API 签名
@@ -22,6 +27,31 @@ function generateSign(accessId, secret, t, nonce, method, path, body = '', acces
   // 关键区别：获取token → client_id + t + nonce；业务请求 → client_id + access_token + t + nonce
   const signStr = accessId + (accessToken || '') + t + nonce + stringToSign;
   return crypto.createHmac('sha256', secret).update(signStr).digest('hex').toUpperCase();
+}
+
+/**
+ * 带重试的请求封装
+ */
+async function requestWithRetry(fn, retries = MAX_RETRIES) {
+  let lastError;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      console.error(`Tuya request attempt ${i + 1}/${retries + 1} failed:`, err.message);
+      if (i < retries) {
+        // 等待后重试（指数退避：1s, 2s）
+        await new Promise(r => setTimeout(r, (i + 1) * 1000));
+        // 如果是 token 相关错误，清除缓存强制重新获取
+        if (err.message.includes('token') || err.message.includes('sign')) {
+          cachedToken = null;
+          tokenExpiry = 0;
+        }
+      }
+    }
+  }
+  throw lastError;
 }
 
 /**
@@ -43,7 +73,7 @@ async function getToken() {
       't': t,
       'nonce': nonce,
     },
-    timeout: 10000,
+    timeout: REQUEST_TIMEOUT,
   });
   
   if (!res.data.success) throw new Error(`Tuya token error: ${res.data.msg}`);
@@ -57,7 +87,7 @@ async function getToken() {
  * 发送指令到设备
  */
 async function sendCommands(commands) {
-  try {
+  return requestWithRetry(async () => {
     const token = await getToken();
     const t = Date.now().toString();
     const nonce = crypto.randomUUID();
@@ -76,21 +106,19 @@ async function sendCommands(commands) {
         'nonce': nonce,
         'Content-Type': 'application/json',
       },
-      timeout: 10000,
+      timeout: REQUEST_TIMEOUT,
     });
     
+    if (!res.data.success) throw new Error(`Tuya command error: ${res.data.msg}`);
     return res.data;
-  } catch (err) {
-    console.error('Tuya sendCommands error:', err.message);
-    throw err;
-  }
+  });
 }
 
 /**
  * 获取设备状态
  */
 async function getDeviceStatus() {
-  try {
+  return requestWithRetry(async () => {
     const token = await getToken();
     const t = Date.now().toString();
     const nonce = crypto.randomUUID();
@@ -107,14 +135,12 @@ async function getDeviceStatus() {
         't': t,
         'nonce': nonce,
       },
-      timeout: 10000,
+      timeout: REQUEST_TIMEOUT,
     });
     
+    if (!res.data.success) throw new Error(`Tuya status error: ${res.data.msg}`);
     return res.data;
-  } catch (err) {
-    console.error('Tuya getDeviceStatus error:', err.message);
-    throw err;
-  }
+  });
 }
 
 /**
