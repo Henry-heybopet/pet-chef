@@ -296,7 +296,20 @@ app.get('/api/tuya/status', async (req, res) => {
 // 健康检查
 // ============================================================
 app.get('/api/health', (req, res) => {
-  res.json({ success: true, version: '2.0.0', recipes: recipesDb.length, breeds: breedsDb.length });
+  res.json({ success: true, version: '2.0.1', recipes: recipesDb.length, breeds: breedsDb.length });
+});
+
+// 调试端点：检查环境变量是否正确加载
+app.get('/api/debug-env', (req, res) => {
+  res.json({
+    TUYA_ACCESS_ID: process.env.TUYA_ACCESS_ID ? `${process.env.TUYA_ACCESS_ID.substring(0, 6)}...` : 'MISSING',
+    TUYA_SECRET: process.env.TUYA_SECRET ? `${process.env.TUYA_SECRET.substring(0, 6)}...` : 'MISSING',
+    TUYA_DEVICE_ID: process.env.TUYA_DEVICE_ID ? `${process.env.TUYA_DEVICE_ID.substring(0, 6)}...` : 'MISSING',
+    TUYA_BASE_URL: process.env.TUYA_BASE_URL || 'MISSING (default: tuyacn.com)',
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY ? `${process.env.GEMINI_API_KEY.substring(0, 8)}...` : 'MISSING',
+    NODE_ENV: process.env.NODE_ENV || 'undefined',
+    VERCEL: process.env.VERCEL || 'undefined',
+  });
 });
 
 const PORT = process.env.PORT || 3001;
