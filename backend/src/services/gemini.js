@@ -4,7 +4,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 
 // 宠物营养学专家 System Prompt
 const NUTRITION_EXPERT_PROMPT = `你是 Heybo Lux 的首席宠物营养学专家，拥有兽医营养学博士学位，
