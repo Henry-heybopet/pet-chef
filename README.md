@@ -49,6 +49,9 @@ npm install
 - [开发路线图](docs/roadmap.md)
 - [UI 说明](docs/ui-notes.md)
 - [设备联动](docs/device-integration.md)
+- [食谱数据库](docs/recipe-database.md)
+- [专利与技术壁垒](docs/patent-notes.md)
+- [资料提炼清单](docs/source-inventory.md)
 
 ## 当前管理规则
 
