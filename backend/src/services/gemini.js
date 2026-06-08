@@ -4,6 +4,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 
 // 宠物营养学专家 System Prompt
 const NUTRITION_EXPERT_PROMPT = `你是 Heybo Lux 的首席宠物营养学专家，拥有兽医营养学博士学位，
@@ -37,7 +38,7 @@ const LANG_NAMES = { en:'English', de:'German', fr:'French', es:'Spanish', it:'I
  * 分析犬种营养需求（AI健康食谱页面用）
  */
 async function analyzeBreedNutrition(breedName, age, weight, customBreedName, lang) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
   
   const langInstruction = lang && lang !== 'zh' 
     ? `\n\nIMPORTANT: ALL text fields in the response (breed_intro, activity_desc, key_nutrition_needs, nutrition_analysis, cautions, recommended_categories) MUST be written in ${LANG_NAMES[lang] || 'English'}. Only life_stage should remain as 幼犬|成年犬|老年犬.`
@@ -85,7 +86,7 @@ async function analyzeBreedNutrition(breedName, age, weight, customBreedName, la
  * 生成AI个性化食谱
  */
 async function generateAIRecipe(breedName, age, weight, goals, existingRecipeNames) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
   
   const goalsText = goals.length > 0 ? goals.join('、') : '均衡营养';
   const existingNames = existingRecipeNames.slice(0, 10).join('、');
