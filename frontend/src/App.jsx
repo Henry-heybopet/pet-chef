@@ -17,7 +17,7 @@ function LangSelector() {
   const [open, setOpen] = useState(false);
   const current = LANGS.find(l => l.code === lang) || LANGS[0];
   return (
-    <div style={{ position: 'absolute', top: 16, right: 20, zIndex: 50 }}>
+    <div style={{ position: 'absolute', top: 'calc(16px + var(--safe-top))', right: 20, zIndex: 50 }}>
       <button onClick={() => setOpen(!open)} style={{
         background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border)',
         borderRadius: 20, padding: '6px 14px', cursor: 'pointer', color: 'white',

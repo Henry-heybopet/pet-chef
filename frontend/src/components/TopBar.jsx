@@ -4,7 +4,8 @@ import React from 'react';
 export default function TopBar({ onBack, title = '' }) {
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', padding: '16px 24px 12px',
+      display: 'flex', alignItems: 'center',
+      padding: 'calc(16px + var(--safe-top)) 24px 12px',
       position: 'sticky', top: 0, zIndex: 10,
       background: 'linear-gradient(to bottom, rgba(10,13,20,1) 60%, transparent)',
     }}>
