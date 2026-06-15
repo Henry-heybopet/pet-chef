@@ -59,41 +59,41 @@ function HomeScreen({ onDogEntry, onAIEntry }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
   return (
-    <div className="animate-fade flex-col" style={{ flex: 1, position: 'relative' }}>
+    <div className="animate-fade home-screen">
       <LangSelector />
-      <div style={{ padding: '0px 24px 24px', textAlign: 'center' }}>
-        <div style={{ margin: '-12% 0 -12% 0' }}>
+      <div className="home-hero">
+        <div className="home-logo-wrap">
           <img src="/logo.png" onError={e => { e.target.src = '/logo.jpg'; e.target.onerror = null; }}
-            alt="Heybo Lux" style={{ width: '90%', maxWidth: '380px', display: 'block', margin: '0 auto', transform: 'scale(1.15)' }} />
+            alt="Heybo Lux" className="home-logo" />
         </div>
-        <div style={{ color: 'var(--primary)', marginTop: '8px', fontWeight: 800, letterSpacing: '2px', lineHeight: 1.4, fontSize: lang === 'zh' || lang === 'ja' || lang === 'ko' ? '32px' : '24px', textShadow: '0 0 16px rgba(0,230,255,0.4)', padding: '0 16px', display: 'flex', flexDirection: 'column', width: '100%' }}>
+        <div className={`home-slogan ${lang === 'zh' || lang === 'ja' || lang === 'ko' ? 'home-slogan-cjk' : ''}`}>
           <span style={{ alignSelf: 'flex-start' }}>{t('slogan1')}</span>
-          <span style={{ alignSelf: 'flex-end', marginTop: '8px' }}>{t('slogan2')}</span>
-          <span style={{ alignSelf: 'center', color: 'var(--gray)', fontSize: '16px', letterSpacing: '1px', fontWeight: 500, marginTop: '32px', textAlign: 'center' }}>
+          <span className="home-slogan-line2">{t('slogan2')}</span>
+          <span className="home-slogan-subtitle">
             {t('slogan3')}
           </span>
         </div>
       </div>
-      <div style={{ padding: '16px 24px' }}>
-        <div style={{ height: '280px', borderRadius: 'var(--radius-lg)', overflow: 'hidden', position: 'relative', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
-          <img src="/machine.jpg" onError={e => { e.target.src = '/machine.png'; e.target.onerror = null; }} alt="Machine" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      <div className="home-machine-section">
+        <div className="home-machine-card">
+          <img src="/machine.jpg" onError={e => { e.target.src = '/machine.png'; e.target.onerror = null; }} alt="Machine" className="home-machine-img" />
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'linear-gradient(to top, var(--dark) 0%, transparent 40%)' }} />
         </div>
       </div>
-      <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <button onClick={onDogEntry} style={{ width: '100%', padding: '22px 24px', background: 'linear-gradient(135deg, rgba(0,230,255,0.12), rgba(0,114,255,0.12))', border: '1px solid rgba(0,230,255,0.3)', borderRadius: 'var(--radius-md)', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ fontSize: 40 }}>🐕</div>
+      <div className="home-actions">
+        <button onClick={onDogEntry} className="home-action-button home-action-dog">
+          <div className="home-action-icon">🐕</div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 20, color: 'var(--primary)', marginBottom: 4 }}>{t('myDog')}</div>
-            <div style={{ fontSize: 13, color: 'var(--gray)' }}>{t('myDogDesc')}</div>
+            <div className="home-action-title" style={{ color: 'var(--primary)' }}>{t('myDog')}</div>
+            <div className="home-action-desc">{t('myDogDesc')}</div>
           </div>
           <div style={{ marginLeft: 'auto', color: 'var(--primary)', fontSize: 20 }}>→</div>
         </button>
-        <button onClick={onAIEntry} style={{ width: '100%', padding: '22px 24px', background: 'linear-gradient(135deg, rgba(157,0,255,0.12), rgba(0,230,255,0.08))', border: '1px solid rgba(157,0,255,0.3)', borderRadius: 'var(--radius-md)', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ fontSize: 40 }}>🤖</div>
+        <button onClick={onAIEntry} className="home-action-button home-action-ai">
+          <div className="home-action-icon">🤖</div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 20, color: 'var(--secondary)', marginBottom: 4 }}>{t('aiRecipe')}</div>
-            <div style={{ fontSize: 13, color: 'var(--gray)' }}>{t('aiRecipeDesc')}</div>
+            <div className="home-action-title" style={{ color: 'var(--secondary)' }}>{t('aiRecipe')}</div>
+            <div className="home-action-desc">{t('aiRecipeDesc')}</div>
           </div>
           <div style={{ marginLeft: 'auto', color: 'var(--secondary)', fontSize: 20 }}>→</div>
         </button>
