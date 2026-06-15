@@ -16,7 +16,6 @@ const NEED_TR = {
   '优质脂肪':['Quality fats','Hochwertige Fette','Graisses de qualité','Grasas de calidad','Grassi di qualità','良質な脂肪','양질의 지방'],
   '丰富蔬菜纤维':['Rich vegetable fiber','Reichhaltige Gemüsefaser','Fibres végétales riches','Fibra vegetal rica','Fibre vegetali ricche','豊富な野菜繊維','풍부한 채소 섬유'],
   '美毛':['Coat care','Fellpflege','Soin du poil','Cuidado del pelo','Cura del pelo','被毛ケア','피모 케어'],
-  '关节保护':['Joint protection','Gelenkschutz','Protection articulaire','Protección articular','Protezione articolare','関節保護','관절 보호'],
   '高蛋白需求':['High protein needs','Hoher Proteinbedarf','Besoins élevés en protéines','Necesidades altas de proteína','Fabbisogno proteico elevato','高タンパク質の必要性','고단백 필요'],
   'Omega-3':['Omega-3','Omega-3','Omega-3','Omega-3','Omega-3','Omega-3','Omega-3'],
   '体重管理':['Weight management','Gewichtskontrolle','Gestion du poids','Control de peso','Gestione del peso','体重管理','체중 관리'],

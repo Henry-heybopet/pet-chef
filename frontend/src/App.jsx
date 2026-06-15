@@ -1,8 +1,9 @@
 // App.jsx — Heybo Lux Feeding OS v2.0 with i18n
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useDogProfile } from './hooks/useDogProfile';
 import { LanguageProvider, useLanguage, LANGS } from './i18n/LanguageContext';
 import { useTranslation } from './i18n/translations';
+import { api } from './api/index';
 
 import DogSetup from './components/DogSetup';
 import AIInputScreen from './components/AIInputScreen';
@@ -17,7 +18,7 @@ function LangSelector() {
   const [open, setOpen] = useState(false);
   const current = LANGS.find(l => l.code === lang) || LANGS[0];
   return (
-    <div style={{ position: 'absolute', top: 'calc(16px + var(--safe-top))', right: 20, zIndex: 50 }}>
+    <div style={{ position: 'absolute', top: 'var(--control-top)', right: 20, zIndex: 50 }}>
       <button onClick={() => setOpen(!open)} style={{
         background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border)',
         borderRadius: 20, padding: '6px 14px', cursor: 'pointer', color: 'white',
@@ -112,6 +113,7 @@ function AppInner() {
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [cookingData, setCookingData] = useState(null);
   const [entrySource, setEntrySource] = useState(null);
+  const swipeStartRef = useRef(null);
 
   const goHome = () => setScreen('home');
   const handleDogEntry = () => setScreen('dog_setup');
@@ -129,7 +131,7 @@ function AppInner() {
   const handleAIShortcut = async (p) => {
     setActiveProfile(p); setEntrySource('ai');
     try {
-      const result = await (await import('./api/index')).api.aiAnalysis({ breedId: p.breedId, breedName: p.breedName, age: p.age, weight: p.weight, lang });
+      const result = await api.aiAnalysis({ breedId: p.breedId, breedName: p.breedName, age: p.age, weight: p.weight, lang });
       if (result.success) {
         setAiProfile({ breedId: p.breedId, breedName: p.breedName, age: p.age, weight: p.weight, breed: p.breed, analysis: result.analysis });
         setScreen('ai_analysis'); return;
@@ -146,15 +148,46 @@ function AppInner() {
 
   const handleSelectRecipe = (recipe) => { setSelectedRecipe(recipe); setScreen('recipe_make'); };
   const handleStartCooking = (data) => { setCookingData(data); setScreen('cooking'); };
+  const goBack = () => {
+    if (screen === 'home') return false;
+    if (screen === 'dog_setup' || screen === 'ai_input') setScreen('home');
+    if (screen === 'ai_analysis') setScreen(entrySource === 'ai' ? 'ai_input' : 'dog_setup');
+    if (screen === 'recipe_list') setScreen(entrySource === 'ai' ? 'ai_analysis' : 'dog_setup');
+    if (screen === 'recipe_make') setScreen('recipe_list');
+    if (screen === 'cooking') setScreen('recipe_make');
+    return true;
+  };
+
+  const handleTouchStart = (event) => {
+    const touch = event.touches?.[0];
+    if (!touch || touch.clientX > 36) {
+      swipeStartRef.current = null;
+      return;
+    }
+    swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleTouchEnd = (event) => {
+    const start = swipeStartRef.current;
+    const touch = event.changedTouches?.[0];
+    swipeStartRef.current = null;
+    if (!start || !touch) return;
+
+    const deltaX = touch.clientX - start.x;
+    const deltaY = Math.abs(touch.clientY - start.y);
+    if (deltaX > 80 && deltaY < 60) {
+      goBack();
+    }
+  };
 
   return (
-    <div id="app-container">
+    <div id="app-container" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       {screen === 'home' && <HomeScreen onDogEntry={handleDogEntry} onAIEntry={handleAIEntry} />}
       {screen === 'dog_setup' && <DogSetup onBack={goHome} profile={hasProfile ? profile : null} onSave={handleProfileSave} onSelectCategory={handleSelectCategory} lang={lang} />}
       {screen === 'ai_input' && <AIInputScreen onBack={goHome} onAnalyze={handleAIAnalyzed} lang={lang} />}
-      {screen === 'ai_analysis' && <AIAnalysisScreen onBack={() => setScreen(entrySource === 'ai' ? 'ai_input' : 'dog_setup')} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} lang={lang} />}
-      {screen === 'recipe_list' && <RecipeList onBack={() => setScreen(entrySource === 'ai' ? 'ai_analysis' : 'dog_setup')} category={selectedCategory} profile={activeProfile} onSelectRecipe={handleSelectRecipe} lang={lang} />}
-      {screen === 'recipe_make' && <RecipeMake onBack={() => setScreen('recipe_list')} recipe={selectedRecipe} profile={activeProfile} onStartCooking={handleStartCooking} lang={lang} />}
+      {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} lang={lang} />}
+      {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={activeProfile} onSelectRecipe={handleSelectRecipe} lang={lang} />}
+      {screen === 'recipe_make' && <RecipeMake onBack={goBack} recipe={selectedRecipe} profile={activeProfile} onStartCooking={handleStartCooking} lang={lang} />}
       {screen === 'cooking' && <CookingScreen onBack={goHome} cookingData={cookingData} lang={lang} />}
     </div>
   );
