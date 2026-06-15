@@ -1,5 +1,5 @@
 // src/api/index.js — 前端 API 客户端层
-// 使用相对路径，通过 Vite 代理转发到后端，确保手机端也能正常访问
+// Web 本地开发可使用 Vite 代理；移动端生产构建通过 VITE_API_URL 连接线上后端。
 import { dogBreeds } from '../data/breeds';
 import { demoRecipes } from '../data/demoRecipes';
 

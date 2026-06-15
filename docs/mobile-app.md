@@ -51,6 +51,12 @@ npm run cap:android
 
 Web 本地开发可以继续使用 Vite 的 `/api` 代理。
 
+当前生产构建已经默认连接 Heybo Pet 线上后端：
+
+```bash
+VITE_API_URL=https://petchef.heybopet.com
+```
+
 移动 App 运行在手机里时，不能依赖本机浏览器代理，需要设置真实可访问的后端地址：
 
 ```bash
@@ -78,11 +84,10 @@ VITE_API_URL=http://192.168.1.20:3001
 - App 图标和启动屏。
 - 推送通知。
 - 扫码识别鲜食包。
-- 正式后端域名和 HTTPS 部署。
 
 ## 下一步建议
 
-1. 用 Xcode / Android Studio 打开原生工程，确认 App 壳能在模拟器运行。
-2. 部署一个测试后端，配置 `VITE_API_URL`。
+1. 用 Xcode / Android Studio 打开原生工程，确认 App 壳能在真机运行。
+2. 用线上后端验证品种、食谱、AI 分析等接口流程。
 3. 接入 Tuya App SDK，先验证添加设备和绑定流程。
 4. 再把设备 DP 控制接入一键烹饪流程。
