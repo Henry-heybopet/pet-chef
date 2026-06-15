@@ -13,6 +13,8 @@ React Web App
 
 这一步先把现有 Web App 封装成独立 App 壳。后续 Tuya App SDK、扫码、推送、支付等手机能力，需要继续通过 Capacitor 原生插件或原生模块接入。
 
+真机安装和测试复现步骤见：[iOS / Android Demo 安装测试说明](mobile-demo-test-guide.md)。
+
 ## App 信息
 
 ```text
