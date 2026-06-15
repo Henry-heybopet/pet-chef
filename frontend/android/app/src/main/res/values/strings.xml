@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Pet Chef</string>
+    <string name="title_activity_main">Pet Chef</string>
+    <string name="package_name">com.heybopet.petchef</string>
+    <string name="custom_url_scheme">com.heybopet.petchef</string>
+</resources>
