@@ -1,8 +1,25 @@
 apply plugin: 'com.android.application'
 
+def tuyaProperties = new Properties()
+def tuyaPropertiesFile = rootProject.file("tuya.properties")
+if (tuyaPropertiesFile.exists()) {
+    tuyaPropertiesFile.withInputStream { tuyaProperties.load(it) }
+}
+
+def readSecret = { key ->
+    return tuyaProperties.getProperty(key, System.getenv(key) ?: "")
+}
+
+def escapeBuildConfig = { value ->
+    return value.replace("\\", "\\\\").replace("\"", "\\\"")
+}
+
 android {
     namespace = "com.heybopet.petchef"
     compileSdk = rootProject.ext.compileSdkVersion
+    buildFeatures {
+        buildConfig = true
+    }
     defaultConfig {
         applicationId "com.heybopet.petchef"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -10,6 +27,8 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField "String", "TUYA_ANDROID_APP_KEY", "\"${escapeBuildConfig(readSecret('TUYA_ANDROID_APP_KEY'))}\""
+        buildConfigField "String", "TUYA_ANDROID_APP_SECRET", "\"${escapeBuildConfig(readSecret('TUYA_ANDROID_APP_SECRET'))}\""
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -22,6 +41,9 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    packagingOptions {
+        pickFirst 'lib/*/libc++_shared.so'
+    }
 }
 
 repositories {
@@ -31,11 +53,16 @@ repositories {
 }
 
 dependencies {
-    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation fileTree(include: ['*.jar', '*.aar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    implementation 'com.alibaba:fastjson:1.1.67.android'
+    implementation 'com.squareup.okhttp3:okhttp-urlconnection:3.14.9'
+    implementation('com.thingclips.smart:thingsmart:7.5.6') {
+        exclude group: 'com.thingclips.smart', module: 'thingsmart-modularCampAnno'
+    }
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

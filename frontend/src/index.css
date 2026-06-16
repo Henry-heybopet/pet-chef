@@ -182,6 +182,55 @@ body {
   color: var(--gray);
 }
 
+.tuya-sdk-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(0, 230, 255, 0.18);
+  border-radius: 16px;
+  background: rgba(10, 18, 28, 0.72);
+}
+
+.tuya-sdk-title {
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+
+.tuya-sdk-status {
+  color: var(--gray);
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.tuya-sdk-key {
+  color: rgba(224, 230, 237, 0.68);
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+.tuya-sdk-button {
+  flex: 0 0 auto;
+  min-width: 68px;
+  border: 1px solid rgba(0, 230, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(0, 230, 255, 0.12);
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 12px;
+}
+
+.tuya-sdk-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 @media (max-width: 768px) {
   :root {
     --safe-top: max(env(safe-area-inset-top, 0px), 52px);
@@ -260,6 +309,10 @@ body {
   .home-action-desc {
     font-size: 12px;
   }
+
+  .tuya-sdk-panel {
+    padding: 10px 12px;
+  }
 }
 
 @media (max-height: 820px) {
@@ -289,6 +342,14 @@ body {
 
   .home-action-button {
     padding: 13px 16px;
+  }
+
+  .tuya-sdk-panel {
+    padding: 8px 10px;
+  }
+
+  .tuya-sdk-key {
+    display: none;
   }
 }
 

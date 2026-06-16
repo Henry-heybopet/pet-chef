@@ -1,0 +1,8 @@
+# Copy this file to frontend/android/tuya.properties for local Android Tuya SDK testing.
+# Do not commit tuya.properties. It contains SDK secrets.
+
+TUYA_ANDROID_APP_KEY=j9rx9e5txvcrft9gs3p4
+TUYA_ANDROID_APP_SECRET=
+
+# Current debug keystore SHA256 registered in Tuya Developer Platform:
+# 2D:D3:16:F0:FD:7B:E9:AD:FE:D0:EE:1C:C9:10:FA:17:92:3A:6C:00:54:84:52:A9:03:73:F8:11:86:DB:12:97
