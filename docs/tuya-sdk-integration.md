@@ -240,10 +240,11 @@ frontend/android/app/build/outputs/apk/debug/app-debug.apk
 3. 输入测试手机号或 Email，点击登录。
 4. 确认 Tuya SDK 初始化、默认 Home 创建成功。
 5. 将 K15/Pet Chef 设备进入配网模式。
-6. 输入 2.4 GHz Wi-Fi 信息，优先测试 EZ；如失败，测试 AP。
-7. 配网成功后刷新设备列表。
-8. 选择 PID 为 `ak2kofibhuvdtqip` 的设备。
-9. 点击 `启动 85°C DIY`。
+6. 工厂已确认第一版方向为 AP + 蓝牙辅助；当前 Android 桥接已支持 AP/EZ，其中蓝牙辅助配网仍需补 Tuya BLE/multi-mode SDK 实现。
+7. 输入 2.4 GHz Wi-Fi 信息，优先测试 AP。
+8. 配网成功后刷新设备列表。
+9. 选择 PID 为 `ak2kofibhuvdtqip` 的设备。
+10. 点击 `启动 85°C DIY`。
 
 ## 下一步
 
@@ -256,7 +257,7 @@ frontend/android/app/build/outputs/apk/debug/app-debug.apk
 
 ## 还需要硬件方确认
 
-- 支持的配网方式：EZ、AP、蓝牙辅助、扫码。
+- 支持的配网方式：已确认第一版按 AP + 蓝牙辅助推进；仍需确认 Tuya SDK 具体 BLE/multi-mode API 和设备端流程。
 - 设备复位/进入配网模式的按键方式。
 - 解绑后是否自动进入配网状态。
 - 固件是否已经支持 App SDK 配网和 DP 控制。

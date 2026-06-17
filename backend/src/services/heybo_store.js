@@ -7,53 +7,90 @@ const dataFile = path.join(dataDir, 'heybo-db.json');
 
 const seedProducts = [
   {
-    id: 'meat_single_chicken',
-    name: '单一蛋白鸡肉包',
+    id: 'test_meat_pack_1',
+    name: '测试肉包1',
     category: 'meat_pack',
-    target_tags: ['sensitive_stomach', 'low_allergy'],
-    price_cents: 1990,
+    target_tags: ['protein_pack', 'test_sku'],
+    price_cents: 100,
     currency: 'CNY',
     status: 'active',
   },
   {
-    id: 'meat_beef_energy',
-    name: '高能量牛肉包',
+    id: 'test_meat_pack_2',
+    name: '测试肉包2',
     category: 'meat_pack',
-    target_tags: ['high_activity', 'large_dog'],
-    price_cents: 2590,
+    target_tags: ['protein_pack', 'test_sku'],
+    price_cents: 100,
     currency: 'CNY',
     status: 'active',
   },
   {
-    id: 'veg_gentle_pumpkin',
-    name: '南瓜胡萝卜温和菜包',
+    id: 'test_meat_pack_3',
+    name: '测试肉包3',
+    category: 'meat_pack',
+    target_tags: ['protein_pack', 'test_sku'],
+    price_cents: 100,
+    currency: 'CNY',
+    status: 'active',
+  },
+  {
+    id: 'test_vegetable_pack_1',
+    name: '测试菜包1',
     category: 'vegetable_pack',
-    target_tags: ['sensitive_stomach', 'digestive_support'],
-    price_cents: 1290,
+    target_tags: ['vegetable_pack', 'test_sku'],
+    price_cents: 100,
     currency: 'CNY',
     status: 'active',
   },
   {
-    id: 'nutrition_joint',
-    name: '关节支持营养包',
+    id: 'test_vegetable_pack_2',
+    name: '测试菜包2',
+    category: 'vegetable_pack',
+    target_tags: ['vegetable_pack', 'test_sku'],
+    price_cents: 100,
+    currency: 'CNY',
+    status: 'active',
+  },
+  {
+    id: 'test_vegetable_pack_3',
+    name: '测试菜包3',
+    category: 'vegetable_pack',
+    target_tags: ['vegetable_pack', 'test_sku'],
+    price_cents: 100,
+    currency: 'CNY',
+    status: 'active',
+  },
+  {
+    id: 'test_nutrition_pack_1',
+    name: '测试营养包1',
     category: 'nutrition_pack',
-    target_tags: ['joint_support', 'senior_care', 'large_dog'],
-    price_cents: 990,
+    target_tags: ['nutrition_pack', 'test_sku'],
+    price_cents: 100,
     currency: 'CNY',
     status: 'active',
   },
   {
-    id: 'bundle_sensitive_stomach',
-    name: '肠胃敏感鲜食套装',
-    category: 'bundle',
-    target_tags: ['sensitive_stomach', 'single_protein'],
-    price_cents: 4590,
+    id: 'test_nutrition_pack_2',
+    name: '测试营养包2',
+    category: 'nutrition_pack',
+    target_tags: ['nutrition_pack', 'test_sku'],
+    price_cents: 100,
+    currency: 'CNY',
+    status: 'active',
+  },
+  {
+    id: 'test_nutrition_pack_3',
+    name: '测试营养包3',
+    category: 'nutrition_pack',
+    target_tags: ['nutrition_pack', 'test_sku'],
+    price_cents: 100,
     currency: 'CNY',
     status: 'active',
   },
 ];
 
 const initialDb = {
+  seed_version: 2,
   users: [],
   user_identities: [],
   households: [],
@@ -95,7 +132,12 @@ function loadDb() {
   try {
     if (!fs.existsSync(dataFile)) return structuredClone(initialDb);
     const parsed = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
-    return { ...structuredClone(initialDb), ...parsed };
+    const merged = { ...structuredClone(initialDb), ...parsed };
+    if (!parsed.seed_version || parsed.seed_version < initialDb.seed_version) {
+      merged.products = seedProducts;
+      merged.seed_version = initialDb.seed_version;
+    }
+    return merged;
   } catch (error) {
     console.warn('Heybo store fallback to memory:', error.message);
     return structuredClone(initialDb);
