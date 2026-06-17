@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import TopBar from './TopBar';
 import { HeyboTuya, prepareTuyaForHeyboUser } from '../native/heyboTuya';
+import { api } from '../api';
 
 const DEFAULT_COOK_TIME_SECONDS = 20 * 60;
 
@@ -25,6 +26,7 @@ function parseDps(result) {
 export default function TuyaDeviceFlow({ onBack }) {
   const [loginInput, setLoginInput] = useState('18500000000');
   const [heyboUser, setHeyboUser] = useState(null);
+  const [heyboToken, setHeyboToken] = useState('');
   const [tuyaStatus, setTuyaStatus] = useState(null);
   const [home, setHome] = useState(null);
   const [devices, setDevices] = useState([]);
@@ -72,6 +74,24 @@ export default function TuyaDeviceFlow({ onBack }) {
     return nextDevices;
   };
 
+  const registerDeviceToBackend = async (device, homeId = home?.homeId, token = heyboToken) => {
+    if (!device?.devId || !token) return null;
+    try {
+      const result = await api.registerDevice({
+        tuya_device_id: device.devId,
+        tuya_home_id: String(homeId || ''),
+        tuya_pid: device.productId,
+        product_type: device.isPetChef ? 'pet_chef' : 'other',
+        device_name: device.name,
+        status: device.isOnline ? 'online' : 'offline',
+      }, token);
+      return result?.device || null;
+    } catch (error) {
+      console.warn('Register device failed:', error);
+      return null;
+    }
+  };
+
   const handleHeyboLogin = async () => {
     const heyboUid = createDemoHeyboUid(loginInput);
     if (!heyboUid) {
@@ -80,21 +100,28 @@ export default function TuyaDeviceFlow({ onBack }) {
     }
 
     await setBusy('login', async () => {
-      setMessage('正在创建 Heybo 测试账号，并静默登录 Tuya...');
-      const nextUser = {
-        id: `heybo_${heyboUid}`,
-        displayName: loginInput.includes('@') ? loginInput : `用户 ${loginInput.slice(-4)}`,
-      };
+      setMessage('正在登录 Heybo 后端测试账号，并静默登录 Tuya...');
+      const loginResult = await api.heyboMockLogin({
+        login: loginInput,
+        provider: loginInput.includes('@') ? 'email' : 'phone',
+      });
+      if (!loginResult?.success) throw new Error(loginResult?.error || 'Heybo 登录失败');
+
+      const nextUser = loginResult.user;
       setHeyboUser(nextUser);
+      setHeyboToken(loginResult.token);
 
       const nextHome = await prepareTuyaForHeyboUser(nextUser.id);
       setHome(nextHome);
       const nextStatus = await HeyboTuya.status();
       setTuyaStatus(nextStatus);
       const nextDevices = await refreshDevices(nextHome.homeId);
+      if (nextDevices?.length) {
+        await Promise.all(nextDevices.map(device => registerDeviceToBackend(device, nextHome.homeId, loginResult.token)));
+      }
 
       setMessage(nextDevices?.length
-        ? 'Heybo 登录完成，已同步 Tuya 家庭和设备列表。'
+        ? 'Heybo 登录完成，已同步 Tuya 家庭、设备列表，并登记到后端。'
         : 'Heybo 登录完成，当前家庭还没有设备，请先配网。');
     });
   };
@@ -106,6 +133,9 @@ export default function TuyaDeviceFlow({ onBack }) {
     }
     await setBusy('refresh', async () => {
       const nextDevices = await refreshDevices(home.homeId);
+      if (nextDevices?.length) {
+        await Promise.all(nextDevices.map(device => registerDeviceToBackend(device, home.homeId)));
+      }
       setMessage(nextDevices?.length ? '设备列表已刷新。' : '当前家庭还没有设备。');
     });
   };
@@ -133,6 +163,10 @@ export default function TuyaDeviceFlow({ onBack }) {
       });
       const pairedDevice = pairResult.device;
       const nextDevices = await refreshDevices(home.homeId);
+      if (pairedDevice) await registerDeviceToBackend(pairedDevice, home.homeId);
+      if (nextDevices?.length) {
+        await Promise.all(nextDevices.map(device => registerDeviceToBackend(device, home.homeId)));
+      }
       if (pairedDevice?.devId) setSelectedDevId(pairedDevice.devId);
       setMessage(nextDevices?.length ? '设备绑定成功，已刷新设备列表。' : '配网返回成功，请刷新设备列表确认。');
     });
@@ -159,8 +193,24 @@ export default function TuyaDeviceFlow({ onBack }) {
         power: 8,
         speed: '1',
       });
-      setLastDps(parseDps(result));
-      setMessage('已下发 85°C DIY 鲜食烹饪指令。');
+      const dps = parseDps(result);
+      setLastDps(dps);
+      await registerDeviceToBackend(selectedDevice, home?.homeId);
+      if (heyboToken) {
+        await api.recordCookingOperation({
+          tuya_device_id: selectedDevice.devId,
+          device_name: selectedDevice.name,
+          operation_type: 'start_cooking',
+          tuya_dp_payload: dps,
+          target_temperature_c: 85,
+          target_time_seconds: Math.max(1, Number(cookMinutes || 20)) * 60 || DEFAULT_COOK_TIME_SECONDS,
+          target_power: 8,
+          target_speed: '1',
+          result: 'success',
+          started_at: new Date().toISOString(),
+        }, heyboToken);
+      }
+      setMessage('已下发 85°C DIY 鲜食烹饪指令，并写入后端操作记录。');
     });
   };
 
@@ -219,6 +269,12 @@ export default function TuyaDeviceFlow({ onBack }) {
             <div className="tuya-flow-meta">
               <span>Heybo ID</span>
               <strong>{heyboUser.id}</strong>
+            </div>
+          )}
+          {heyboToken && (
+            <div className="tuya-flow-meta">
+              <span>后端数据闭环</span>
+              <strong>已连接</strong>
             </div>
           )}
         </section>

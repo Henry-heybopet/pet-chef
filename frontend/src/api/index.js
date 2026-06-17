@@ -130,7 +130,40 @@ async function get(path) {
   return res.json();
 }
 
+function authHeaders(token) {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function authedGet(path, token) {
+  const res = await fetch(`${BASE}${path}`, { headers: authHeaders(token) });
+  return res.json();
+}
+
+async function authedPost(path, body, token) {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
 export const api = {
+  heyboMockLogin: (body) => post('/api/auth/mock-login', body),
+  heyboMe: (token) => authedGet('/api/users/me', token),
+  createPet: (body, token) => authedPost('/api/pets', body, token),
+  listPets: (token) => authedGet('/api/pets', token),
+  registerDevice: (body, token) => authedPost('/api/devices', body, token),
+  listDevices: (token) => authedGet('/api/devices', token),
+  recordCookingOperation: (body, token) => authedPost('/api/operations/cooking', body, token),
+  createFeedingRecord: (body, token) => authedPost('/api/feeding-records', body, token),
+  createHealthRecord: (body, token) => authedPost('/api/health-records', body, token),
+  createMedicalRecord: (body, token) => authedPost('/api/medical-records', body, token),
+  getProducts: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return get(`/api/products${q ? '?' + q : ''}`);
+  },
+  createOrder: (body, token) => authedPost('/api/orders', body, token),
   getBreeds: async () => {
     try {
       const data = await get('/api/breeds');

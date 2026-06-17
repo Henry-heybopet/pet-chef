@@ -494,7 +494,56 @@ Heybo 用户可以绑定多个 Tuya 家庭和多个设备。该结构需要支�
 13. 收货地址和订单。
 14. 支付接口预留或接入微信支付/支付宝。
 
-## 16. 关键原则
+## 16. 当前后端 MVP 状态
+
+当前代码已增加 Heybo 后端账号和数据闭环 MVP。该版本使用本地 JSON 文件存储，适合开发验证；正式环境需要替换为数据库。
+
+本地数据文件：
+
+```text
+backend/.data/heybo-db.json
+```
+
+该目录已加入 `.gitignore`，不会提交到 GitHub。
+
+当前已实现 API：
+
+- `POST /api/auth/mock-login`：测试版 Heybo 登录，支持手机号或 Email。
+- `GET /api/users/me`：读取当前用户、默认家庭、Tuya 映射。
+- `POST /api/households/default`：创建或读取默认家庭。
+- `GET /api/pets`：宠物列表。
+- `POST /api/pets`：创建宠物档案。
+- `PATCH /api/pets/:id`：更新宠物档案。
+- `GET /api/devices`：设备列表。
+- `POST /api/devices`：登记或更新 Tuya 设备。
+- `POST /api/devices/:id/pets`：绑定设备和宠物。
+- `GET /api/operations/cooking`：烹饪操作记录。
+- `POST /api/operations/cooking`：写入烹饪操作记录。
+- `GET /api/feeding-records`：喂食记录。
+- `POST /api/feeding-records`：写入喂食记录。
+- `GET /api/health-records`：健康变化记录。
+- `POST /api/health-records`：写入健康变化记录。
+- `GET /api/medical-records`：医疗记录。
+- `POST /api/medical-records`：写入医疗记录。
+- `GET /api/products`：轻商城商品列表。
+- `GET /api/orders`：订单列表。
+- `POST /api/orders`：创建订单。
+
+当前前端 `设备闭环` 页面已接入：
+
+- Heybo 后端测试登录。
+- Tuya 静默登录。
+- 设备登记到 Heybo 后端。
+- 85°C DIY 烹饪后写入后端操作记录。
+
+下一步需要替换：
+
+- `mock-login` 替换为真实手机号验证码登录。
+- 本地 JSON 存储替换为数据库。
+- `dev_` 测试 token 替换为正式 JWT/session。
+- Tuya UID 登录凭证由后端安全签发。
+
+## 17. 关键原则
 
 - Heybo 账号是唯一用户可见账号。
 - Tuya 账号是隐藏的设备基础设施。

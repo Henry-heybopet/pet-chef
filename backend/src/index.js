@@ -9,10 +9,12 @@ const { recipesDb } = require('./data/recipes_db');
 const { analyzeBreedNutrition, generateAIRecipe } = require('./services/gemini');
 const { startCooking, pauseCooking, stopCooking, getDeviceStatus } = require('./services/tuya');
 const { calcCookingParams, calcDailyIntake, calcIngredientGrams } = require('./services/cooking_engine');
+const heyboRoutes = require('./routes/heybo');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use('/api', heyboRoutes);
 
 // ============================================================
 // GET /api/breeds — 获取全部犬种列表
@@ -296,7 +298,13 @@ app.get('/api/tuya/status', async (req, res) => {
 // 健康检查
 // ============================================================
 app.get('/api/health', (req, res) => {
-  res.json({ success: true, version: '2.0.1', recipes: recipesDb.length, breeds: breedsDb.length });
+  res.json({
+    success: true,
+    version: '2.1.0',
+    recipes: recipesDb.length,
+    breeds: breedsDb.length,
+    heyboAccountMvp: true,
+  });
 });
 
 // 调试端点：检查环境变量是否正确加载
