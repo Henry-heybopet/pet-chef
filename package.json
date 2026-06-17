@@ -2,7 +2,14 @@
   "name": "heybo-lux-root",
   "private": true,
   "scripts": {
-    "build": "cd frontend && npm install && npm run build"
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && node src/index.js",
+    "dev:admin": "cd admin && npm run dev",
+    "build": "npm run build:frontend",
+    "build:frontend": "cd frontend && npm run build",
+    "build:admin": "cd admin && npm run build",
+    "check:backend": "node --check backend/src/index.js && node --check backend/src/routes/heybo.js",
+    "check:architecture": "node --check backend/src/services/schema_blueprint.js && node --check backend/src/services/service_registry.js && node --check backend/src/services/analytics_events.js && node --check backend/src/services/recommendation_signals.js && node --check frontend/src/native/capabilities.js && node --check frontend/src/native/nativeReadiness.js && node --check frontend/src/modules/appModules.js && node --check frontend/src/modules/userJourney.js && node --check frontend/src/analytics/events.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

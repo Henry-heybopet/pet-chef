@@ -1,5 +1,6 @@
 const express = require('express');
 const store = require('../services/heybo_store');
+const { createAnalyticsEvent } = require('../services/analytics_events');
 
 const router = express.Router();
 
@@ -181,6 +182,21 @@ router.post('/orders', asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const result = store.createOrder(user.id, req.body || {});
   res.json({ success: true, ...result });
+}));
+
+router.post('/analytics/events', asyncHandler(async (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  const user = userId ? store.getUser(userId) : null;
+  const { event_name, payload = {} } = req.body || {};
+  if (!event_name) return res.status(400).json({ success: false, error: 'event_name is required' });
+
+  const event = createAnalyticsEvent(event_name, {
+    source: 'backend',
+    user_id: user?.id || payload.user_id,
+    ...payload,
+  });
+  const record = store.appendAnalyticsEvent(event);
+  res.json({ success: true, event: record });
 }));
 
 module.exports = router;

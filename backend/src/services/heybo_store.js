@@ -70,6 +70,7 @@ const initialDb = {
   products: seedProducts,
   orders: [],
   order_items: [],
+  analytics_events: [],
 };
 
 let db = loadDb();
@@ -406,6 +407,17 @@ function createOrder(userId, payload) {
   return { order, items: orderItems };
 }
 
+function appendAnalyticsEvent(event) {
+  const record = {
+    id: id('evt'),
+    ...event,
+    created_at: now(),
+  };
+  db.analytics_events.push(record);
+  saveDb();
+  return record;
+}
+
 function resetForTests() {
   db = structuredClone(initialDb);
   saveDb();
@@ -427,5 +439,6 @@ module.exports = {
   bindDevicePet,
   createRecord,
   createOrder,
+  appendAnalyticsEvent,
   resetForTests,
 };
