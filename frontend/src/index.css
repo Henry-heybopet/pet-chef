@@ -167,6 +167,11 @@ body {
   border: 1px solid rgba(157, 0, 255, 0.3);
 }
 
+.home-action-device {
+  background: linear-gradient(135deg, rgba(124, 255, 178, 0.12), rgba(0, 230, 255, 0.08));
+  border: 1px solid rgba(124, 255, 178, 0.28);
+}
+
 .home-action-icon {
   font-size: 38px;
 }
@@ -229,6 +234,335 @@ body {
 .tuya-sdk-button:disabled {
   cursor: default;
   opacity: 0.55;
+}
+
+.tuya-flow {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.tuya-flow-content {
+  flex: 1;
+  padding: 0 20px calc(24px + var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tuya-flow-hero {
+  padding: 8px 4px 4px;
+}
+
+.tuya-flow-eyebrow {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.tuya-flow-hero h1,
+.tuya-cook-panel h2,
+.tuya-flow-step h2 {
+  margin: 6px 0;
+}
+
+.tuya-flow-hero h1 {
+  font-size: 25px;
+  line-height: 1.16;
+}
+
+.tuya-flow-hero p,
+.tuya-flow-step p,
+.tuya-cook-panel p {
+  margin: 0;
+  color: var(--gray);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.tuya-flow-card,
+.tuya-cook-panel,
+.tuya-flow-log {
+  border: 1px solid rgba(0, 230, 255, 0.16);
+  border-radius: 18px;
+  background: rgba(12, 18, 30, 0.72);
+  padding: 16px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.tuya-flow-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.tuya-flow-step > span {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 230, 255, 0.14);
+  border: 1px solid rgba(0, 230, 255, 0.3);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.tuya-flow-step h2 {
+  font-size: 17px;
+}
+
+.tuya-flow-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.tuya-flow-row + .tuya-flow-row {
+  margin-top: 10px;
+}
+
+.tuya-flow-row-actions {
+  align-items: stretch;
+}
+
+.tuya-flow-input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  color: white;
+  font-size: 14px;
+  outline: none;
+  padding: 13px 14px;
+}
+
+.tuya-flow-input:focus {
+  border-color: rgba(0, 230, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(0, 230, 255, 0.08);
+}
+
+.tuya-flow-button,
+.tuya-flow-ghost,
+.tuya-cook-button {
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.tuya-flow-button {
+  background: linear-gradient(135deg, #00C6FF, #0072FF);
+  color: white;
+  padding: 13px 18px;
+}
+
+.tuya-flow-ghost {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--light);
+  padding: 12px 16px;
+}
+
+.tuya-flow-button:disabled,
+.tuya-flow-ghost:disabled,
+.tuya-cook-button:disabled,
+.tuya-cook-actions button:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
+.tuya-flow-meta {
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--gray);
+  font-size: 12px;
+}
+
+.tuya-flow-meta strong {
+  color: var(--primary);
+  word-break: break-all;
+}
+
+.tuya-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.tuya-flow-mini {
+  border: 1px solid rgba(0, 230, 255, 0.13);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 12px;
+  min-width: 0;
+}
+
+.tuya-flow-mini span {
+  display: block;
+  color: var(--gray);
+  font-size: 11px;
+  margin-bottom: 5px;
+}
+
+.tuya-flow-mini strong {
+  display: block;
+  color: white;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tuya-flow-refresh {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.tuya-device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tuya-device-item {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.05);
+  color: white;
+  padding: 13px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tuya-device-item.active {
+  border-color: rgba(0, 230, 255, 0.55);
+  background: rgba(0, 230, 255, 0.1);
+}
+
+.tuya-device-item strong,
+.tuya-device-item span {
+  display: block;
+}
+
+.tuya-device-item span {
+  color: var(--gray);
+  font-size: 11px;
+  margin-top: 3px;
+  word-break: break-all;
+}
+
+.tuya-device-item em {
+  flex: 0 0 auto;
+  color: #7CFFB2;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.tuya-empty,
+.tuya-flow-warning {
+  color: var(--gray);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tuya-flow-warning {
+  margin-top: 10px;
+  color: #FFD37C;
+  border: 1px solid rgba(255, 211, 124, 0.22);
+}
+
+.tuya-cook-panel {
+  background:
+    radial-gradient(circle at 80% 10%, rgba(124, 255, 178, 0.16), transparent 35%),
+    rgba(12, 18, 30, 0.82);
+}
+
+.tuya-time-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0;
+  color: var(--gray);
+  font-size: 13px;
+}
+
+.tuya-time-field input {
+  width: 72px;
+  border: 1px solid rgba(0, 230, 255, 0.26);
+  border-radius: 14px;
+  background: rgba(0, 230, 255, 0.08);
+  color: white;
+  font-size: 18px;
+  font-weight: 800;
+  text-align: center;
+  padding: 10px;
+}
+
+.tuya-cook-button {
+  width: 100%;
+  padding: 17px;
+  background: linear-gradient(135deg, #20F29B, #00A7FF);
+  color: #031018;
+  font-size: 16px;
+}
+
+.tuya-cook-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.tuya-cook-actions button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--light);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 12px;
+}
+
+.tuya-flow-log {
+  color: var(--gray);
+  font-size: 12px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.tuya-flow-log strong {
+  color: var(--primary);
+}
+
+.tuya-flow-log pre {
+  overflow: auto;
+  margin: 2px 0 0;
+  padding: 10px;
+  max-height: 180px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.24);
+  color: #BCEFFF;
+  font-size: 11px;
 }
 
 @media (max-width: 768px) {
@@ -313,6 +647,33 @@ body {
   .tuya-sdk-panel {
     padding: 10px 12px;
   }
+
+  .tuya-flow-content {
+    padding-left: 18px;
+    padding-right: 18px;
+    gap: 12px;
+  }
+
+  .tuya-flow-hero h1 {
+    font-size: 23px;
+  }
+
+  .tuya-flow-card,
+  .tuya-cook-panel,
+  .tuya-flow-log {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .tuya-flow-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tuya-flow-row-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-height: 820px) {
@@ -350,6 +711,16 @@ body {
 
   .tuya-sdk-key {
     display: none;
+  }
+
+  .tuya-flow-hero h1 {
+    font-size: 21px;
+  }
+
+  .tuya-flow-step p,
+  .tuya-flow-hero p,
+  .tuya-cook-panel p {
+    font-size: 12px;
   }
 }
 

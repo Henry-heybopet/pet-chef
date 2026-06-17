@@ -11,13 +11,17 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.thingclips.smart.android.user.api.ILoginCallback;
 import com.thingclips.smart.android.user.bean.User;
 import com.thingclips.smart.home.sdk.ThingHomeSdk;
+import com.thingclips.smart.home.sdk.builder.ActivatorBuilder;
 import com.thingclips.smart.home.sdk.bean.HomeBean;
 import com.thingclips.smart.home.sdk.callback.IThingGetHomeListCallback;
 import com.thingclips.smart.home.sdk.callback.IThingHomeResultCallback;
-import com.thingclips.smart.sdk.api.IDeviceListener;
+import com.thingclips.smart.sdk.api.IThingActivator;
+import com.thingclips.smart.sdk.api.IThingActivatorGetToken;
+import com.thingclips.smart.sdk.api.IThingSmartActivatorListener;
 import com.thingclips.smart.sdk.api.IResultCallback;
 import com.thingclips.smart.sdk.api.IThingDevice;
 import com.thingclips.smart.sdk.bean.DeviceBean;
+import com.thingclips.smart.sdk.enums.ActivatorModelEnum;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -42,6 +46,7 @@ public class HeyboTuyaPlugin extends Plugin {
 
     private boolean initialized = false;
     private Long currentHomeId = null;
+    private IThingActivator currentActivator = null;
 
     @PluginMethod
     public void status(PluginCall call) {
@@ -213,6 +218,108 @@ public class HeyboTuyaPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void getActivatorToken(PluginCall call) {
+        if (!ensureInitialized(call)) return;
+
+        Long homeId = getHomeId(call);
+        if (homeId == null) return;
+
+        ThingHomeSdk.getActivatorInstance().getActivatorToken(homeId, new IThingActivatorGetToken() {
+            @Override
+            public void onSuccess(String token) {
+                JSObject result = new JSObject();
+                result.put("success", true);
+                result.put("homeId", homeId);
+                result.put("token", token);
+                call.resolve(result);
+            }
+
+            @Override
+            public void onFailure(String code, String error) {
+                call.reject("Get activator token failed: " + code + " " + error);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void startWifiPairing(PluginCall call) {
+        if (!ensureInitialized(call)) return;
+
+        Long homeId = getHomeId(call);
+        if (homeId == null) return;
+
+        String ssid = call.getString("ssid");
+        String password = call.getString("password", "");
+        String mode = call.getString("mode", "EZ");
+        int timeout = call.getInt("timeout", 120);
+
+        if (TextUtils.isEmpty(ssid)) {
+            call.reject("ssid is required.");
+            return;
+        }
+
+        ThingHomeSdk.getActivatorInstance().getActivatorToken(homeId, new IThingActivatorGetToken() {
+            @Override
+            public void onSuccess(String token) {
+                stopCurrentActivator();
+
+                ActivatorModelEnum activatorModel = "AP".equalsIgnoreCase(mode)
+                    ? ActivatorModelEnum.THING_AP
+                    : ActivatorModelEnum.THING_EZ;
+
+                ActivatorBuilder builder = new ActivatorBuilder()
+                    .setContext(getActivity().getApplicationContext())
+                    .setSsid(ssid)
+                    .setPassword(password)
+                    .setActivatorModel(activatorModel)
+                    .setTimeOut(timeout)
+                    .setToken(token)
+                    .setListener(new IThingSmartActivatorListener() {
+                        @Override
+                        public void onError(String code, String error) {
+                            stopCurrentActivator();
+                            call.reject("Wi-Fi pairing failed: " + code + " " + error);
+                        }
+
+                        @Override
+                        public void onActiveSuccess(DeviceBean deviceBean) {
+                            stopCurrentActivator();
+                            JSObject result = new JSObject();
+                            result.put("success", true);
+                            result.put("homeId", homeId);
+                            result.put("token", token);
+                            result.put("mode", mode);
+                            result.put("device", deviceToJson(deviceBean));
+                            call.resolve(result);
+                        }
+
+                        @Override
+                        public void onStep(String step, Object data) {
+                            // Capacitor PluginCall can only be resolved once. The MVP keeps
+                            // pairing progress inside native logs and resolves on success/error.
+                        }
+                    });
+
+                currentActivator = ThingHomeSdk.getActivatorInstance().newActivator(builder);
+                currentActivator.start();
+            }
+
+            @Override
+            public void onFailure(String code, String error) {
+                call.reject("Get activator token failed: " + code + " " + error);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void stopPairing(PluginCall call) {
+        stopCurrentActivator();
+        JSObject result = new JSObject();
+        result.put("success", true);
+        call.resolve(result);
+    }
+
+    @PluginMethod
     public void startDiyCooking(PluginCall call) {
         if (!ensureInitialized(call)) return;
 
@@ -343,17 +450,28 @@ public class HeyboTuyaPlugin extends Plugin {
     private ArrayList<JSObject> deviceListToJson(List<DeviceBean> deviceBeans) {
         ArrayList<JSObject> devices = new ArrayList<>();
         if (deviceBeans == null) return devices;
-        for (DeviceBean deviceBean : deviceBeans) {
-            JSObject item = new JSObject();
-            item.put("devId", deviceBean.getDevId());
-            item.put("name", deviceBean.getName());
-            item.put("productId", deviceBean.getProductId());
-            item.put("isOnline", deviceBean.getIsOnline());
-            item.put("dps", deviceBean.getDps());
-            item.put("isPetChef", PET_CHEF_PID.equals(deviceBean.getProductId()));
-            devices.add(item);
-        }
+        for (DeviceBean deviceBean : deviceBeans) devices.add(deviceToJson(deviceBean));
         return devices;
+    }
+
+    private JSObject deviceToJson(DeviceBean deviceBean) {
+        JSObject item = new JSObject();
+        if (deviceBean == null) return item;
+        item.put("devId", deviceBean.getDevId());
+        item.put("name", deviceBean.getName());
+        item.put("productId", deviceBean.getProductId());
+        item.put("isOnline", deviceBean.getIsOnline());
+        item.put("dps", deviceBean.getDps());
+        item.put("isPetChef", PET_CHEF_PID.equals(deviceBean.getProductId()));
+        return item;
+    }
+
+    private void stopCurrentActivator() {
+        if (currentActivator != null) {
+            currentActivator.stop();
+            currentActivator.onDestroy();
+            currentActivator = null;
+        }
     }
 
     private Map<String, Object> jsObjectToMap(JSObject object) {

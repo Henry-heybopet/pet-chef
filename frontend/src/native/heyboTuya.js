@@ -1,44 +1,80 @@
 import { registerPlugin } from '@capacitor/core';
 
+const DEMO_DEVICE = {
+  devId: 'demo_pet_chef_001',
+  name: 'Pet Chef Demo',
+  productId: 'ak2kofibhuvdtqip',
+  isOnline: true,
+  isPetChef: true,
+  dps: {
+    1: false,
+    3: 'diy',
+    5: 'standby',
+    9: 25,
+  },
+};
+
 export const HeyboTuya = registerPlugin('HeyboTuya', {
   web: () => ({
-    unavailable() {
-      throw new Error('Tuya SDK is only available in the native iOS/Android app.');
-    },
     async status() {
       return {
         platform: 'web',
         nativeAvailable: false,
-        configured: false,
-        initialized: false,
+        configured: true,
+        initialized: true,
+        pid: 'ak2kofibhuvdtqip',
+        homeId: 10001,
       };
     },
     async init() {
-      this.unavailable();
+      return { initialized: true, appKey: 'web-demo' };
     },
-    async loginOrRegisterWithHeyboUid() {
-      this.unavailable();
+    async loginOrRegisterWithHeyboUid({ heyboUid }) {
+      return { success: true, tuyaUid: `heybo_${heyboUid || 'demo'}` };
     },
     async getHomeList() {
-      this.unavailable();
+      return {
+        success: true,
+        homeId: 10001,
+        homes: [{ homeId: 10001, name: 'Heybo Pet Demo', geoName: 'China', deviceCount: 1 }],
+      };
     },
     async ensureDefaultHome() {
-      this.unavailable();
+      return { success: true, homeId: 10001, name: 'Heybo Pet Demo', geoName: 'China', deviceCount: 1 };
     },
     async getDeviceList() {
-      this.unavailable();
+      return { success: true, homeId: 10001, devices: [DEMO_DEVICE] };
     },
-    async publishDps() {
-      this.unavailable();
+    async getActivatorToken() {
+      return { success: true, homeId: 10001, token: 'web-demo-token' };
     },
-    async startDiyCooking() {
-      this.unavailable();
+    async startWifiPairing({ ssid }) {
+      return {
+        success: true,
+        homeId: 10001,
+        mode: 'EZ',
+        token: 'web-demo-token',
+        device: { ...DEMO_DEVICE, name: ssid ? `Pet Chef (${ssid})` : DEMO_DEVICE.name },
+      };
     },
-    async pauseCooking() {
-      this.unavailable();
+    async stopPairing() {
+      return { success: true };
     },
-    async resetCooking() {
-      this.unavailable();
+    async publishDps({ devId, dps }) {
+      return { success: true, devId, dps: JSON.stringify(dps || {}) };
+    },
+    async startDiyCooking({ devId, temperature = 85, cookTime = 1200, power = 8, speed = '1' }) {
+      return {
+        success: true,
+        devId,
+        dps: JSON.stringify(buildPetChefDiyDps({ temperature, cookTime, power, speed })),
+      };
+    },
+    async pauseCooking({ devId }) {
+      return { success: true, devId, dps: JSON.stringify({ 107: 'pause' }) };
+    },
+    async resetCooking({ devId }) {
+      return { success: true, devId, dps: JSON.stringify({ 107: 'reset' }) };
     },
   }),
 });
