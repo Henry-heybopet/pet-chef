@@ -87,10 +87,37 @@ const seedProducts = [
     currency: 'CNY',
     status: 'active',
   },
+  {
+    id: 'test_bundle_bone_1',
+    name: '组合包1-增强骨骼套餐',
+    category: 'bundle',
+    target_tags: ['bundle', 'bone_support', 'joint_support', 'test_sku'],
+    price_cents: 100,
+    currency: 'CNY',
+    status: 'active',
+  },
+  {
+    id: 'test_bundle_skin_coat_2',
+    name: '组合包2-美毛美肤套餐',
+    category: 'bundle',
+    target_tags: ['bundle', 'skin_coat', 'omega_support', 'test_sku'],
+    price_cents: 100,
+    currency: 'CNY',
+    status: 'active',
+  },
+  {
+    id: 'test_bundle_sensitive_stomach_3',
+    name: '组合包3-肠胃敏感套餐',
+    category: 'bundle',
+    target_tags: ['bundle', 'sensitive_stomach', 'digestive_support', 'test_sku'],
+    price_cents: 100,
+    currency: 'CNY',
+    status: 'active',
+  },
 ];
 
 const initialDb = {
-  seed_version: 2,
+  seed_version: 3,
   users: [],
   user_identities: [],
   households: [],
