@@ -101,26 +101,88 @@ import { HeyboTuya } from './native/heyboTuya';
 
 await HeyboTuya.status();
 await HeyboTuya.init();
+await HeyboTuya.loginOrRegisterWithHeyboUid({ heyboUid: 'heybo-user-id' });
+await HeyboTuya.ensureDefaultHome();
+await HeyboTuya.getDeviceList({ homeId });
+await HeyboTuya.startDiyCooking({
+  devId,
+  temperature: 85,
+  cookTime: 1200,
+  power: 8,
+  speed: '1',
+});
 ```
 
 Web 环境会返回 `nativeAvailable: false`。
 
+## 账号设计原则
+
+用户只注册和登录 Heybo Pet 账号，不在 App 里重复注册涂鸦账号。
+
+推荐映射流程：
+
+```text
+Heybo 用户注册/登录
+  -> 生成 heybo_user_id
+  -> App 原生层调用 Tuya loginOrRegisterWithUid
+  -> Tuya UID 使用 heybo_user_id 派生
+  -> 创建/获取默认 Home
+  -> 绑定和控制设备
+```
+
+当前 Android 原生插件已增加：
+
+- `loginOrRegisterWithHeyboUid`
+- `getHomeList`
+- `ensureDefaultHome`
+- `getDeviceList`
+- `publishDps`
+- `startDiyCooking`
+- `pauseCooking`
+- `resetCooking`
+
+## Pet Chef DP 控制
+
+当前 PID：
+
+```text
+ak2kofibhuvdtqip
+```
+
+第一阶段采用 DIY DP 控制闭环：
+
+```json
+{
+  "1": true,
+  "3": "diy",
+  "7": 1200,
+  "9": 85,
+  "102": 8,
+  "108": "1",
+  "107": "start"
+}
+```
+
+详细 DP 映射见：
+
+```text
+docs/tuya-pet-chef-dp-map.md
+```
+
 ## 下一步
 
-1. 在本机 `frontend/android/tuya.properties` 填入 Android AppSecret。
-2. 在 App 增加 Tuya SDK 状态检查入口，调用 `HeyboTuya.status()` / `HeyboTuya.init()`。
-3. 实现 Tuya 用户登录/匿名账号映射。
-4. 创建 Tuya Home。
-5. 获取配网 token。
-6. 实现 EZ/AP/蓝牙辅助配网。
-7. 获取设备列表和设备状态。
-8. 根据 K15/Pet Chef DP 点表下发测试 DP。
+1. 实现 Heybo 账号 MVP，并生成稳定的 `heybo_user_id`。
+2. 前端登录后调用 `prepareTuyaForHeyboUser(heyboUid)` 完成 Tuya 静默映射。
+3. 增加设备页：Home、设备列表、选择 Pet Chef 设备。
+4. 实现配网入口，优先确认工厂支持的配网方式。
+5. 在烹饪页接入 `startDiyCooking` / `pauseCooking` / `resetCooking`。
+6. 真机联调 DP 下发顺序、状态回传、故障码。
 
 ## 还需要硬件方确认
 
-- 当前 PID。
-- DP 点表。
 - 支持的配网方式：EZ、AP、蓝牙辅助、扫码。
 - 设备复位/进入配网模式的按键方式。
 - 解绑后是否自动进入配网状态。
 - 固件是否已经支持 App SDK 配网和 DP 控制。
+- `multistep` raw 协议格式。
+- `fault` 故障码含义。
