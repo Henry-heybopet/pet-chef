@@ -134,6 +134,7 @@ const initialDb = {
   products: seedProducts,
   orders: [],
   order_items: [],
+  payments: [],
   analytics_events: [],
 };
 
@@ -476,6 +477,78 @@ function createOrder(userId, payload) {
   return { order, items: orderItems };
 }
 
+function getOrder(orderId) {
+  return db.orders.find(order => order.id === orderId) || null;
+}
+
+function createPayment({ userId, order, provider, idempotencyKey, status = 'pending' }) {
+  const normalizedKey = String(idempotencyKey || '').trim();
+  if (normalizedKey) {
+    const existing = db.payments.find(payment =>
+      payment.user_id === userId && payment.idempotency_key === normalizedKey
+    );
+    if (existing) return existing;
+  }
+
+  const activePayment = db.payments.find(payment =>
+    payment.order_id === order.id &&
+    payment.provider === provider &&
+    ['configuration_pending', 'pending', 'authorized'].includes(payment.status)
+  );
+  if (activePayment) return activePayment;
+
+  const payment = {
+    id: id('pay'),
+    order_id: order.id,
+    user_id: userId,
+    provider,
+    provider_payment_id: '',
+    amount_cents: order.total_cents,
+    currency: order.currency,
+    status,
+    idempotency_key: normalizedKey,
+    paid_at: '',
+    failure_reason: '',
+    created_at: now(),
+    updated_at: now(),
+  };
+  db.payments.push(payment);
+  saveDb();
+  return payment;
+}
+
+function getPayment(paymentId) {
+  return db.payments.find(payment => payment.id === paymentId) || null;
+}
+
+function listPaymentsForUser(userId) {
+  return db.payments.filter(payment => payment.user_id === userId);
+}
+
+function updatePaymentStatus(paymentId, status, { providerPaymentId = '', failureReason = '' } = {}) {
+  const payment = getPayment(paymentId);
+  if (!payment) throw new Error('Payment not found');
+
+  payment.status = status;
+  payment.provider_payment_id = providerPaymentId || payment.provider_payment_id;
+  payment.failure_reason = failureReason;
+  payment.updated_at = now();
+  if (status === 'paid') payment.paid_at = now();
+
+  const order = getOrder(payment.order_id);
+  if (order) {
+    if (status === 'paid') {
+      order.payment_status = 'paid';
+      order.status = 'paid';
+    } else if (status === 'failed') {
+      order.payment_status = 'failed';
+    }
+    order.updated_at = now();
+  }
+  saveDb();
+  return { payment, order };
+}
+
 function appendAnalyticsEvent(event) {
   const record = {
     id: id('evt'),
@@ -508,6 +581,11 @@ module.exports = {
   bindDevicePet,
   createRecord,
   createOrder,
+  getOrder,
+  createPayment,
+  getPayment,
+  listPaymentsForUser,
+  updatePaymentStatus,
   appendAnalyticsEvent,
   resetForTests,
 };

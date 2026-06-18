@@ -1,6 +1,7 @@
 const express = require('express');
 const store = require('../services/heybo_store');
 const { createAnalyticsEvent } = require('../services/analytics_events');
+const paymentService = require('../services/payment');
 
 const router = express.Router();
 
@@ -181,6 +182,46 @@ router.get('/orders', asyncHandler(async (req, res) => {
 router.post('/orders', asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const result = store.createOrder(user.id, req.body || {});
+  res.json({ success: true, ...result });
+}));
+
+router.get('/payments/providers', (req, res) => {
+  res.json({ success: true, providers: paymentService.listProviderReadiness() });
+});
+
+router.get('/payments', asyncHandler(async (req, res) => {
+  const user = requireUser(req);
+  res.json({ success: true, payments: store.listPaymentsForUser(user.id) });
+}));
+
+router.get('/payments/:id', asyncHandler(async (req, res) => {
+  const user = requireUser(req);
+  const payment = store.getPayment(req.params.id);
+  if (!payment || payment.user_id !== user.id) {
+    return res.status(404).json({ success: false, error: 'Payment not found' });
+  }
+  res.json({ success: true, payment, order: store.getOrder(payment.order_id) });
+}));
+
+router.post('/payments', asyncHandler(async (req, res) => {
+  const user = requireUser(req);
+  const { order_id, provider } = req.body || {};
+  if (!order_id) return res.status(400).json({ success: false, error: 'order_id is required' });
+  if (!provider) return res.status(400).json({ success: false, error: 'provider is required' });
+
+  const result = paymentService.createPayment({
+    userId: user.id,
+    orderId: order_id,
+    provider,
+    idempotencyKey: req.get('idempotency-key'),
+  });
+  res.status(result.readiness.configured ? 201 : 503).json({ success: result.readiness.configured, ...result });
+}));
+
+// Development-only callback. Production callbacks must use provider-specific
+// signature verification and the unmodified raw request body.
+router.post('/payments/mock-callback', asyncHandler(async (req, res) => {
+  const result = paymentService.applyDevelopmentCallback(req);
   res.json({ success: true, ...result });
 }));
 

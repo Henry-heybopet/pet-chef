@@ -148,6 +148,19 @@ async function authedPost(path, body, token) {
   return res.json();
 }
 
+async function createPayment(body, token, idempotencyKey) {
+  const res = await fetch(`${BASE}/api/payments`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(token),
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
 export const api = {
   heyboMockLogin: (body) => post('/api/auth/mock-login', body),
   heyboMe: (token) => authedGet('/api/users/me', token),
@@ -164,6 +177,10 @@ export const api = {
     return get(`/api/products${q ? '?' + q : ''}`);
   },
   createOrder: (body, token) => authedPost('/api/orders', body, token),
+  getPaymentProviders: () => get('/api/payments/providers'),
+  createPayment,
+  listPayments: (token) => authedGet('/api/payments', token),
+  getPayment: (paymentId, token) => authedGet(`/api/payments/${paymentId}`, token),
   getBreeds: async () => {
     try {
       const data = await get('/api/breeds');

@@ -80,8 +80,8 @@ const serviceRegistry = {
     description: '支付流水、支付回调、幂等和对账。',
     owns: ['payments'],
     dependsOn: ['account_service', 'order_service'],
-    currentMvpEntrypoints: [],
-    futureResponsibilities: ['微信支付', '支付宝', 'Stripe 预留', '回调验签', '退款流水'],
+    currentMvpEntrypoints: ['GET /api/payments/providers', 'POST /api/payments', 'GET /api/payments/:id'],
+    futureResponsibilities: ['微信 App 支付下单', '支付宝 App 支付下单', '生产回调验签', '退款流水', '日终对账'],
   },
   admin_service: {
     description: '运营后台账号、角色和审核动作。',

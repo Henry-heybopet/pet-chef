@@ -307,7 +307,7 @@ const schemaBlueprint = {
       provider_payment_id: { type: 'string', required: false },
       amount_cents: { type: 'number', required: true },
       currency: { type: 'string', required: true },
-      status: { type: 'enum', required: true, values: ['pending', 'authorized', 'paid', 'failed', 'cancelled', 'refunded'] },
+      status: { type: 'enum', required: true, values: ['configuration_pending', 'pending', 'authorized', 'paid', 'failed', 'cancelled', 'refunded'] },
       paid_at: { type: 'datetime', required: false },
       raw_payload: { type: 'json_object', required: false },
       ...commonTimestamps,
