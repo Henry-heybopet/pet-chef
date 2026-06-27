@@ -132,9 +132,10 @@ const recipesDb = rawRecipes.map(r => {
   const preheat_seconds = Math.round((22.5 - waterFactor * 60) * 2); // per 100g extrapolation
   const cook_seconds = Math.round((320 - waterFactor * 300) * 1.0); // per 100g, full cook
 
+  const ossBaseUrl = process.env.OSS_BASE_URL || '';
   return {
     ...r,
-    img: imgMap[r.name] || `https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&h=400&q=80`,
+    img: imgMap[r.name] ? `${ossBaseUrl}${imgMap[r.name]}` : `https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&h=400&q=80`,
     water_content_pct: Math.round(waterContent * 100),
     protein_pct: Math.round(proteinPct),
     carb_pct: Math.round(carbPct),

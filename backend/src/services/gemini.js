@@ -1,7 +1,9 @@
+// Pet Chef Ver B1.00 — Safety Filter · 2026-06-22
 // gemini.js — Google Gemini AI 客户端封装
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { validateIngredientSafety, hasToxicIngredients, generateSafetyWarnings } = require('./safety_filter');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
@@ -131,6 +133,29 @@ async function generateAIRecipe(breedName, age, weight, goals, existingRecipeNam
       // 验证百分比总和
       const total = Object.values(recipe.ingredients).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
       if (Math.abs(total - 100) > 5) throw new Error(`Ingredient total ${total} != 100`);
+      
+      // ===== 安全过滤：验证生成的食谱食材 =====
+      const ingredientNames = Object.keys(recipe.ingredients);
+      const safetyResult = validateIngredientSafety(ingredientNames);
+      
+      // 如果检测到毒性食材，返回错误响应（不返回食谱）
+      if (hasToxicIngredients(safetyResult)) {
+        const warnings = generateSafetyWarnings(safetyResult);
+        console.error('🚫 Gemini generated recipe with TOXIC ingredients:', safetyResult.toxic);
+        return {
+          error: true,
+          blocked: true,
+          toxic_ingredients: safetyResult.toxic,
+          message: '危险食材检测',
+          safety_warnings: warnings,
+        };
+      }
+      
+      // 如果有警示食材，添加警告信息到食谱
+      if (safetyResult.caution && safetyResult.caution.length > 0) {
+        recipe.safety_warnings = generateSafetyWarnings(safetyResult);
+      }
+      
       return recipe;
     }
     throw new Error('No JSON found');

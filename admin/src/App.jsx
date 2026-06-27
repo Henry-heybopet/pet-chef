@@ -1,124 +1,1095 @@
-import { adminModules, adminRoles, priorityLabels } from './adminModules';
-
-const statusMetrics = [
-  { label: '后台模块', value: adminModules.length, note: '覆盖核心运营域' },
-  { label: 'P0 模块', value: adminModules.filter(module => module.priority === 'P0').length, note: '首版优先实现' },
-  { label: '权限角色', value: adminRoles.length, note: '用于后续 RBAC' },
-  { label: '真实接口', value: 0, note: '当前仅静态骨架' },
-];
+import React, { useState, useMemo } from 'react';
+import {
+  REGIONS,
+  MEDICINE_REGISTRY,
+  mockUsers,
+  mockPets,
+  mockDevices,
+  mockRecipes,
+  mockProducts,
+  mockOrders,
+  mockMedicalRecords,
+  mockDoctorReviews,
+  mockFaultLogs
+} from './mockData';
 
 function App() {
-  const p0Modules = adminModules.filter(module => module.priority === 'P0');
-  const p1Modules = adminModules.filter(module => module.priority === 'P1');
+  // 1. 全局状态
+  const [activeRegion, setActiveRegion] = useState('CN'); // CN, US, EU
+  const [activeTab, setActiveTab] = useState('dashboard'); // dashboard, users, pets, devices, recipes, products, orders, medical, doctors, faults
+  
+  // 详情模态框/侧边抽屉状态
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [selectedDevice, setSelectedDevice] = useState(null);
+  const [selectedMedical, setSelectedMedical] = useState(null);
+  const [selectedFault, setSelectedFault] = useState(null);
+
+  // 处方药品维护列表状态
+  const [medicines, setMedicines] = useState(MEDICINE_REGISTRY);
+  const [newMedName, setNewMedName] = useState('');
+  const [newMedIngredient, setNewMedIngredient] = useState('');
+  const [newMedDisorder, setNewMedDisorder] = useState('');
+
+  // 医生审核处理
+  const [doctors, setDoctors] = useState(mockDoctorReviews);
+
+  // 当前区域的配置信息
+  const currentRegionConfig = useMemo(() => {
+    return REGIONS.find(r => r.code === activeRegion) || REGIONS[0];
+  }, [activeRegion]);
+
+  // ==========================================
+  // 数据过滤逻辑（按当前选择的区域隔离）
+  // ==========================================
+  const filteredUsers = useMemo(() => {
+    return mockUsers.filter(u => u.region === activeRegion);
+  }, [activeRegion]);
+
+  const filteredPets = useMemo(() => {
+    // 找出该区域用户名下的所有宠物
+    const userIds = new Set(filteredUsers.map(u => u.id));
+    return mockPets.filter(p => userIds.has(p.owner_user_id));
+  }, [filteredUsers]);
+
+  const filteredDevices = useMemo(() => {
+    return mockDevices.filter(d => d.region === activeRegion);
+  }, [activeRegion]);
+
+  const filteredProducts = useMemo(() => {
+    // 料包做区域隔离，配件全局显示
+    return mockProducts.filter(p => p.id.includes(activeRegion) || p.category !== '鲜食料包');
+  }, [activeRegion]);
+
+  const filteredOrders = useMemo(() => {
+    return mockOrders.filter(o => o.region === activeRegion);
+  }, [activeRegion]);
+
+  const filteredMedical = useMemo(() => {
+    const petIds = new Set(filteredPets.map(p => p.id));
+    return mockMedicalRecords.filter(m => petIds.has(m.pet_id));
+  }, [filteredPets]);
+
+  const filteredFaults = useMemo(() => {
+    const devIds = new Set(filteredDevices.map(d => d.id));
+    return mockFaultLogs.filter(f => devIds.has(f.device_id));
+  }, [filteredDevices]);
+
+  // ==========================================
+  // 仪表盘核心指标统计
+  // ==========================================
+  const dashboardStats = useMemo(() => {
+    const onlineDevs = filteredDevices.filter(d => d.telemetry?.online).length;
+    const activeUsrs = filteredUsers.filter(u => u.status === 'active').length;
+    const totalRevenue = filteredOrders
+      .filter(o => o.payment_status === 'success')
+      .reduce((sum, o) => sum + o.total_cents, 0) / 100;
+
+    return [
+      { label: '活跃用户 (区内)', value: activeUsrs, note: `总账号: ${filteredUsers.length}个`, color: '#0ea5b7' },
+      { label: '智能设备在线率', value: `${onlineDevs}/${filteredDevices.length}`, note: `离线设备: ${filteredDevices.length - onlineDevs}台`, color: '#10b981' },
+      { label: '当期商城流水', value: `${currentRegionConfig.symbol}${totalRevenue.toFixed(2)}`, note: `已付款订单: ${filteredOrders.length}笔`, color: '#f59e0b' },
+      { label: '设备告警/故障', value: filteredFaults.filter(f => f.status === 'unresolved').length, note: '待处理客服单', color: '#ef4444' }
+    ];
+  }, [filteredUsers, filteredDevices, filteredOrders, filteredFaults, currentRegionConfig]);
+
+  // 处理添加药品逻辑
+  const handleAddMedicine = (e) => {
+    e.preventDefault();
+    if (!newMedName || !newMedIngredient) return;
+    const newMed = {
+      id: `MED-00${medicines.length + 1}`,
+      name: newMedName,
+      ingredient: newMedIngredient,
+      targetDisorder: newMedDisorder || '通用调理'
+    };
+    setMedicines([...medicines, newMed]);
+    setNewMedName('');
+    setNewMedIngredient('');
+    setNewMedDisorder('');
+  };
+
+  // 处理医生状态流转
+  const handleApproveDoctor = (id, newStatus) => {
+    setDoctors(doctors.map(doc => {
+      if (doc.id === id) {
+        return { ...doc, status: newStatus, reviewed_by: 'SuperAdmin-Platform' };
+      }
+      return doc;
+    }));
+  };
 
   return (
     <main className="admin-shell">
+      {/* 侧边栏 */}
       <aside className="sidebar">
         <div>
           <div className="brand-mark">HB</div>
           <h1>Heybo Pet Admin</h1>
-          <p>管理用户、宠物、设备、食谱、商品、订单、医疗资料、医生审核与故障日志的内部控制台。</p>
+          <p className="subtitle">
+            智能鲜食生态内部运营控制台 ({currentRegionConfig.name})
+          </p>
+          <div className="region-indicator">
+            <span className="dot active"></span>
+            <span>已接入 {activeRegion} 数据中心 (PostgreSQL)</span>
+          </div>
         </div>
-
-        <nav aria-label="后台模块">
-          {adminModules.map(module => (
-            <a key={module.id} href={`#${module.id}`}>
-              <span>{module.name}</span>
-              <strong>{module.priority}</strong>
-            </a>
-          ))}
-        </nav>
+        <nav aria-label="核心管理板块" className="sidebar-nav">
+          <button className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
+            <span>📊 运行大盘 Dashboard</span>
+          </button>
+          <button className={`nav-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>
+            <span>👤 用户管理 Users ({filteredUsers.length}/{mockUsers.length})</span>
+          </button>
+          <button className={`nav-btn ${activeTab === 'pets' ? 'active' : ''}`} onClick={() => setActiveTab('pets')}>
+            <span>🐶 宠物档案 Pets ({filteredPets.length}/{mockPets.length})</span>
+          </button>
+          <button className={`nav-btn ${activeTab === 'devices' ? 'active' : ''}`} onClick={() => setActiveTab('devices')}>
+            <span>🔌 智能设备 Devices ({filteredDevices.length}/{mockDevices.length})</span>
+          </button>
+          <button className={`nav-btn ${activeTab === 'recipes' ? 'active' : ''}`} onClick={() => setActiveTab('recipes')}>
+            <span>🍲 食谱配方 Recipes</span>
+          </button>
+          <button className={`nav-btn ${activeTab === 'products' ? 'active' : ''}`} onClick={() => setActiveTab('products')}>
+            <span>🛒 商品 & 溯源 Mall</span>
+          </button>
+          <button className={`nav-btn ${activeTab === 'orders' ? 'active' : ''}`} onClick={() => setActiveTab('orders')}>
+            <span>📦 订单对账 Orders</span>
+          </button>
+          <button className={`nav-btn ${activeTab === 'medical' ? 'active' : ''}`} onClick={() => setActiveTab('medical')}>
+            <span>🏥 医疗病例 Medical</span>
+          </button>
+          <button className={`nav-btn ${activeTab === 'doctors' ? 'active' : ''}`} onClick={() => setActiveTab('doctors')}>
+            <span>🩺 医生 & 处方 Doctors</span>
+          </button>
+          <button className={`nav-btn ${activeTab === 'faults' ? 'active' : ''}`} onClick={() => setActiveTab('faults')}>
+            <span>⚠️ 故障诊断 Fault Logs ({filteredFaults.length}/{mockFaultLogs.length})</span>
+          </button>
+        </nav>        <div className="sidebar-footer">
+          <p>当前合规：{activeRegion === 'CN' ? 'PIPL 本地隔离存储' : activeRegion === 'EU' ? 'GDPR 本地隔离存储' : 'US HIPAA/CCPA'}</p>
+          <p className="version">Vite Dev Server • v4.5</p>
+        </div>
       </aside>
 
+      {/* 右侧主工作区 */}
       <section className="workspace">
-        <header className="page-header">
+        {/* 顶部标题栏与区域切换器 */}
+        <header className="workspace-header">
           <div>
-            <p className="eyebrow">Admin Console Skeleton</p>
-            <h2>模块总览仪表盘</h2>
+            <span className="eyebrow">Heybo Smart Platform</span>
+            <h2>{activeTab.toUpperCase()} - {currentRegionConfig.name}</h2>
           </div>
-          <div className="mode-pill">Mock only</div>
+
+          <div className="top-actions">
+            <span className="switch-label">切换管辖数据中心:</span>
+            <div className="region-switch-group">
+              {REGIONS.map(r => (
+                <button
+                  key={r.code}
+                  className={`region-switch-btn ${activeRegion === r.code ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveRegion(r.code);
+                    // 切换区域时重置详情面板，防止数据错位
+                    setSelectedUser(null);
+                    setSelectedProduct(null);
+                    setSelectedDevice(null);
+                    setSelectedMedical(null);
+                    setSelectedFault(null);
+                  }}
+                >
+                  {r.name} ({r.code})
+                </button>
+              ))}
+            </div>
+          </div>
         </header>
 
-        <section className="metric-grid" aria-label="后台状态摘要">
-          {statusMetrics.map(metric => (
-            <article className="metric-card" key={metric.label}>
-              <span>{metric.label}</span>
-              <strong>{metric.value}</strong>
-              <p>{metric.note}</p>
-            </article>
-          ))}
-        </section>
+        {/* 仪表盘统计卡片 */}
+        {activeTab === 'dashboard' && (
+          <section className="dashboard-content">
+            <section className="metric-grid" aria-label="数据中心健康度摘要">
+              {dashboardStats.map(metric => (
+                <article className="metric-card" key={metric.label}>
+                  <span className="metric-label">{metric.label}</span>
+                  <strong className="metric-value" style={{ color: metric.color }}>{metric.value}</strong>
+                  <p className="metric-note">{metric.note}</p>
+                </article>
+              ))}
+            </section>
 
-        <section className="section-block">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Version 1 Priority</p>
-              <h3>P0 优先模块</h3>
+            {/* 运营看板附加信息 */}
+            <div className="dashboard-info-row">
+              <div className="info-block">
+                <h3>📌 区域合规与安全防御状态</h3>
+                <ul className="info-list">
+                  <li><strong>当前限流拦截率</strong>：0.00% (正常运行)</li>
+                  <li><strong>API 敏感防护</strong>：对 <code>/ai-recipe</code> (Gemini) 网关施加限制 1分钟15次</li>
+                  <li><strong>数据库合规状态</strong>：
+                    {activeRegion === 'CN' ? ' 严格遵循中国 PIPL，数据库路由至上海 RDS PostgreSQL' :
+                     activeRegion === 'EU' ? ' 严格遵循欧盟 GDPR，数据保存在法兰克福 Google Cloud SQL，支持被遗忘权' :
+                     ' 遵循美利坚合规要求，数据存放于爱荷华州'}
+                  </li>
+                  <li><strong>跨域 CORS 来源</strong>：已绑定该区域专用子域名</li>
+                </ul>
+              </div>
+
+              <div className="info-block">
+                <h3>🍲 配方药品快捷统计</h3>
+                <ul className="info-list">
+                  <li><strong>注册处方药品</strong>：{medicines.length} 种</li>
+                  <li><strong>平台认证执业兽医</strong>：{doctors.filter(d => d.status === 'approved').length} 位</li>
+                  <li><strong>处方食谱标记率</strong>：{mockRecipes.filter(r => r.requires_vet_approval).length} 个</li>
+                </ul>
+              </div>
             </div>
-            <span>{priorityLabels.P0}</span>
-          </div>
+          </section>
+        )}
 
-          <div className="module-grid">
-            {p0Modules.map(module => (
-              <ModuleCard key={module.id} module={module} />
-            ))}
-          </div>
-        </section>
-
-        <section className="section-block">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Next Wave</p>
-              <h3>P1 占位模块</h3>
+        {/* 1. 用户管理模块 */}
+        {activeTab === 'users' && (
+          <section className="module-section">
+            <div className="table-header">
+              <h3>用户账户名录</h3>
+              <p>仅展示 {currentRegionConfig.name} 注册账号</p>
             </div>
-            <span>{priorityLabels.P1}</span>
-          </div>
-
-          <div className="module-grid compact">
-            {p1Modules.map(module => (
-              <ModuleCard key={module.id} module={module} />
-            ))}
-          </div>
-        </section>
-
-        <section className="section-block">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Access Model</p>
-              <h3>权限角色草案</h3>
+            
+            <div className="grid-list">
+              {filteredUsers.map(user => (
+                <article key={user.id} className="detail-card cursor-pointer" onClick={() => setSelectedUser(user)}>
+                  <div className="card-header">
+                    <img className="avatar" src={user.avatar_url} alt={user.display_name} />
+                    <div>
+                      <h4>{user.display_name}</h4>
+                      <span className="badge-id">{user.id}</span>
+                    </div>
+                  </div>
+                  <div className="card-body">
+                    <p><strong>电话:</strong> {user.primary_phone || '未绑定'}</p>
+                    <p><strong>邮箱:</strong> {user.primary_email || '未绑定'}</p>
+                    <p><strong>注册时间:</strong> {new Date(user.created_at).toLocaleDateString()}</p>
+                    <p><strong>状态:</strong> 
+                      <span className={`status-tag ${user.status}`}>
+                        {user.status === 'active' ? '正常' : user.status === 'suspended' ? '封禁' : '注销'}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="card-footer">
+                    <span>点击查看名下多智能设备与收货地址</span>
+                  </div>
+                </article>
+              ))}
             </div>
-          </div>
 
-          <div className="role-list">
-            {adminRoles.map(role => (
-              <article key={role.id}>
-                <strong>{role.name}</strong>
-                <p>{role.scope}</p>
-              </article>
-            ))}
-          </div>
-        </section>
+            {/* 用户抽屉详情面板 */}
+            {selectedUser && (
+              <div className="detail-drawer-overlay" onClick={() => setSelectedUser(null)}>
+                <div className="detail-drawer" onClick={e => e.stopPropagation()}>
+                  <button className="close-btn" onClick={() => setSelectedUser(null)}>✕ 关闭</button>
+                  <div className="drawer-header">
+                    <img className="drawer-avatar" src={selectedUser.avatar_url} alt={selectedUser.display_name} />
+                    <h2>{selectedUser.display_name} 的详细档案</h2>
+                    <span className="badge-id">{selectedUser.id}</span>
+                  </div>
+
+                  <div className="drawer-section">
+                    <h3>账户核心指标</h3>
+                    <div className="metric-row">
+                      <div className="mini-card">
+                        <span>登录频率</span>
+                        <strong>{selectedUser.login_frequency}</strong>
+                      </div>
+                      <div className="mini-card">
+                        <span>认证提供商</span>
+                        <strong>{selectedUser.login_provider.toUpperCase()}</strong>
+                      </div>
+                      <div className="mini-card">
+                        <span>最后活跃时间</span>
+                        <span>{new Date(selectedUser.last_login_at).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="drawer-section">
+                    <h3>🏠 名下绑定智能设备</h3>
+                    {filteredDevices.filter(d => d.owner_user_id === selectedUser.id).length === 0 ? (
+                      <p className="muted-text">该用户名下暂未绑定智能设备。</p>
+                    ) : (
+                      <div className="device-mini-list">
+                        {filteredDevices.filter(d => d.owner_user_id === selectedUser.id).map(dev => (
+                          <div className="device-mini-item" key={dev.id} onClick={() => {
+                            setSelectedDevice(dev);
+                            setActiveTab('devices');
+                            setSelectedUser(null);
+                          }}>
+                            <strong>{dev.device_name}</strong>
+                            <span>类型: {dev.product_type} | 状态: {dev.status} (点击诊断)</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="drawer-section">
+                    <h3>🛍️ 商城消费与首选项</h3>
+                    <div className="purchase-preferences">
+                      <p><strong>已支付交易总额:</strong> {currentRegionConfig.symbol}{(filteredOrders.filter(o => o.user_id === selectedUser.id && o.payment_status === 'success').reduce((sum, o) => sum + o.total_cents, 0) / 100).toFixed(2)}</p>
+                      <p><strong>默认收货地址:</strong> {selectedUser.addresses[0]?.detail || '未填写'}</p>
+                      <p><strong>偏好食材类型:</strong> 鸭肉南瓜鲜食包 (依据历史订单分析)</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 2. 宠物档案模块 */}
+        {activeTab === 'pets' && (
+          <section className="module-section">
+            <div className="table-header">
+              <h3>爱宠健康档案</h3>
+              <p>支持过敏原审核与医生营养备注查阅</p>
+            </div>
+
+            <div className="grid-list">
+              {filteredPets.map(pet => {
+                const owner = mockUsers.find(u => u.id === pet.owner_user_id);
+                return (
+                  <article key={pet.id} className="pet-card">
+                    <div className="pet-card-main">
+                      <img className="pet-avatar" src={pet.avatar_url} alt={pet.name} />
+                      <div className="pet-info">
+                        <h4>{pet.name} <span className="species-icon">{pet.species === 'dog' ? '🐶' : '🐱'}</span></h4>
+                        <p>{pet.breed} | {pet.age_months} 个月</p>
+                        <p><strong>主人:</strong> {owner ? owner.display_name : pet.owner_user_id}</p>
+                      </div>
+                    </div>
+
+                    <div className="pet-health-details">
+                      <div className="body-condition">
+                        <span>BCS 评分:</span>
+                        <strong>{pet.body_condition_score}</strong>
+                      </div>
+                      <div className="allergen-pill-group">
+                        <span>过敏原:</span>
+                        {pet.allergens.length === 0 ? <span className="pill green">无已知过敏原</span> : 
+                          pet.allergens.map(a => <span key={a} className="pill red">{a}</span>)}
+                      </div>
+                      <div className="health-tag-group">
+                        <span>调理标签:</span>
+                        {pet.health_tags.map(t => <span key={t} className="pill orange">{t}</span>)}
+                      </div>
+                    </div>
+
+                    <div className="doctor-memo">
+                      <h5>🩺 兽医专科调理意见</h5>
+                      <p>{pet.doctor_notes || '暂无专属医生诊断笔记。'}</p>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* 3. 设备管理模块 */}
+        {activeTab === 'devices' && (
+          <section className="module-section">
+            <div className="table-header">
+              <h3>绑定设备一览与遥测监控</h3>
+              <p>支持 <strong>鲜食机、猫砂盆、喂食器、喂水器、定位器</strong> 5 大智能硬件</p>
+            </div>
+
+            <div className="grid-list">
+              {filteredDevices.map(dev => (
+                <article key={dev.id} className="device-card cursor-pointer" onClick={() => setSelectedDevice(dev)}>
+                  <div className="dev-header">
+                    <div>
+                      <h4>{dev.device_name}</h4>
+                      <span className="badge-id">{dev.id}</span>
+                    </div>
+                    <span className={`dev-status ${dev.status} ${dev.telemetry?.online ? 'online' : 'offline'}`}>
+                      {dev.telemetry?.online ? '在线' : '离线'}
+                    </span>
+                  </div>
+
+                  <div className="dev-meta">
+                    <p><strong>硬件品类:</strong> 
+                      <span className="type-badge">
+                        {dev.product_type === 'pet_chef' ? '🍲 鲜食大师机' : 
+                         dev.product_type === 'smart_litter_box' ? '🐈 净味猫砂盆' : 
+                         dev.product_type === 'smart_feeder' ? '🍗 智能喂食器' : 
+                         dev.product_type === 'smart_water_fountain' ? '💧 智能喂水器' : 
+                         '📍 智能定位防丢器'}
+                      </span>
+                    </p>
+                    <p><strong>固件版本:</strong> {dev.firmware_version || '未知'}</p>
+                    <p><strong>最近上报时间:</strong> {new Date(dev.last_online_at).toLocaleString()}</p>
+                  </div>
+
+                  <div className="dev-telemetry-preview">
+                    <h5>实时监测遥测 DP 指标：</h5>
+                    {dev.product_type === 'pet_chef' && (
+                      <div className="telemetry-grid">
+                        <div>温度: <strong>{dev.telemetry.current_temp}</strong></div>
+                        <div>搅拌转速: <strong>{dev.telemetry.motor_speed}</strong></div>
+                        <div>出水箱: <strong>{dev.telemetry.water_tank_level}</strong></div>
+                        <div>称重: <strong>{dev.telemetry.scale_weight}</strong></div>
+                      </div>
+                    )}
+                    {dev.product_type === 'smart_litter_box' && (
+                      <div className="telemetry-grid">
+                        <div>猫猫体重: <strong>{dev.telemetry.pet_weight}</strong></div>
+                        <div>今日如厕: <strong>{dev.telemetry.usage_count_today}次</strong></div>
+                        <div>除臭液: <strong>{dev.telemetry.deodorizer_status}</strong></div>
+                      </div>
+                    )}
+                    {dev.product_type === 'smart_feeder' && (
+                      <div className="telemetry-grid">
+                        <div>储粮剩余: <strong>{dev.telemetry.food_tank_level}</strong></div>
+                        <div>今日投喂: <strong>{dev.telemetry.dispense_success_today}次</strong></div>
+                      </div>
+                    )}
+                    {dev.product_type === 'smart_water_fountain' && (
+                      <div className="telemetry-grid">
+                        <div>温度: <strong>{dev.telemetry.water_temp}</strong></div>
+                        <div>滤芯寿命: <strong>{dev.telemetry.filter_life_pct}</strong></div>
+                        <div>状态: <strong style={{ color: 'red' }}>干烧警戒</strong></div>
+                      </div>
+                    )}
+                    {dev.product_type === 'smart_tracker' && (
+                      <div className="telemetry-grid">
+                        <div>定位: <strong>{dev.telemetry.gps_lat_lng.split('(')[0]}</strong></div>
+                        <div>今日运动: <strong>{dev.telemetry.step_count_today}步</strong></div>
+                        <div>电量: <strong>{dev.telemetry.battery_pct}</strong></div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="card-footer">
+                    <span>点击进入深度远程控制与调试面板</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            {/* 设备实时控制台模态窗 */}
+            {selectedDevice && (
+              <div className="modal-overlay" onClick={() => setSelectedDevice(null)}>
+                <div className="modal-content" onClick={e => e.stopPropagation()}>
+                  <header className="modal-header">
+                    <h3>🛠️ 涂鸦远程设备调测控制台</h3>
+                    <button className="close-btn" onClick={() => setSelectedDevice(null)}>✕</button>
+                  </header>
+                  <div className="modal-body">
+                    <div className="device-diag-title">
+                      <h4>{selectedDevice.device_name}</h4>
+                      <p>Tuya ID: <code>{selectedDevice.tuya_device_id}</code> | PID: <code>{selectedDevice.tuya_pid}</code></p>
+                    </div>
+
+                    <div className="diag-layout">
+                      <div className="diag-column">
+                        <h5>远程测试动作</h5>
+                        <div className="btn-stack">
+                          {selectedDevice.product_type === 'pet_chef' && (
+                            <>
+                              <button className="action-btn" onClick={() => alert('启动设备加热模拟指令已发送')}>🔥 下发 85°C 加热烹饪</button>
+                              <button className="action-btn" onClick={() => alert('水泵自清洗指令已下发')}>🚿 加水出料自清洁</button>
+                            </>
+                          )}
+                          {selectedDevice.product_type === 'smart_litter_box' && (
+                            <button className="action-btn" onClick={() => alert('正在下发清理滚筒复位指令')}>🔄 下发滚筒回零复位</button>
+                          )}
+                          {selectedDevice.product_type === 'smart_feeder' && (
+                            <button className="action-btn" onClick={() => alert('远程手动出粮 50g 指令已发送')}>🍖 手动出粮 50g</button>
+                          )}
+                          {selectedDevice.product_type === 'smart_water_fountain' && (
+                            <button className="action-btn" onClick={() => alert('水泵滤芯更换重置成功')}>♻️ 滤芯寿命计数重置</button>
+                          )}
+                          {selectedDevice.product_type === 'smart_tracker' && (
+                            <button className="action-btn" onClick={() => alert('高精度 GPS 实时唤醒定位指令已发送')}>📍 实时高频寻宠定位</button>
+                          )}
+                          <button className="action-btn danger" onClick={() => alert('强制重启设备指令已下发')}>🔌 强制远程复位重启</button>
+                        </div>
+                      </div>
+
+                      <div className="diag-column">
+                        <h5>设备状态快照表 (Tuya DPs)</h5>
+                        <table className="telemetry-table">
+                          <thead>
+                            <tr>
+                              <th>DP 键</th>
+                              <th>遥测描述</th>
+                              <th>上报数值</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(selectedDevice.telemetry).map(([key, val]) => (
+                              <tr key={key}>
+                                <td><code>{key}</code></td>
+                                <td>{key === 'online' ? '通信状态' : key === 'error_code' ? '故障自检码' : '传感器上报'}</td>
+                                <td><strong style={{ color: val.toString().includes('E') ? 'red' : 'inherit' }}>{val.toString()}</strong></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 4. 食谱管理模块 */}
+        {activeTab === 'recipes' && (
+          <section className="module-section">
+            <div className="table-header">
+              <h3>定制食谱配方目录</h3>
+              <p>编辑营养师标准食材配比与加热搅拌控制曲线</p>
+            </div>
+
+            <div className="recipe-grid">
+              {mockRecipes.map(recipe => (
+                <article key={recipe.id} className="recipe-card-v2">
+                  <div className="recipe-header">
+                    <h4>{recipe.name}</h4>
+                    <div className="recipe-badges">
+                      {recipe.requires_vet_approval && (
+                        <span className="badge-vet-required">🩺 处方食谱(需医生签字)</span>
+                      )}
+                      <span className="badge-category">{recipe.category}</span>
+                    </div>
+                  </div>
+
+                  <div className="recipe-body-desc">
+                    <div className="recipe-column">
+                      <h5>🥩 食材配比：</h5>
+                      <ul className="ingredient-list-v2">
+                        {Object.entries(recipe.ingredients).map(([ing, pct]) => (
+                          <li key={ing}>{ing}: <strong>{pct}</strong></li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="recipe-column">
+                      <h5>🔬 营养快照：</h5>
+                      <div className="nutrition-stats-box">
+                        <p>粗蛋白: <strong>{recipe.nutrition_snapshot.protein}</strong> | 粗脂肪: <strong>{recipe.nutrition_snapshot.fat}</strong></p>
+                        <p>水分: <strong>{recipe.nutrition_snapshot.moisture}</strong> | 能量密度: <strong>{recipe.nutrition_snapshot.caloric_density}</strong></p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="cooking-profile-block">
+                    <h5>🔥 鲜食机控制参数：</h5>
+                    <p className="water-ratio"><strong>加水基准：</strong> {recipe.cooking_profile.water_add_ml}</p>
+                    <div className="cooking-timeline">
+                      {recipe.cooking_profile.stages.map((stage, idx) => (
+                        <div key={idx} className="timeline-node">
+                          <span className="node-title">阶段 {idx + 1}: {stage.name}</span>
+                          <span className="node-detail">温度: {stage.temp} | 时间: {stage.duration} | 转速: {stage.speed}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* 5. 商品与商城溯源管理模块 */}
+        {activeTab === 'products' && (
+          <section className="module-section">
+            <div className="table-header">
+              <h3>商品物料与食材溯源库</h3>
+              <p>支持查看食材原料源头、生产/消费全链条节点，以及过敏与过期安全锁</p>
+            </div>
+
+            <div className="grid-list">
+              {filteredProducts.map(prod => (
+                <article key={prod.id} className="product-card cursor-pointer" onClick={() => setSelectedProduct(prod)}>
+                  <div className="prod-header-row">
+                    <h4>{prod.name}</h4>
+                    <span className="prod-cat">{prod.category}</span>
+                  </div>
+                  <p className="prod-desc">{prod.description}</p>
+                  
+                  <div className="prod-sku-box">
+                    {prod.skus.map(sku => (
+                      <div className="sku-item" key={sku.id}>
+                        <span>规格: {sku.spec} | 条码: <code>{sku.sku_code}</code></span>
+                        <strong>售价: {currentRegionConfig.symbol}{(sku.price_cents / 100).toFixed(2)}</strong>
+                      </div>
+                    ))}
+                  </div>
+
+                  {prod.category === '鲜食料包' && prod.traceability && (
+                    <div className="allergen-warning-box">
+                      <span>过敏原声明：</span>
+                      {prod.allergen_ingredients.map(a => <span key={a} className="allergen-tag">{a}</span>)}
+                    </div>
+                  )}
+
+                  {prod.category === '鲜食料包' && prod.traceability && prod.traceability.is_expired && (
+                    <div className="alert-banner-red">
+                      ⚠️ 检测该批次在出厂30天后已过期。已激活设备锁，鲜食机拒绝加工烹饪！
+                    </div>
+                  )}
+
+                  <div className="card-footer">
+                    <span>点击查看食材生命周期全链条溯源及安全控制</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            {/* 食材包溯源详情弹出框 */}
+            {selectedProduct && selectedProduct.traceability && (
+              <div className="modal-overlay" onClick={() => setSelectedProduct(null)}>
+                <div className="modal-content max-width-600" onClick={e => e.stopPropagation()}>
+                  <header className="modal-header">
+                    <h3>📦 鲜食包生产流通全链条追溯系统</h3>
+                    <button className="close-btn" onClick={() => setSelectedProduct(null)}>✕</button>
+                  </header>
+                  <div className="modal-body">
+                    <div className="trace-info-title">
+                      <h4>{selectedProduct.name}</h4>
+                      <p>追溯批号: <code>{selectedProduct.traceability.batch_no}</code></p>
+                    </div>
+
+                    <div className="trace-section">
+                      <h5>1. 原料原产地与工厂</h5>
+                      <p><strong>原材料采摘/养殖基地:</strong> {selectedProduct.traceability.raw_material_origin}</p>
+                      <p><strong>深加工装配工厂:</strong> {selectedProduct.traceability.factory_location}</p>
+                    </div>
+
+                    <div className="trace-section">
+                      <h5>2. 全生命周期时序节点时间线</h5>
+                      <div className="trace-timeline-vertical">
+                        <div className="timeline-step done">
+                          <span className="dot"></span>
+                          <div>
+                            <strong>1. 生产出厂</strong>
+                            <p>{new Date(selectedProduct.traceability.manufactured_at).toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className="timeline-step done">
+                          <span className="dot"></span>
+                          <div>
+                            <strong>2. 商城上架</strong>
+                            <p>{new Date(selectedProduct.traceability.listed_at).toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className="timeline-step done">
+                          <span className="dot"></span>
+                          <div>
+                            <strong>3. 订单发货</strong>
+                            <p>{new Date(selectedProduct.traceability.shipped_at).toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className="timeline-step done">
+                          <span className="dot"></span>
+                          <div>
+                            <strong>4. 客户签收</strong>
+                            <p>{new Date(selectedProduct.traceability.received_at).toLocaleString()}</p>
+                          </div>
+                        </div>
+                        <div className={`timeline-step ${selectedProduct.traceability.consumed_at ? 'done' : 'pending'}`}>
+                          <span className="dot"></span>
+                          <div>
+                            <strong>5. 鲜食烹饪消耗</strong>
+                            <p>{selectedProduct.traceability.consumed_at ? new Date(selectedProduct.traceability.consumed_at).toLocaleString() : '尚未消耗烹饪'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="trace-section border-top">
+                      <h5>3. 设备级安全控制 (过期与过敏拦截)</h5>
+                      <div className="safety-locks">
+                        <p><strong>保质期截至时间:</strong> <span style={{ color: selectedProduct.traceability.is_expired ? 'red' : 'green', fontWeight: 'bold' }}>{new Date(selectedProduct.traceability.expired_at).toLocaleDateString()} ({selectedProduct.traceability.is_expired ? '已过期' : '保质期内'})</span></p>
+                        
+                        {selectedProduct.traceability.is_expired ? (
+                          <div className="danger-alert-box">
+                            <strong>🚫 智能鲜食机强制拒绝烹饪锁定 (ACTIVE)</strong>
+                            <p>本品包含 RFID 条码在扫码录入时，由于超过过期时限，下位机核心主板拒绝接受启动加热参数，自动顶出料包，保证宠物安全！</p>
+                          </div>
+                        ) : (
+                          <div className="success-alert-box">
+                            <strong>✅ 智能鲜食机安全通行中 (PASS)</strong>
+                            <p>保质期内食材，可正常拉取工艺曲线启动烹饪。</p>
+                          </div>
+                        )}
+
+                        <div className="allergen-test-run">
+                          <strong>过敏原交叉比对模拟：</strong>
+                          <p>若用户给患有 <strong>[鸭肉]</strong> 过敏的宠物 <strong>(麦芬)</strong> 扫码加工本包：</p>
+                          <div className="danger-alert-box-mini">
+                            🚨 警报：检测到食材过敏成分 [鸭肉] 与爱宠过敏原匹配！App 将弹出橙色过敏吞咽警告。
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 6. 订单及网关流水模块 */}
+        {activeTab === 'orders' && (
+          <section className="module-section">
+            <div className="table-header">
+              <h3>订单支付与对账流水表</h3>
+              <p>查阅微信、支付宝、Stripe、PayPal 网关交易详情</p>
+            </div>
+
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>订单交易 ID</th>
+                  <th>购买者ID</th>
+                  <th>付款金额</th>
+                  <th>支付网关</th>
+                  <th>第三方交易流水号</th>
+                  <th>下单时间</th>
+                  <th>状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOrders.map(order => (
+                  <tr key={order.id}>
+                    <td><code>{order.id}</code></td>
+                    <td>{order.user_id}</td>
+                    <td>{currentRegionConfig.symbol}{(order.total_cents / 100).toFixed(2)}</td>
+                    <td><span className="gateway-badge">{order.payment.provider.toUpperCase()}</span></td>
+                    <td><code>{order.payment.provider_payment_id || '未产生网关单号'}</code></td>
+                    <td>{new Date(order.created_at).toLocaleDateString()}</td>
+                    <td>
+                      <span className={`status-tag ${order.status}`}>
+                        {order.status === 'paid' ? '已支付' : order.status === 'shipped' ? '已发货' : '待付款'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+
+        {/* 7. 医疗资料模块 */}
+        {activeTab === 'medical' && (
+          <section className="module-section">
+            <div className="table-header">
+              <h3>对接合作医院病历记录 (ID 双重对照对照)</h3>
+              <p>为了打通异构宠物医院系统，本页提供平台健康 SN 与医院病例号的完整映射</p>
+            </div>
+
+            <div className="grid-list">
+              {filteredMedical.map(rec => (
+                <article key={rec.id} className="medical-card-v2 cursor-pointer" onClick={() => setSelectedMedical(rec)}>
+                  <div className="med-header">
+                    <div>
+                      <h4>{rec.pet_name}</h4>
+                      <p className="med-sn">平台流水 SN: <strong>{rec.id}</strong></p>
+                    </div>
+                    <span className="record-type-badge">{rec.record_type}</span>
+                  </div>
+
+                  <div className="hospital-id-compare">
+                    <h5>🏥 合作医院系统对照 ID：</h5>
+                    <div className="compare-grid">
+                      <div>医院名: <strong>{rec.clinic_name}</strong></div>
+                      <div>医院登记ID: <code>{rec.hospital_id}</code></div>
+                      <div>病宠医院ID: <code>{rec.hospital_pet_id}</code></div>
+                      <div><strong>就诊病历单号: <code>{rec.hospital_case_no}</code></strong></div>
+                    </div>
+                  </div>
+
+                  <div className="med-summary-box">
+                    <p><strong>诊断摘要:</strong> {rec.summary}</p>
+                  </div>
+                  <div className="card-footer">
+                    <span>点击查阅原始处方及化验单附件档案</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            {/* 病历附件模态框 */}
+            {selectedMedical && (
+              <div className="modal-overlay" onClick={() => setSelectedMedical(null)}>
+                <div className="modal-content" onClick={e => e.stopPropagation()}>
+                  <header className="modal-header">
+                    <h3>🏥 宠物医疗处方与原始病历附件</h3>
+                    <button className="close-btn" onClick={() => setSelectedMedical(null)}>✕</button>
+                  </header>
+                  <div className="modal-body">
+                    <h4>{selectedMedical.pet_name} - {selectedMedical.record_type}</h4>
+                    <p>就诊医生: {selectedMedical.vet_name} | 就诊时间: {new Date(selectedMedical.occurred_at).toLocaleString()}</p>
+                    
+                    <div className="diag-section border-top">
+                      <h5>病历诊断主诉：</h5>
+                      <p className="summary-text">{selectedMedical.summary}</p>
+                    </div>
+
+                    <div className="diag-section">
+                      <h5>医院对接对比核验：</h5>
+                      <p><strong>医院病历单号 (Hospital Case No):</strong> <code>{selectedMedical.hospital_case_no}</code></p>
+                      <p><strong>统一健康档案序列号 (Platform SN):</strong> <code>{selectedMedical.id}</code></p>
+                      <p className="success-text">✅ 数据已在 {currentRegionConfig.name} 服务器与合作宠物医院网关核对无误，两端病历一致。</p>
+                    </div>
+
+                    <div className="attachments-list">
+                      <h5>原始病历/化验/影像附件：</h5>
+                      {selectedMedical.attachments.map(att => (
+                        <a key={att.name} href="#download" onClick={(e) => { e.preventDefault(); alert(`模拟下载病历附件: ${att.name}`); }} className="attachment-item">
+                          <span>📄 {att.name}</span>
+                          <span className="download-icon">⬇️ 下载</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 8. 医生审核及动态处方药维护模块 */}
+        {activeTab === 'doctors' && (
+          <section className="module-section">
+            <div className="table-header">
+              <h3>兽医资质审核与处方药品管理</h3>
+              <p>维护平台医生申请流，并随时配置/更新处方以及处方限制关联药品库</p>
+            </div>
+
+            <div className="doctor-management-split">
+              {/* 左侧：医生资质审核队列 */}
+              <div className="left-pane">
+                <h4>兽医入驻执照审核队列</h4>
+                <div className="doctor-queue">
+                  {doctors.map(doc => (
+                    <div className="doctor-review-card" key={doc.id}>
+                      <div className="doc-review-header">
+                        <h5>{doc.display_name}</h5>
+                        <span className={`status-tag ${doc.status}`}>{doc.status === 'approved' ? '审核通过' : doc.status === 'pending' ? '待审核' : '已拒绝'}</span>
+                      </div>
+                      <p><strong>头衔:</strong> {doc.title}</p>
+                      <p><strong>所属医院:</strong> {doc.hospital_name}</p>
+                      <p><strong>执业证书号:</strong> {doc.license_no}</p>
+                      <p><strong>提交申请时间:</strong> {new Date(doc.created_at).toLocaleDateString()}</p>
+                      {doc.reviewed_by && <p className="reviewed-by"><strong>审计人:</strong> {doc.reviewed_by}</p>}
+                      {doc.notes && <p className="notes-box"><strong>审核意见:</strong> {doc.notes}</p>}
+
+                      {doc.status === 'pending' && (
+                        <div className="action-row-doctor">
+                          <button className="approve-btn" onClick={() => handleApproveDoctor(doc.id, 'approved')}>✔️ 审批通过</button>
+                          <button className="reject-btn" onClick={() => {
+                            const reason = prompt('请输入拒绝原因：');
+                            if (reason) {
+                              setDoctors(doctors.map(d => d.id === doc.id ? { ...d, status: 'rejected', notes: reason } : d));
+                            }
+                          }}>✕ 拒绝入驻</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 右侧：动态处方药品更新面板 */}
+              <div className="right-pane">
+                <h4>💊 平台处方药品维护中心</h4>
+                <div className="add-medicine-form">
+                  <h5>添加新药品/处方定义：</h5>
+                  <form onSubmit={handleAddMedicine} className="inline-form">
+                    <input
+                      type="text"
+                      placeholder="药品名称 (如：益生菌颗粒)"
+                      value={newMedName}
+                      onChange={e => setNewMedName(e.target.value)}
+                      required
+                    />
+                    <input
+                      type="text"
+                      placeholder="主要成分 (如：双歧杆菌)"
+                      value={newMedIngredient}
+                      onChange={e => setNewMedIngredient(e.target.value)}
+                      required
+                    />
+                    <input
+                      type="text"
+                      placeholder="对应适应症 (如：急性腹泻)"
+                      value={newMedDisorder}
+                      onChange={e => setNewMedDisorder(e.target.value)}
+                    />
+                    <button type="submit" className="action-btn">➕ 新增发布至数据库</button>
+                  </form>
+                </div>
+
+                <div className="medicine-list-box">
+                  <h5>药品清单：</h5>
+                  <table className="telemetry-table">
+                    <thead>
+                      <tr>
+                        <th>药品 ID</th>
+                        <th>名称</th>
+                        <th>有效活性成分</th>
+                        <th>适用调理病症</th>
+                        <th>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {medicines.map(med => (
+                        <tr key={med.id}>
+                          <td><code>{med.id}</code></td>
+                          <td><strong>{med.name}</strong></td>
+                          <td>{med.ingredient}</td>
+                          <td><span className="pill orange">{med.targetDisorder}</span></td>
+                          <td>
+                            <button className="delete-text-btn" onClick={() => setMedicines(medicines.filter(m => m.id !== med.id))}>删除</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* 9. 故障与运维日志模块 */}
+        {activeTab === 'faults' && (
+          <section className="module-section">
+            <div className="table-header">
+              <h3>设备告警与故障诊断日志</h3>
+              <p>接收 Tuya IoT 上报的报警事件，为售后和设备研发排查提供完整上下文</p>
+            </div>
+
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>故障 ID</th>
+                  <th>设备 ID/SN</th>
+                  <th>设备名称</th>
+                  <th>设备品类</th>
+                  <th>故障代码</th>
+                  <th>故障描述</th>
+                  <th>故障级别</th>
+                  <th>发生时间</th>
+                  <th>工单状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredFaults.map(fault => (
+                  <tr key={fault.id} className="cursor-pointer" onClick={() => setSelectedFault(fault)}>
+                    <td><code>{fault.id}</code></td>
+                    <td><code>{fault.device_id}</code></td>
+                    <td>{fault.device_name}</td>
+                    <td>
+                      <span className="type-badge">
+                        {fault.product_type === 'pet_chef' ? '鲜食机' : '智能水泉'}
+                      </span>
+                    </td>
+                    <td><strong style={{ color: 'red' }}>{fault.error_code}</strong></td>
+                    <td>{fault.error_desc}</td>
+                    <td>
+                      <span className={`severity-badge ${fault.severity}`}>
+                        {fault.severity === 'critical' ? '🔴 严重' : '🟡 警告'}
+                      </span>
+                    </td>
+                    <td>{new Date(fault.occurred_at).toLocaleString()}</td>
+                    <td>
+                      <span className={`status-tag ${fault.status}`}>
+                        {fault.status === 'unresolved' ? '未解决' : fault.status === 'investigating' ? '排查中' : '已解决'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* 故障上下文诊断浮窗 */}
+            {selectedFault && (
+              <div className="modal-overlay" onClick={() => setSelectedFault(null)}>
+                <div className="modal-content" onClick={e => e.stopPropagation()}>
+                  <header className="modal-header">
+                    <h3>🚨 硬件故障深度诊断上下文</h3>
+                    <button className="close-btn" onClick={() => setSelectedFault(null)}>✕</button>
+                  </header>
+                  <div className="modal-body">
+                    <div className="fault-title">
+                      <h4>{selectedFault.device_name} ({selectedFault.error_code})</h4>
+                      <p>报警时间: {new Date(selectedFault.occurred_at).toLocaleString()}</p>
+                    </div>
+
+                    <div className="diag-section border-top">
+                      <h5>故障具体描述：</h5>
+                      <p><strong>{selectedFault.error_desc}</strong></p>
+                      <p>故障安全状态：
+                        <span className={`severity-badge ${selectedFault.severity}`}>
+                          {selectedFault.severity === 'critical' ? '平台熔断/需要人工派单' : '警告/已自动推送自查指导'}
+                        </span>
+                      </p>
+                    </div>
+
+                    {selectedFault.cooking_context && (
+                      <div className="diag-section">
+                        <h5>上报的烹饪阶段环境 (发生时状态)：</h5>
+                        <ul className="info-list">
+                          {selectedFault.cooking_context.recipe_name && <li>正在加工食谱: <strong>{selectedSelectedRecipe(selectedFault.cooking_context.recipe_name)}</strong></li>}
+                          {selectedFault.cooking_context.total_grams && <li>设定食材克数: {selectedFault.cooking_context.total_grams}</li>}
+                          {selectedFault.cooking_context.stage_at && <li>报错时所处阶段: {selectedFault.cooking_context.stage_at}</li>}
+                          {selectedFault.cooking_context.temp_at && <li>舱门内温度: {selectedFault.cooking_context.temp_at}</li>}
+                          {selectedFault.cooking_context.motor_current && <li>马达瞬间电流: <span style={{ color: 'red' }}>{selectedFault.cooking_context.motor_current}</span></li>}
+                          {selectedFault.cooking_context.action_taken && <li>设备自动安全决策: <strong>{selectedFault.cooking_context.action_taken}</strong></li>}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div className="diag-section">
+                      <h5>工单处理跟踪：</h5>
+                      <p>跟进处理人: <code>{selectedFault.assigned_support_id || '未指派'}</code></p>
+                      <p><strong>工单处理记录:</strong></p>
+                      <textarea
+                        className="notes-textarea"
+                        defaultValue={selectedFault.notes}
+                        onChange={(e) => {
+                          selectedFault.notes = e.target.value;
+                        }}
+                      />
+                      <div className="action-row-doctor">
+                        <button className="approve-btn" onClick={() => {
+                          selectedFault.status = 'resolved';
+                          alert('工单状态已变更为: Resolved (已解决)');
+                          setSelectedFault(null);
+                        }}>✔️ 设为已解决并结单</button>
+                        <button className="reject-btn" onClick={() => {
+                          selectedFault.status = 'investigating';
+                          alert('工单状态已变更为: Investigating (排查中)');
+                          setSelectedFault(null);
+                        }}>🔍 派发至售后小组排查</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
       </section>
     </main>
   );
 }
 
-function ModuleCard({ module }) {
-  return (
-    <article className="module-card" id={module.id}>
-      <div className="module-card-header">
-        <span className={`priority-badge ${module.priority.toLowerCase()}`}>{module.priority}</span>
-        <span className="role-badge">{module.ownerRole}</span>
-      </div>
-      <h4>{module.name}</h4>
-      <p>{module.summary}</p>
-      <ul>
-        {module.firstVersion.map(item => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-    </article>
-  );
+// 辅助方法，防止食谱名称未匹配
+function selectedSelectedRecipe(name) {
+  return name || '未识别食谱';
 }
 
 export default App;

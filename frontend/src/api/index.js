@@ -77,6 +77,34 @@ function ingredientGrams(ingredients, totalGrams) {
 
 function filterRecipes(params = {}) {
   let result = demoRecipes;
+
+  // custom_category 分类过滤（与后端一致）
+  if (params.custom_category) {
+    const cc = params.custom_category;
+    const ccFilter = (r) => {
+      switch (cc) {
+        case 'puppy': return r.life_stage === '幼犬';
+        case 'adult': return r.life_stage === '成年犬';
+        case 'senior': return r.life_stage === '老年犬';
+        case 'skin': return r.category === '美毛';
+        case 'digestive':
+          return ['dog_recipe_004', 'dog_recipe_022'].includes(r.id) || r.category === '低敏';
+        case 'joint':
+          return r.id === 'dog_recipe_021' || (r.life_stage === '幼犬' && r.dog_size === '大型犬');
+        case 'weight':
+          return ['dog_recipe_017', 'dog_recipe_018', 'dog_recipe_023', 'dog_recipe_032'].includes(r.id);
+        case 'anti_inflammatory':
+          return ['dog_recipe_003', 'dog_recipe_030', 'dog_recipe_034'].includes(r.id);
+        case 'cardiac': return r.id === 'dog_recipe_024';
+        case 'liver': return r.category === '护肝';
+        case 'brain': return r.id === 'dog_recipe_002';
+        default: return false;
+      }
+    };
+    result = result.filter(ccFilter);
+    return result.length ? result : [];
+  }
+
   if (params.life_stage) result = result.filter(r => r.life_stage === params.life_stage);
   if (params.dog_size) result = result.filter(r => !r.dog_size || r.dog_size === params.dog_size);
   if (params.functional) result = result.filter(r => r.category_type === 'functional');
@@ -169,6 +197,7 @@ export const api = {
   registerDevice: (body, token) => authedPost('/api/devices', body, token),
   listDevices: (token) => authedGet('/api/devices', token),
   recordCookingOperation: (body, token) => authedPost('/api/operations/cooking', body, token),
+  listCookingOperations: (token) => authedGet('/api/operations/cooking', token),
   createFeedingRecord: (body, token) => authedPost('/api/feeding-records', body, token),
   createHealthRecord: (body, token) => authedPost('/api/health-records', body, token),
   createMedicalRecord: (body, token) => authedPost('/api/medical-records', body, token),
