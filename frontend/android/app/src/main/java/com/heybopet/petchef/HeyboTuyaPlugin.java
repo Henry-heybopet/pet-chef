@@ -29,7 +29,22 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-@CapacitorPlugin(name = "HeyboTuya")
+import android.Manifest;
+import com.getcapacitor.annotation.Permission;
+
+@CapacitorPlugin(
+    name = "HeyboTuya",
+    permissions = {
+        @Permission(
+            alias = "location",
+            strings = { Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION }
+        ),
+        @Permission(
+            alias = "bluetooth",
+            strings = { Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT }
+        )
+    }
+)
 public class HeyboTuyaPlugin extends Plugin {
     private static final String COUNTRY_CODE_CHINA = "86";
     private static final String DEFAULT_HOME_NAME = "Heybo Pet";
@@ -47,6 +62,7 @@ public class HeyboTuyaPlugin extends Plugin {
     private boolean initialized = false;
     private Long currentHomeId = null;
     private IThingActivator currentActivator = null;
+    private final Map<String, IThingDevice> activeDevices = new HashMap<>();
 
     @PluginMethod
     public void status(PluginCall call) {
@@ -58,6 +74,76 @@ public class HeyboTuyaPlugin extends Plugin {
         result.put("appKey", mask(BuildConfig.TUYA_ANDROID_APP_KEY));
         result.put("pid", PET_CHEF_PID);
         if (currentHomeId != null) result.put("homeId", currentHomeId);
+
+        // 1. Bluetooth Enabled check
+        boolean bluetoothEnabled = false;
+        try {
+            android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            bluetoothEnabled = (adapter != null && adapter.isEnabled());
+        } catch (Exception e) {
+            // ignore
+        }
+        result.put("bluetoothEnabled", bluetoothEnabled);
+
+        // 2. Location (GPS) Enabled check
+        boolean gpsEnabled = false;
+        try {
+            android.location.LocationManager lm = (android.location.LocationManager) getContext().getSystemService(android.content.Context.LOCATION_SERVICE);
+            if (lm != null) {
+                gpsEnabled = lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
+                             lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER);
+            }
+        } catch (Exception e) {
+            // ignore
+        }
+        result.put("gpsEnabled", gpsEnabled);
+
+        // 3. WiFi SSID and Frequency check
+        String wifiSsid = "Unknown";
+        String wifiFreq = "Unknown";
+        try {
+            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) getContext().getApplicationContext().getSystemService(android.content.Context.WIFI_SERVICE);
+            if (wm != null) {
+                android.net.wifi.WifiInfo info = wm.getConnectionInfo();
+                if (info != null) {
+                    wifiSsid = info.getSSID();
+                    if (wifiSsid != null && wifiSsid.startsWith("\"") && wifiSsid.endsWith("\"")) {
+                        wifiSsid = wifiSsid.substring(1, wifiSsid.length() - 1);
+                    }
+                    int freq = info.getFrequency();
+                    if (freq >= 2400 && freq <= 2500) {
+                        wifiFreq = "2.4G";
+                    } else if (freq >= 4900 && freq <= 5900) {
+                        wifiFreq = "5G";
+                    } else {
+                        wifiFreq = freq + " MHz";
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // ignore
+        }
+        result.put("wifiSsid", wifiSsid);
+        result.put("wifiFreq", wifiFreq);
+
+        // 4. Runtime Permissions check
+        boolean permBluetoothScan = false;
+        boolean permBluetoothConnect = false;
+        boolean permLocation = false;
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            permBluetoothScan = androidx.core.content.ContextCompat.checkSelfPermission(getContext(), android.Manifest.permission.BLUETOOTH_SCAN) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+            permBluetoothConnect = androidx.core.content.ContextCompat.checkSelfPermission(getContext(), android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        } else {
+            permBluetoothScan = true; // not required
+            permBluetoothConnect = true; // not required
+        }
+        permLocation = androidx.core.content.ContextCompat.checkSelfPermission(getContext(), android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+
+        result.put("permBluetoothScan", permBluetoothScan);
+        result.put("permBluetoothConnect", permBluetoothConnect);
+        result.put("permLocation", permLocation);
+
         call.resolve(result);
     }
 
@@ -87,14 +173,24 @@ public class HeyboTuyaPlugin extends Plugin {
     public void loginOrRegisterWithHeyboUid(PluginCall call) {
         if (!ensureInitialized(call)) return;
 
-        String heyboUid = call.getString("heyboUid");
-        if (TextUtils.isEmpty(heyboUid)) {
-            call.reject("heyboUid is required.");
+        String tuyaUid = call.getString("tuyaUid");
+        String password = call.getString("password");
+
+        if (TextUtils.isEmpty(tuyaUid)) {
+            String heyboUid = call.getString("heyboUid");
+            if (TextUtils.isEmpty(heyboUid)) {
+                call.reject("tuyaUid or heyboUid is required.");
+                return;
+            }
+            tuyaUid = "heybo_" + heyboUid;
+        }
+
+        if (TextUtils.isEmpty(password)) {
+            call.reject("password is required.");
             return;
         }
 
-        String tuyaUid = "heybo_" + heyboUid;
-        String password = call.getString("password", tuyaUid);
+        final String finalTuyaUid = tuyaUid;
         ThingHomeSdk.getUserInstance().loginOrRegisterWithUid(
             COUNTRY_CODE_CHINA,
             tuyaUid,
@@ -104,7 +200,7 @@ public class HeyboTuyaPlugin extends Plugin {
                 public void onSuccess(User user) {
                     JSObject result = new JSObject();
                     result.put("success", true);
-                    result.put("tuyaUid", tuyaUid);
+                    result.put("tuyaUid", finalTuyaUid);
                     call.resolve(result);
                 }
 
@@ -295,13 +391,23 @@ public class HeyboTuyaPlugin extends Plugin {
 
                         @Override
                         public void onStep(String step, Object data) {
-                            // Capacitor PluginCall can only be resolved once. The MVP keeps
-                            // pairing progress inside native logs and resolves on success/error.
+                            // Progress reporting can be added here
                         }
                     });
 
-                currentActivator = ThingHomeSdk.getActivatorInstance().newActivator(builder);
-                currentActivator.start();
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                currentActivator = ThingHomeSdk.getActivatorInstance().newActivator(builder);
+                                currentActivator.start();
+                            } catch (Exception e) {
+                                call.reject("Start EZ/AP activator failed: " + e.getMessage());
+                            }
+                        }
+                    });
+                }
             }
 
             @Override
@@ -359,6 +465,273 @@ public class HeyboTuyaPlugin extends Plugin {
     @PluginMethod
     public void resetCooking(PluginCall call) {
         sendCookCommand(call, "reset");
+    }
+
+    @PluginMethod
+    public void unbindDevice(PluginCall call) {
+        if (!ensureInitialized(call)) return;
+
+        String devId = call.getString("devId");
+        if (TextUtils.isEmpty(devId)) {
+            call.reject("devId is required.");
+            return;
+        }
+
+        IThingDevice device = ThingHomeSdk.newDeviceInstance(devId);
+        device.removeDevice(new IResultCallback() {
+            @Override
+            public void onSuccess() {
+                JSObject result = new JSObject();
+                result.put("success", true);
+                result.put("devId", devId);
+                call.resolve(result);
+                device.onDestroy();
+            }
+
+            @Override
+            public void onError(String code, String error) {
+                call.reject("Unbind device failed: " + code + " " + error);
+                device.onDestroy();
+            }
+        });
+    }
+
+    @PluginMethod
+    public void startBleScan(PluginCall call) {
+        if (!ensureInitialized(call)) return;
+
+        try {
+            com.thingclips.smart.android.ble.api.LeScanSetting setting = new com.thingclips.smart.android.ble.api.LeScanSetting.Builder()
+                .setTimeout(60000) // 60 seconds
+                .addScanType(com.thingclips.smart.android.ble.api.ScanType.SINGLE)
+                .build();
+
+            ThingHomeSdk.getBleOperator().startLeScan(
+                setting,
+                new com.thingclips.smart.android.ble.api.BleScanResponse() {
+                    @Override
+                    public void onResult(com.thingclips.smart.android.ble.api.ScanDeviceBean scanDeviceBean) {
+                        if (scanDeviceBean == null) return;
+                        
+                        JSObject device = new JSObject();
+                        device.put("name", scanDeviceBean.getName());
+                        device.put("address", scanDeviceBean.getAddress());
+                        device.put("uuid", scanDeviceBean.getUuid());
+                        device.put("productId", scanDeviceBean.getProductId());
+                        device.put("deviceType", scanDeviceBean.getDeviceType());
+                        device.put("flag", scanDeviceBean.getFlag());
+                        device.put("isNearby", true);
+                        
+                        notifyListeners("bleDeviceFound", device);
+                    }
+                }
+            );
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Start BLE scan failed: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void stopBleScan(PluginCall call) {
+        try {
+            ThingHomeSdk.getBleOperator().stopLeScan();
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Stop BLE scan failed: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void connectBleDevice(PluginCall call) {
+        if (!ensureInitialized(call)) return;
+
+        Long homeId = getHomeId(call);
+        if (homeId == null) return;
+
+        String uuid = call.getString("uuid");
+        String address = call.getString("address");
+        String productId = call.getString("productId");
+        String ssid = call.getString("ssid");
+        String password = call.getString("password", "");
+        int deviceType = call.getInt("deviceType", 0);
+        int flag = call.getInt("flag", 0);
+
+        if (TextUtils.isEmpty(uuid) || TextUtils.isEmpty(address) || TextUtils.isEmpty(productId)) {
+            call.reject("uuid, address, and productId are required.");
+            return;
+        }
+
+        ThingHomeSdk.getActivatorInstance().getActivatorToken(homeId, new IThingActivatorGetToken() {
+            @Override
+            public void onSuccess(String token) {
+                com.thingclips.smart.sdk.bean.MultiModeActivatorBean bean = new com.thingclips.smart.sdk.bean.MultiModeActivatorBean();
+                bean.homeId = homeId;
+                bean.uuid = uuid;
+                bean.address = address;
+                bean.mac = address; // Populate mac address!
+                bean.productId = productId;
+                bean.deviceType = deviceType; // Populate deviceType!
+                bean.flag = flag; // Populate flag!
+                bean.ssid = ssid;
+                bean.pwd = password;
+                bean.token = token;
+                bean.timeout = 120000; // 120 seconds
+
+                if (getActivity() != null) {
+                    getActivity().runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                ThingHomeSdk.getActivator().newMultiModeActivator().startActivator(bean, new com.thingclips.smart.sdk.api.IMultiModeActivatorListener() {
+                                    @Override
+                                    public void onSuccess(DeviceBean deviceBean) {
+                                        JSObject result = new JSObject();
+                                        result.put("success", true);
+                                        result.put("device", deviceToJson(deviceBean));
+                                        call.resolve(result);
+                                    }
+
+                                    @Override
+                                    public void onFailure(int code, String error, Object handle) {
+                                        call.reject("BLE activation failed: " + code + " " + error);
+                                    }
+                                });
+                            } catch (Exception e) {
+                                java.io.StringWriter sw = new java.io.StringWriter();
+                                java.io.PrintWriter pw = new java.io.PrintWriter(sw);
+                                e.printStackTrace(pw);
+                                call.reject("Start BLE activator failed: " + sw.toString());
+                            }
+                        }
+                    });
+                }
+            }
+
+            @Override
+            public void onFailure(String code, String error) {
+                call.reject("Get activator token failed: " + code + " " + error);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void subscribeDevice(PluginCall call) {
+        if (!ensureInitialized(call)) return;
+
+        String devId = call.getString("devId");
+        if (TextUtils.isEmpty(devId)) {
+            call.reject("devId is required.");
+            return;
+        }
+
+        if (getActivity() != null) {
+            getActivity().runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    synchronized (activeDevices) {
+                        if (activeDevices.containsKey(devId)) {
+                            IThingDevice oldDev = activeDevices.remove(devId);
+                            if (oldDev != null) {
+                                oldDev.unRegisterDevListener();
+                                oldDev.onDestroy();
+                            }
+                        }
+
+                        try {
+                            IThingDevice device = ThingHomeSdk.newDeviceInstance(devId);
+                            device.registerDevListener(new com.thingclips.smart.sdk.api.IDevListener() {
+                                @Override
+                                public void onDpUpdate(String devId, String dpStr) {
+                                    JSObject data = new JSObject();
+                                    data.put("devId", devId);
+                                    data.put("dps", dpStr);
+                                    notifyListeners("dpUpdate", data);
+                                }
+
+                                @Override
+                                public void onRemoved(String devId) {
+                                    JSObject data = new JSObject();
+                                    data.put("devId", devId);
+                                    notifyListeners("deviceRemoved", data);
+                                }
+
+                                @Override
+                                public void onStatusChanged(String devId, boolean online) {
+                                    JSObject data = new JSObject();
+                                    data.put("devId", devId);
+                                    data.put("online", online);
+                                    notifyListeners("deviceStatusChanged", data);
+                                }
+
+                                @Override
+                                public void onNetworkStatusChanged(String devId, boolean status) {
+                                }
+
+                                @Override
+                                public void onDevInfoUpdate(String devId) {
+                                }
+                            });
+
+                            activeDevices.put(devId, device);
+                            JSObject result = new JSObject();
+                            result.put("success", true);
+                            result.put("devId", devId);
+                            call.resolve(result);
+                        } catch (Exception e) {
+                            call.reject("Subscribe device failed: " + e.getMessage(), e);
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    @PluginMethod
+    public void unsubscribeDevice(PluginCall call) {
+        String devId = call.getString("devId");
+        if (TextUtils.isEmpty(devId)) {
+            call.reject("devId is required.");
+            return;
+        }
+
+        if (getActivity() != null) {
+            getActivity().runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    synchronized (activeDevices) {
+                        if (activeDevices.containsKey(devId)) {
+                            IThingDevice device = activeDevices.remove(devId);
+                            if (device != null) {
+                                device.unRegisterDevListener();
+                                device.onDestroy();
+                            }
+                        }
+                    }
+
+                    JSObject result = new JSObject();
+                    result.put("success", true);
+                    result.put("devId", devId);
+                    call.resolve(result);
+                }
+            });
+        }
+    }
+
+    @PluginMethod
+    public void openBluetoothSettings(PluginCall call) {
+        try {
+            android.content.Intent intent = new android.content.Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS);
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            getActivity().startActivity(intent);
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Open Bluetooth settings failed: " + e.getMessage(), e);
+        }
     }
 
     private boolean hasTuyaCredentials() {
@@ -420,9 +793,9 @@ public class HeyboTuyaPlugin extends Plugin {
 
     private JSObject homeListResult(List<HomeBean> homeBeans) {
         JSObject result = new JSObject();
-        ArrayList<JSObject> homes = new ArrayList<>();
+        com.getcapacitor.JSArray homes = new com.getcapacitor.JSArray();
         if (homeBeans != null) {
-            for (HomeBean homeBean : homeBeans) homes.add(homeToJson(homeBean));
+            for (HomeBean homeBean : homeBeans) homes.put(homeToJson(homeBean));
             if (!homeBeans.isEmpty()) currentHomeId = homeBeans.get(0).getHomeId();
         }
         result.put("success", true);
@@ -447,10 +820,10 @@ public class HeyboTuyaPlugin extends Plugin {
         return result;
     }
 
-    private ArrayList<JSObject> deviceListToJson(List<DeviceBean> deviceBeans) {
-        ArrayList<JSObject> devices = new ArrayList<>();
+    private com.getcapacitor.JSArray deviceListToJson(List<DeviceBean> deviceBeans) {
+        com.getcapacitor.JSArray devices = new com.getcapacitor.JSArray();
         if (deviceBeans == null) return devices;
-        for (DeviceBean deviceBean : deviceBeans) devices.add(deviceToJson(deviceBean));
+        for (DeviceBean deviceBean : deviceBeans) devices.put(deviceToJson(deviceBean));
         return devices;
     }
 
@@ -467,10 +840,21 @@ public class HeyboTuyaPlugin extends Plugin {
     }
 
     private void stopCurrentActivator() {
-        if (currentActivator != null) {
-            currentActivator.stop();
-            currentActivator.onDestroy();
-            currentActivator = null;
+        if (getActivity() != null) {
+            getActivity().runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (currentActivator != null) {
+                        try {
+                            currentActivator.stop();
+                            currentActivator.onDestroy();
+                        } catch (Exception e) {
+                            // ignore
+                        }
+                        currentActivator = null;
+                    }
+                }
+            });
         }
     }
 

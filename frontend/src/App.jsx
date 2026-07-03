@@ -1,3 +1,4 @@
+{/* Pet Chef Ver B1.00 — 2026-06-22 */}
 // App.jsx — Heybo Lux Feeding OS v2.0 with i18n
 import React, { useEffect, useRef, useState } from 'react';
 import { useDogProfile } from './hooks/useDogProfile';
@@ -7,12 +8,16 @@ import { api } from './api/index';
 import { HeyboTuya } from './native/heyboTuya';
 
 import DogSetup from './components/DogSetup';
+import PetManagementScreen from './components/PetManagementScreen';
 import AIInputScreen from './components/AIInputScreen';
 import AIAnalysisScreen from './components/AIAnalysisScreen';
 import RecipeList from './components/RecipeList';
 import RecipeMake from './components/RecipeMake';
 import CookingScreen from './components/CookingScreen';
 import TuyaDeviceFlow from './components/TuyaDeviceFlow';
+import BottomTabBar from './components/BottomTabBar';
+import RecipeCategoryCatalog from './components/RecipeCategoryCatalog';
+import PetProfileDetails from './components/PetProfileDetails';
 
 // ——— Language Selector (top-right globe button) ———
 function LangSelector() {
@@ -118,6 +123,7 @@ function TuyaSdkPanel() {
 function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
+
   return (
     <div className="animate-fade home-screen">
       <LangSelector />
@@ -160,8 +166,8 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry }) {
         <button onClick={onDeviceEntry} className="home-action-button home-action-device">
           <div className="home-action-icon">⚙</div>
           <div>
-            <div className="home-action-title" style={{ color: '#7CFFB2' }}>设备闭环</div>
-            <div className="home-action-desc">登录 · 配网 · 设备列表 · 85°C DIY</div>
+            <div className="home-action-title" style={{ color: '#7CFFB2' }}>{t('deviceControl')}</div>
+            <div className="home-action-desc">{t('deviceControlDesc')}</div>
           </div>
           <div style={{ marginLeft: 'auto', color: '#7CFFB2', fontSize: 20 }}>→</div>
         </button>
@@ -172,24 +178,145 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry }) {
 
 // ——— Main App Router ———
 function AppInner() {
-  const { profile, setProfile, hasProfile } = useDogProfile();
+  const { profiles, profile, setActiveId, addProfile, updateProfile, deleteProfile, hasProfile } = useDogProfile();
   const { lang } = useLanguage();
   const [screen, setScreen] = useState('home');
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
+  const [hasCookedBefore, setHasCookedBefore] = useState(false);
   const [aiProfile, setAiProfile] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [activeProfile, setActiveProfile] = useState(null);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [cookingData, setCookingData] = useState(null);
   const [entrySource, setEntrySource] = useState(null);
+  const [editingPet, setEditingPet] = useState(null);
   const swipeStartRef = useRef(null);
 
-  const goHome = () => setScreen('home');
-  const handleDogEntry = () => setScreen('dog_setup');
-  const handleProfileSave = (p) => { setProfile(p); setActiveProfile(p); };
+  // Derived active tab based on current screen
+  const activeTab = (() => {
+    switch (screen) {
+      case 'home':
+        return 'home';
+      case 'recipe_catalog':
+      case 'recipe_list':
+      case 'recipe_make':
+        return 'recipes';
+      case 'pet_management':
+      case 'dog_setup':
+      case 'pet_details':
+        return 'pet';
+      case 'cooking':
+      case 'device_flow':
+        return 'cook';
+      case 'mall_placeholder':
+        return 'mall';
+      default:
+        return 'home';
+    }
+  })();
+
+  // 挂载时从 localStorage 恢复状态
+  useEffect(() => {
+    const onboardingDone = localStorage.getItem('petchef_onboarding_completed') === 'true';
+    const hasCooked = localStorage.getItem('petchef_has_cooked') === 'true';
+    setHasCompletedOnboarding(onboardingDone);
+    setHasCookedBefore(hasCooked);
+    if (onboardingDone) {
+      setScreen('home');
+    }
+  }, []);
+
+  // 标记引导完成
+  const markOnboardingComplete = () => {
+    setHasCompletedOnboarding(true);
+    localStorage.setItem('petchef_onboarding_completed', 'true');
+  };
+
+  // 标记已烹饪
+  const markHasCooked = () => {
+    setHasCookedBefore(true);
+    localStorage.setItem('petchef_has_cooked', 'true');
+  };
+
+  // Tab 切换处理
+  const handleTabChange = (tabKey) => {
+    switch (tabKey) {
+      case 'home':
+        setScreen('home');
+        break;
+      case 'recipes':
+        setSelectedCategory(null);
+        setEntrySource('catalog');
+        setScreen('recipe_catalog');
+        break;
+      case 'pet':
+        setScreen('pet_management');
+        break;
+      case 'cook':
+        if (cookingData) {
+          setScreen('cooking');
+        } else {
+          setScreen('device_flow');
+        }
+        break;
+      case 'mall':
+        setScreen('mall_placeholder');
+        break;
+      default:
+        setScreen('home');
+    }
+  };
+
+  const goHome = () => { setScreen('home'); };
+  const handleDogEntry = () => setScreen('pet_management');
+  
+  const handleAddPet = () => {
+    setEditingPet(null);
+    setScreen('dog_setup');
+  };
+
+  const handleEditPet = (pet) => {
+    setEditingPet(pet);
+    setScreen('dog_setup');
+  };
+
+  const handleSelectPet = async (pet) => {
+    setActiveId(pet.id);
+    setEntrySource('dog');
+    try {
+      const result = await api.aiAnalysis({ breedId: pet.breedId, breedName: pet.breedName, age: pet.age, weight: pet.weight, lang });
+      if (result.success) {
+        setAiProfile({
+          id: pet.id,
+          breedId: pet.breedId,
+          breedName: pet.breedName,
+          age: pet.age,
+          weight: pet.weight,
+          breed: pet.breed,
+          goals: pet.feedingGoal ? [pet.feedingGoal] : [],
+          analysis: result.analysis
+        });
+        setScreen('ai_analysis');
+        return;
+      }
+    } catch (e) {
+      console.error('AI analysis request failed for pet:', e);
+    }
+    setScreen('pet_management');
+  };
+
+  const handleProfileSave = (p) => {
+    if (editingPet && editingPet.id) {
+      updateProfile(editingPet.id, p);
+    } else {
+      addProfile(p);
+    }
+    setScreen('pet_management');
+  };
 
   const handleSelectCategory = (cat, p) => {
     if (cat.query?.ai_shortcut) { handleAIShortcut(p); return; }
-    setSelectedCategory(cat); setActiveProfile(p);
+    setSelectedCategory(cat);
+    if (p && p.id) setActiveId(p.id);
     if (!entrySource) setEntrySource('dog');
     setScreen('recipe_list');
   };
@@ -198,11 +325,20 @@ function AppInner() {
   const handleDeviceEntry = () => setScreen('device_flow');
 
   const handleAIShortcut = async (p) => {
-    setActiveProfile(p); setEntrySource('ai');
+    if (p && p.id) setActiveId(p.id);
+    setEntrySource('ai');
     try {
       const result = await api.aiAnalysis({ breedId: p.breedId, breedName: p.breedName, age: p.age, weight: p.weight, lang });
       if (result.success) {
-        setAiProfile({ breedId: p.breedId, breedName: p.breedName, age: p.age, weight: p.weight, breed: p.breed, analysis: result.analysis });
+        setAiProfile({
+          breedId: p.breedId,
+          breedName: p.breedName,
+          age: p.age,
+          weight: p.weight,
+          breed: p.breed,
+          goals: p.feedingGoal ? [p.feedingGoal] : [],
+          analysis: result.analysis
+        });
         setScreen('ai_analysis'); return;
       }
     } catch (e) { console.error('AI shortcut failed:', e); }
@@ -211,19 +347,79 @@ function AppInner() {
 
   const handleAIAnalyzed = (result) => {
     setAiProfile(result);
-    setActiveProfile({ breedId: result.breedId, breedName: result.breedName, age: result.age, weight: result.weight, breed: result.breed });
     setEntrySource('ai'); setScreen('ai_analysis');
   };
 
+  const handleShowAnalysis = async (p) => {
+    let savedPet = p;
+    if (editingPet && editingPet.id) {
+      updateProfile(editingPet.id, p);
+      savedPet = { ...editingPet, ...p };
+    } else {
+      savedPet = addProfile(p);
+    }
+    setActiveId(savedPet.id);
+    setEntrySource('dog');
+    try {
+      const result = await api.aiAnalysis({ breedId: savedPet.breedId, breedName: savedPet.breedName, age: savedPet.age, weight: savedPet.weight, lang });
+      if (result.success) {
+        setAiProfile({
+          id: savedPet.id,
+          breedId: savedPet.breedId,
+          breedName: savedPet.breedName,
+          age: savedPet.age,
+          weight: savedPet.weight,
+          breed: savedPet.breed,
+          goals: savedPet.feedingGoal ? [savedPet.feedingGoal] : [],
+          analysis: result.analysis
+        });
+        setScreen('ai_analysis');
+        return;
+      }
+    } catch (e) {
+      console.error('AI analysis request failed on setup completion:', e);
+    }
+    setScreen('pet_management');
+  };
+
   const handleSelectRecipe = (recipe) => { setSelectedRecipe(recipe); setScreen('recipe_make'); };
-  const handleStartCooking = (data) => { setCookingData(data); setScreen('cooking'); };
+  const handleStartCooking = (data) => {
+    setCookingData(data);
+    setScreen('cooking');
+    // 首次烹饪时标记引导完成和已烹饪
+    if (!hasCookedBefore) {
+      markHasCooked();
+      markOnboardingComplete();
+    }
+  };
+  // 处理保存过敏史 / 疾病史到 profile
+  const handleSaveHealthHistory = (updatedProfile) => {
+    if (updatedProfile.id) {
+      updateProfile(updatedProfile.id, updatedProfile);
+    }
+  };
+
+  // 从食谱分类目录中选择一个分类 → 跳转到食谱列表
+  const handleCatalogSelectCategory = (cat) => {
+    setSelectedCategory(cat);
+    setEntrySource('catalog');
+    setScreen('recipe_list');
+  };
+
   const goBack = () => {
     if (screen === 'home') return false;
-    if (screen === 'dog_setup' || screen === 'ai_input' || screen === 'device_flow') setScreen('home');
-    if (screen === 'ai_analysis') setScreen(entrySource === 'ai' ? 'ai_input' : 'dog_setup');
-    if (screen === 'recipe_list') setScreen(entrySource === 'ai' ? 'ai_analysis' : 'dog_setup');
+    if (screen === 'dog_setup') setScreen('pet_management');
+    if (screen === 'pet_management' || screen === 'ai_input' || screen === 'device_flow' || screen === 'mall_placeholder') setScreen('home');
+    if (screen === 'ai_analysis') setScreen(entrySource === 'ai' ? 'ai_input' : 'pet_management');
+    if (screen === 'recipe_catalog') setScreen('home');
+    if (screen === 'recipe_list') {
+      if (entrySource === 'catalog') setScreen('recipe_catalog');
+      else if (entrySource === 'ai') setScreen('ai_analysis');
+      else setScreen('pet_management');
+    }
     if (screen === 'recipe_make') setScreen('recipe_list');
     if (screen === 'cooking') setScreen('recipe_make');
+    if (screen === 'pet_details') setScreen('pet_management');
     return true;
   };
 
@@ -250,15 +446,59 @@ function AppInner() {
   };
 
   return (
-    <div id="app-container" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-      {screen === 'home' && <HomeScreen onDogEntry={handleDogEntry} onAIEntry={handleAIEntry} onDeviceEntry={handleDeviceEntry} />}
-      {screen === 'dog_setup' && <DogSetup onBack={goHome} profile={hasProfile ? profile : null} onSave={handleProfileSave} onSelectCategory={handleSelectCategory} lang={lang} />}
+    <div id="app-container" className={hasCompletedOnboarding ? 'app-with-tabs' : ''} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+      {screen === 'home' && (
+        <HomeScreen
+          onDogEntry={handleDogEntry}
+          onAIEntry={handleAIEntry}
+          onDeviceEntry={handleDeviceEntry}
+        />
+      )}
+      {screen === 'recipe_catalog' && (
+        <RecipeCategoryCatalog
+          onBack={goBack}
+          onSelectCategory={handleCatalogSelectCategory}
+          lang={lang}
+        />
+      )}
+      {screen === 'pet_management' && (
+        <PetManagementScreen
+          profiles={profiles}
+          onAddPet={handleAddPet}
+          onEditPet={handleEditPet}
+          onSelectPet={handleSelectPet}
+          lang={lang}
+        />
+      )}
+      {screen === 'pet_details' && (
+        <PetProfileDetails
+          profile={profile}
+          onEdit={() => setScreen('dog_setup')}
+          onSelectCategory={(cat) => { setEntrySource('catalog'); handleSelectCategory(cat, profile); }}
+          onSaveHealthHistory={handleSaveHealthHistory}
+          lang={lang}
+        />
+      )}
+      {screen === 'dog_setup' && <DogSetup onBack={goHome} profile={editingPet} onSave={handleProfileSave} onSelectCategory={handleSelectCategory} onShowAnalysis={handleShowAnalysis} lang={lang} />}
       {screen === 'ai_input' && <AIInputScreen onBack={goHome} onAnalyze={handleAIAnalyzed} lang={lang} />}
       {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} onSelectRecipe={handleSelectRecipe} lang={lang} />}
-      {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={activeProfile} onSelectRecipe={handleSelectRecipe} lang={lang} />}
-      {screen === 'recipe_make' && <RecipeMake onBack={goBack} recipe={selectedRecipe} profile={activeProfile} onStartCooking={handleStartCooking} lang={lang} />}
+      {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={profile} onSelectRecipe={handleSelectRecipe} lang={lang} />}
+      {screen === 'recipe_make' && <RecipeMake onBack={goBack} recipe={selectedRecipe} profile={profile} onStartCooking={handleStartCooking} lang={lang} />}
       {screen === 'cooking' && <CookingScreen onBack={goHome} cookingData={cookingData} lang={lang} />}
       {screen === 'device_flow' && <TuyaDeviceFlow onBack={goHome} />}
+      {screen === 'mall_placeholder' && (
+        <div className="animate-fade flex-col" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: '40px 20px', color: 'var(--gray)', textAlign: 'center', background: 'var(--dark)' }}>
+          <span style={{ fontSize: '48px', marginBottom: '16px' }}>🛒</span>
+          <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '800', margin: '0 0 8px 0' }}>宠物商城</h2>
+          <p style={{ fontSize: '13px', color: 'var(--gray)', margin: 0 }}>全新宠物鲜食与功能用品商城筹备中，敬请期待！</p>
+          <button className="btn btn-secondary" style={{ marginTop: '24px', padding: '8px 24px' }} onClick={goHome}>返回首页</button>
+        </div>
+      )}
+
+      {/* 引导完成后显示底部标签栏 */}
+      {hasCompletedOnboarding && (
+        <BottomTabBar activeTab={activeTab} onSelect={handleTabChange} />
+      )}
     </div>
   );
 }

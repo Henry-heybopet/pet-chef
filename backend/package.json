@@ -7,7 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma db push",
-    "db:seed": "node src/data/sync_db_recipes.js",
+    "db:seed": "node prisma/seed.js",
     "db:sync": "node src/data/sync_db_recipes.js"
   },
   "keywords": [],

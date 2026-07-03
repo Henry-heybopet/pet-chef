@@ -107,7 +107,7 @@ const ingredientsDb = {
   },
   '兔里脊': {
     category: 'protein', water_pct: 0.72,
-    benefits: '极低脂肪、极低致敏性高蛋白白肉，易于消化，非常适合低敏排敏与体重大多管理。',
+    benefits: '极低脂肪、极低致敏性高蛋白白肉，易于消化，非常适合低敏排敏与体重管理。',
     calories_per_100g: 115, protein_pct: 22, fat_pct: 2,
     safety_level: 'safe', safety_note: null,
   },
