@@ -8,7 +8,7 @@ const rateLimit = require('express-rate-limit');
 
 const { breedsDb } = require('./data/breeds_db');
 const { recipesDb } = require('./data/recipes_db');
-const { analyzeBreedNutrition, generateAIRecipe, compareRecipeSelection } = require('./services/gemini');
+const { analyzeBreedNutrition, generateAIRecipe, compareRecipeSelection, compareRecipeSelectionBatch } = require('./services/gemini');
 const { evaluatePetBCS } = require('./services/deepseek');
 const { validateIngredientSafety, hasToxicIngredients, hasCautionIngredients, generateSafetyWarnings } = require('./services/safety_filter');
 const { startCooking, pauseCooking, stopCooking, getDeviceStatus } = require('./services/tuya');
@@ -268,6 +268,25 @@ app.post('/api/v1/recommend/compare', async (req, res) => {
     res.json({ success: true, comparison });
   } catch (err) {
     console.error('Comparison API error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================
+// POST /api/v1/recommend/compare/batch — 批量评估候选食谱配方变更的营养风险 (缓存与稳定性能量)
+// body: { dogProfile, currentSelection, proposedSelections[] }
+// ============================================================
+app.post('/api/v1/recommend/compare/batch', async (req, res) => {
+  const { dogProfile, currentSelection, proposedSelections } = req.body;
+  if (!dogProfile || !currentSelection || !proposedSelections || !Array.isArray(proposedSelections)) {
+    return res.status(400).json({ success: false, error: 'Missing required parameters' });
+  }
+
+  try {
+    const result = await compareRecipeSelectionBatch(dogProfile, currentSelection, proposedSelections);
+    res.json({ success: true, comparisons: result.comparisons });
+  } catch (err) {
+    console.error('Batch comparison API error:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });

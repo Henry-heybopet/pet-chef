@@ -4,6 +4,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const { validateIngredientSafety, hasToxicIngredients, generateSafetyWarnings } = require('./safety_filter');
 const { breedsDb } = require('../data/breeds_db');
+const { recipesDb } = require('../data/recipes_db');
 
 async function callDeepSeekAPI(systemPrompt, userPrompt) {
   const apiKey = process.env.DEEPSEEK_API_KEY || 'sk-85673c68584b4c06a9aa5d1fe5db5108';
@@ -243,51 +244,114 @@ function getRecommendedBName(dogProfile) {
 }
 
 function calculateAScore(dogProfile, recipeName) {
-  const { age = 3, weight = 15, goals = [] } = dogProfile;
-  let score = 93; // 默认基准推荐得分
+  const recipeObj = recipesDb.find(r => r.name === recipeName);
+  const ingredients = recipeObj ? Object.keys(recipeObj.ingredients || {}) : [];
   
-  const isBeef = recipeName.includes('牛肉') || recipeName.includes('补能');
-  const isChicken = recipeName.includes('鸡肉');
-  const isFish = recipeName.includes('金枪鱼') || recipeName.includes('三文鱼') || recipeName.includes('亮毛');
-  const isRabbit = recipeName.includes('兔肉') || recipeName.includes('消化') || recipeName.includes('温和');
-  const isLowFat = recipeName.includes('低脂') || recipeName.includes('轻盈') || recipeName.includes('高纤');
+  const { 
+    age = 3, 
+    weight = 15, 
+    goals = [], 
+    bcs = 5, 
+    allergens = [], 
+    healthTags = [] 
+  } = dogProfile;
 
-  // 1. 年龄段修正
-  if (age < 1) {
-    if (isBeef) score += 4;
-    if (isLowFat) score -= 5;
-  } else if (age >= 8) {
-    if (isLowFat || isRabbit) score += 4;
-    if (isBeef) score -= 6;
+  let score = 90; // 基准分
+
+  const hasBeef = ingredients.some(ing => ing.includes('牛'));
+  const hasChicken = ingredients.some(ing => ing.includes('鸡'));
+  const hasFish = ingredients.some(ing => ing.includes('金枪鱼') || ing.includes('鱼'));
+  const hasDuckOrRabbit = ingredients.some(ing => ing.includes('鸭') || ing.includes('兔'));
+
+  // 1. BCS/肥胖/低脂 规则 (鸡肉 vs 牛肉)
+  const isOverweight = bcs > 5 || healthTags.includes('obesity') || healthTags.includes('pancreatitis') || goals.some(g => g.includes('低脂') || g.includes('减肥') || g.includes('体重') || g.includes('肥胖') || g.includes('控体'));
+  const isUnderweight = bcs < 5 || goals.some(g => g.includes('增肌') || g.includes('强壮'));
+
+  if (isOverweight) {
+    if (hasBeef) score -= 8; // 肥胖犬吃高脂牛肉，扣分
+    if (hasChicken) score += 3; // 肥胖犬推荐低脂鸡肉，加分
+  } else if (isUnderweight) {
+    if (hasBeef) score += 4; // 偏瘦犬推荐牛肉补能，加分
   }
-  
-  // 2. 健康目标修正
-  if (goals.some(g => g.includes('低脂') || g.includes('减肥') || g.includes('体重') || g.includes('肥胖'))) {
-    if (isLowFat) score += 3;
-    else if (isBeef) score -= 8;
-    else if (isChicken) score += 0;
-    else if (isFish) score -= 2;
+
+  // 2. 过敏体质与鱼肉对比
+  const isAllergyProne = goals.some(g => g.includes('低敏')) || healthTags.includes('dermatological');
+  const allergicToChicken = allergens.some(a => a.includes('鸡'));
+  const allergicToBeef = allergens.some(a => a.includes('牛'));
+
+  if (hasFish) {
+    if (allergicToChicken || allergicToBeef) {
+      score += 5; // 如果鸡肉牛肉过敏，鱼肉是优质替代源，加分
+    } else if (isAllergyProne) {
+      score -= 3; // 海鲜对普通敏感犬慎用，微扣分
+    }
   }
-  if (goals.some(g => g.includes('关节') || g.includes('骨骼'))) {
-    if (isFish) score += 2;
-    if (isBeef && age >= 8) score -= 2;
+
+  // 3. 鸭肉、兔肉单一蛋白与肠胃敏感
+  const hasGISensitivity = goals.some(g => g.includes('肠胃') || g.includes('消化') || g.includes('软便')) || healthTags.includes('gastrointestinal') || healthTags.includes('pancreatitis');
+  if (hasDuckOrRabbit) {
+    if (hasGISensitivity) {
+      score += 6; // 肠胃敏感犬吃兔肉/鸭肉单一蛋白，大幅加分
+    } else {
+      score += 2; // 普通单蛋白膳食加分
+    }
   }
-  if (goals.some(g => g.includes('消化') || g.includes('肠胃') || g.includes('胃肠') || g.includes('排便') || g.includes('软便'))) {
-    if (isRabbit) score += 4;
-    if (isBeef) score -= 4;
+
+  // 4. 红薯、燕麦碳水对比与麸质过敏
+  const hasOats = ingredients.some(ing => ing.includes('燕麦'));
+  const allergicToOats = allergens.some(a => a.includes('燕麦') || a.includes('麦') || a.includes('麸质') || a.includes('谷物'));
+  if (hasOats) {
+    if (allergicToOats) {
+      score -= 65; // 燕麦/麸质过敏，毁灭性扣分以保证低于 30%
+    } else if (isAllergyProne) {
+      score -= 2; // 谷物麸质过敏风险，微扣分
+    }
   }
+
+  // 过敏食材全量强制阻断检测：如包含任何过敏食材，直接锁定在 30% 以下
+  let matchedAllergen = false;
+  ingredients.forEach(ing => {
+    allergens.forEach(allg => {
+      if (allg && typeof allg === 'string' && allg.trim() !== '') {
+        const cleanAllergen = allg.trim();
+        if (ing.includes(cleanAllergen) || cleanAllergen.includes(ing)) {
+          matchedAllergen = true;
+        }
+      }
+    });
+  });
+  if (matchedAllergen) {
+    score = Math.min(score, 25);
+  }
+
+  // 5. 年龄及其他器官并发症加扣分
+  if (age < 1) { // 幼犬
+    const isGrowth = recipeName.includes('成长') || recipeName.includes('幼犬') || recipeName.includes('发育');
+    if (isGrowth) score += 5;
+    else score -= 5;
+  } else if (age >= 8) { // 老年犬
+    const isSenior = recipeName.includes('轻负担') || recipeName.includes('老年') || recipeName.includes('温和') || recipeName.includes('消化');
+    if (isSenior) score += 5;
+    if (hasBeef) score -= 4; // 老年犬应控脂，牛肉扣分
+  }
+
+  // 肝肾脏器受损警示
+  if (healthTags.includes('liver') || healthTags.includes('kidney')) {
+    if (hasFish) score -= 8; // 肝肾不好的狗吃海鱼有重金属积蓄风险，扣分
+  }
+  // 关节保护
+  if (goals.some(g => g.includes('关节') || g.includes('骨骼')) || healthTags.includes('joint')) {
+    if (recipeName.includes('关节') || recipeName.includes('亮毛')) score += 4;
+  }
+  // 美毛护肤
   if (goals.some(g => g.includes('皮毛') || g.includes('皮肤') || g.includes('美毛') || g.includes('亮毛'))) {
-    if (isFish) score += 4;
+    if (recipeName.includes('美毛') || recipeName.includes('亮毛') || hasFish) score += 4;
   }
 
-  // 3. 产生微小偏移量，增强趣味性与真实性，避免比分重合
-  let hash = 0;
-  for (let i = 0; i < recipeName.length; i++) {
-    hash += recipeName.charCodeAt(i);
+  // 确保分界清晰：过敏则 10-29 之间，不过敏则 85-100 之间
+  if (matchedAllergen || score < 30) {
+    return Math.max(10, Math.min(29, score));
   }
-  const variance = (hash % 3) - 1; // -1, 0, or 1
-  score += variance;
-
   return Math.max(85, Math.min(100, score));
 }
 
@@ -341,6 +405,23 @@ function getLocalComparisonWarning(dogProfile, current, proposed) {
       proposedScore = currentScore;
     }
     const { details, reason } = getADetailsAndReason(dogProfile, current.a_recipe_name, proposed.a_recipe_name, currentScore, proposedScore);
+    
+    // 过敏硬警示判定
+    const recipeObj = recipesDb.find(r => r.name === proposed.a_recipe_name);
+    const ingredients = recipeObj ? Object.keys(recipeObj.ingredients || {}) : [];
+    let matchedAllergen = null;
+    ingredients.forEach(ing => {
+      (dogProfile.allergens || []).forEach(allg => {
+        if (allg && ing.includes(allg)) matchedAllergen = allg;
+      });
+    });
+
+    if (matchedAllergen) {
+      warningText += `🚫 警告：新配方 ${proposed.a_recipe_name} 中含有 ${matchedAllergen}，这与您的爱犬的过敏原匹配，强烈建议不要选择！`;
+      level = 'warning';
+      hasWarning = true;
+    }
+
     a_comparison = {
       show_dialog: true,
       current_score: currentScore,
@@ -387,4 +468,111 @@ function getLocalComparisonWarning(dogProfile, current, proposed) {
   };
 }
 
-module.exports = { analyzeBreedNutrition, generateAIRecipe, compareRecipeSelection };
+/**
+ * 批量比较新老配方选择并给出警告和说明 (稳定、自洽、一次性计算)
+ */
+async function compareRecipeSelectionBatch(dogProfile, currentSelection, proposedSelections) {
+  const currentScore = calculateAScore(dogProfile, currentSelection.a_recipe_name);
+  
+  const enrichedProposed = proposedSelections.map(p => {
+    const score = calculateAScore(dogProfile, p.a_recipe_name);
+    return { ...p, computed_score: score };
+  });
+
+  const prompt = `请分析以下犬只的多个候选配方更换，评估每个配方相对于当前配方的营养学利弊与适宜性。
+
+犬只基础与健康信息：
+- 品种: ${dogProfile.breedName || '未知品种'}
+- 年龄: ${dogProfile.age}岁
+- 体重: ${dogProfile.weight}kg (目标体重: ${dogProfile.targetWeight || dogProfile.weight}kg)
+- 体况评分 (BCS): ${dogProfile.bcs || 5}分 (1-9分制，5分理想，>5超重/肥胖，<5消瘦)
+- 喂养目标/功能需求: ${dogProfile.goals && dogProfile.goals.length > 0 ? dogProfile.goals.join('、') : '无'}
+- 过敏史/过敏源: ${dogProfile.allergens && dogProfile.allergens.length > 0 ? dogProfile.allergens.join('、') : '无'}
+- 健康标签/特殊情况: ${dogProfile.healthTags && dogProfile.healthTags.length > 0 ? dogProfile.healthTags.join('、') : '无'}
+
+当前配方选择：
+- A鲜食基础包: ${currentSelection.a_recipe_name} (得分: ${currentScore}分)
+- B全价营养包: ${currentSelection.b_pack_name}
+- C功能支持包: ${currentSelection.c_pack_names && currentSelection.c_pack_names.length > 0 ? currentSelection.c_pack_names.join('、') : '无'}
+
+请对比以下各个候选更换配方，我们已经通过规则引擎计算出了它们的营养适配得分。
+你必须基于上述宠物的详尽健康参数（特别是过敏源、肥胖程度、脏器状况），为每个候选配方生成对应的营养横向对比分析和得分原因解释。
+
+候选更换配方及得分列表：
+${enrichedProposed.map((p, idx) => `
+候选 [${idx + 1}]：
+- 新A鲜食包: ${p.a_recipe_name} (得分: ${p.computed_score}分)
+- 新B全价包: ${p.b_pack_name}
+- 新C功能包: ${p.c_pack_names && p.c_pack_names.length > 0 ? p.c_pack_names.join('、') : '无'}
+`).join('\n')}
+
+你的具体任务：
+对于每个候选配方，生成：
+1. comparison_details：横向对比新旧配方的主要营养特点、蛋白质来源、脂肪含量、消化率差异等（80字以内，专业客观，语言通俗易懂）。
+2. score_reason：结合宠物具体健康指标（如过敏、BCS、脏器状态、年龄），合理解释该分数的制定逻辑与合理性（80字以内，逻辑自洽，指出明显的利弊，说明为何加分或扣分）。
+3. 如果新配方中含有宠物的过敏原（如燕麦），或者高脂肪配方（如牛肉）被换给超重犬，或者高重金属食材（如金枪鱼等海鱼）被推荐给肝肾有问题的犬，必须生成明显的警示语（has_warning: true，warning_level: "warning" 或 "info"）。
+
+请以如下JSON格式返回（严格JSON，不要包含任何MarkDown标记、额外换行或多余注释）：
+{
+  "comparisons": {
+    "${enrichedProposed[0]?.a_recipe_name || 'example'}": {
+      "has_warning": true/false,
+      "warning_level": "none/info/warning",
+      "warning_text": "具体的警示语，若无则为空字符串",
+      "a_comparison": {
+        "show_dialog": true,
+        "current_score": ${currentScore},
+        "proposed_score": ${enrichedProposed[0]?.computed_score || 90},
+        "comparison_details": "营养横向对比...",
+        "score_reason": "得分原因解释..."
+      }
+    }
+    // 对其余所有候选配方也一并返回
+  }
+}`;
+
+  try {
+    const apiKey = process.env.DEEPSEEK_API_KEY || 'sk-85673c68584b4c06a9aa5d1fe5db5108';
+    const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
+    const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          { role: 'system', content: NUTRITION_EXPERT_PROMPT },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.0, // 锁定模型温度 0.0，提高输出确定性
+        response_format: { type: 'json_object' }
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`DeepSeek API error (${response.status}): ${errorText}`);
+    }
+
+    const data = await response.json();
+    const text = data.choices[0].message.content;
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+    throw new Error('No JSON found in response');
+  } catch (err) {
+    console.error('DeepSeek compareRecipeSelectionBatch error:', err.message);
+    
+    // 本地降级回退
+    const comparisons = {};
+    enrichedProposed.forEach(proposed => {
+      comparisons[proposed.a_recipe_name] = getLocalComparisonWarning(dogProfile, currentSelection, proposed);
+    });
+    return { comparisons };
+  }
+}
+
+module.exports = { analyzeBreedNutrition, generateAIRecipe, compareRecipeSelection, compareRecipeSelectionBatch };
