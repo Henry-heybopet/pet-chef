@@ -300,8 +300,11 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
   const handleAvatarChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      setAvatar(url);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatar(reader.result);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
