@@ -254,7 +254,7 @@ function AppInner() {
       {screen === 'home' && <HomeScreen onDogEntry={handleDogEntry} onAIEntry={handleAIEntry} onDeviceEntry={handleDeviceEntry} />}
       {screen === 'dog_setup' && <DogSetup onBack={goHome} profile={hasProfile ? profile : null} onSave={handleProfileSave} onSelectCategory={handleSelectCategory} lang={lang} />}
       {screen === 'ai_input' && <AIInputScreen onBack={goHome} onAnalyze={handleAIAnalyzed} lang={lang} />}
-      {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} lang={lang} />}
+      {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} onSelectRecipe={handleSelectRecipe} lang={lang} />}
       {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={activeProfile} onSelectRecipe={handleSelectRecipe} lang={lang} />}
       {screen === 'recipe_make' && <RecipeMake onBack={goBack} recipe={selectedRecipe} profile={activeProfile} onStartCooking={handleStartCooking} lang={lang} />}
       {screen === 'cooking' && <CookingScreen onBack={goHome} cookingData={cookingData} lang={lang} />}

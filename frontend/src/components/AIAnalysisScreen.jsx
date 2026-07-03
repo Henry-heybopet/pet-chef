@@ -3,6 +3,8 @@ import React from 'react';
 import TopBar from './TopBar';
 import { useTranslation } from '../i18n/translations';
 import { tData, tTag, tBreedDesc } from '../i18n/dataTranslations';
+import { api } from '../api';
+import { demoRecipes } from '../data/demoRecipes';
 
 // Nutrition needs translation map for rule-engine fallback
 const NEED_TR = {
@@ -89,18 +91,11 @@ function tFallbackAnalysis(text, breedName, age, weight, analysis, lang) {
   return text;
 }
 
-export default function AIAnalysisScreen({ onBack, profile, onSelectCategory, lang }) {
+export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang }) {
   const t = useTranslation(lang);
-  const AI_CATEGORIES = [
-    { key: 'life_stage', label: t('lifeStageRec'), icon: '📅', desc: t('lifeStageRecD'), getQuery: (p) => ({ life_stage: p.analysis?.life_stage || '成年犬' }) },
-    { key: 'functional', label: t('catFunc'), icon: '⚡', desc: t('catFuncD'), getQuery: () => ({ functional: '' }) },
-    { key: 'chicken', label: t('catChicken'), icon: '🍗', desc: t('catChickenD'), getQuery: () => ({ protein: '鸡' }) },
-    { key: 'beef', label: t('catBeef'), icon: '🥩', desc: t('catBeefD'), getQuery: () => ({ protein: '牛肉' }) },
-    { key: 'fish', label: t('catFish'), icon: '🐟', desc: t('catFishD'), getQuery: () => ({ protein: '鱼' }) },
-    { key: 'other', label: t('catOther'), icon: '🍖', desc: t('catOtherD'), getQuery: () => ({ protein_other: true }) },
-  ];
-
   const { analysis, breedName, age, weight } = profile;
+  const goals = profile.goals || [];
+
   const lifeStageLabel = { '幼犬': '🐾 Puppy', '成年犬': '🐕 Adult', '老年犬': '🦴 Senior' }[analysis?.life_stage] || '🐕 Adult';
   const activityLabel = { low: lang === 'zh' ? '低活跃' : 'Low', medium: lang === 'zh' ? '中等活跃' : 'Medium', high: lang === 'zh' ? '高活跃' : 'High', very_high: lang === 'zh' ? '极高活跃' : 'Very High' }[analysis?.activity_level] || 'Medium';
 
@@ -114,14 +109,213 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectCategory, la
     return analysis.breed_intro;
   })();
 
-  // Translate nutrition_analysis if it's the Chinese fallback template
   const nutritionText = tFallbackAnalysis(analysis?.nutrition_analysis, breedName, age, weight, analysis, lang);
+
+  // 1. A包候选列表 (过滤对应的分类，每类5个食谱)
+  const categoryRecipes = React.useMemo(() => {
+    let targetCat = '成犬通用';
+    if (analysis?.life_stage === '幼犬') {
+      targetCat = weight >= 25 ? '控钙幼犬（大型幼犬）' : '幼犬通用';
+    } else if (analysis?.life_stage === '老年犬') {
+      targetCat = '老年犬通用';
+    }
+    
+    // 增加对功能性目标的辅助匹配
+    let recipes = demoRecipes.filter(r => r.category === targetCat);
+    if (recipes.length === 0) {
+      recipes = demoRecipes.slice(0, 5); // 兜底
+    }
+    return recipes;
+  }, [analysis, weight]);
+
+  // 默认推荐前 3 个
+  const defaultRecommendedA = React.useMemo(() => {
+    return categoryRecipes.slice(0, 3);
+  }, [categoryRecipes]);
+
+  // 2. 状态管理
+  // 当前选中的 A 包食谱 ID (必选, 单选)
+  const [selectedAId, setSelectedAId] = React.useState(() => {
+    return defaultRecommendedA[0]?.id || '';
+  });
+
+  // 获取匹配/推荐的 B 包名称
+  const recommendedBName = React.useMemo(() => {
+    if (analysis?.life_stage === '幼犬') {
+      return weight >= 25 ? '大型幼犬稳骨控钙营养包B' : '幼犬成长营养包B';
+    } else if (analysis?.life_stage === '老年犬') {
+      return '老年犬轻负担营养包B';
+    } else {
+      if (goals.includes('美毛')) return '成犬/美毛基础营养包B';
+      if (goals.includes('护肝')) return '成犬/护肝基础营养包B';
+      if (goals.includes('低敏')) return '低敏单一蛋白营养包B';
+      return '成犬维护营养包B';
+    }
+  }, [analysis, weight, goals]);
+
+  // 当前选中的 B 包
+  const [selectedBName, setSelectedBName] = React.useState(recommendedBName);
+
+  // 获取推荐的 C 包列表
+  const recommendedCList = React.useMemo(() => {
+    const list = [];
+    if (analysis?.life_stage === '幼犬') {
+      list.push('脑发育支持功能包C');
+    }
+    if (goals.includes('美毛') || goals.includes('皮毛')) {
+      list.push('美毛护肤支持功能包C');
+    }
+    if (goals.includes('护肝')) {
+      list.push('护肝支持功能包C');
+    }
+    if (goals.includes('低敏') || goals.includes('肠胃') || goals.includes('消化')) {
+      list.push('肠胃健康支持功能包C');
+    }
+    if (analysis?.life_stage === '老年犬' || goals.includes('关节') || goals.includes('护关节')) {
+      list.push('关节支持功能包C');
+    }
+    if (analysis?.life_stage === '老年犬' || goals.includes('抗炎') || goals.includes('免疫')) {
+      list.push('抗炎免疫支持功能包C');
+    }
+    return [...new Set(list)].slice(0, 2); // 限推荐 2 个
+  }, [analysis, goals]);
+
+  // 当前选中的 C 包列表（限制单选或不选，最多一个）
+  const [selectedCList, setSelectedCList] = React.useState(() => {
+    return recommendedCList.slice(0, 1);
+  });
+
+  // 弹窗与控制状态
+  const [showBSelector, setShowBSelector] = React.useState(false);
+  const [showDetailRecipe, setShowDetailRecipe] = React.useState(null);
+  const [warningData, setWarningData] = React.useState(null);
+  const [aComparisonData, setAComparisonData] = React.useState(null);
+  const [hoveredCard, setHoveredCard] = React.useState(null);
+  const [isComparing, setIsComparing] = React.useState(false);
+
+  // B包定义
+  const bPacks = [
+    { name: '幼犬成长营养包B', desc: '用于小型/中型幼犬，高营养密度，强化高矿物与钙磷比。' },
+    { name: '大型幼犬稳骨控钙营养包B', desc: '专为大型犬幼犬设计，精准限制钙含量，窄钙磷比以支持骨骼健康发育。' },
+    { name: '成犬维护营养包B', desc: '成犬日常均衡维护款，平稳微量元素平衡。' },
+    { name: '成犬/美毛基础营养包B', desc: '成犬美毛基础，高含量Omega-3及不饱和油脂配比。' },
+    { name: '成犬/护肝基础营养包B', desc: '低矿物盐负担设计，适合肝脏养护或消化道敏感群体。' },
+    { name: '老年犬轻负担营养包B', desc: '老年犬专属，限制磷与多余钙，轻负担易水解。' },
+    { name: '低敏单一蛋白营养包B', desc: '不添加任何动物骨肉粉载体，纯矿物游离态以防过敏。' }
+  ];
+
+  // C包定义
+  const cPacks = [
+    { name: '脑发育支持功能包C', desc: 'DHA藻油 / 胆碱 / 牛磺酸，支持幼犬神经传导。' },
+    { name: '美毛护肤支持功能包C', desc: '天然卵磷脂 / 有机锌 / 生物素，强化皮脂屏障。' },
+    { name: '护肝支持功能包C', desc: '天然水飞蓟素 / 胆碱 / 姜黄素，抗氧化护肝。' },
+    { name: '肠胃健康支持功能包C', desc: '果寡糖益生元 / 酵母后生元，调理胃肠微生态。' },
+    { name: '关节支持功能包C', desc: '高浓度葡萄糖胺 / 软骨素 / MSM，关节润滑保护。' },
+    { name: '心脏健康支持功能包C', desc: '天然辅酶Q10 / L-肉碱 / 纯牛磺酸，强健心肌。' },
+    { name: '抗炎免疫支持功能包C', desc: '酵母β-葡聚糖 / 蓝莓花青素，清除自由基抗衰。' }
+  ];
+
+  // 封装调用对比接口的流程
+  const handleApplySelection = async (type, value) => {
+    const nextAId = type === 'A' ? value : selectedAId;
+    const nextB = type === 'B' ? value : selectedBName;
+    const nextC = type === 'C' ? value : selectedCList;
+
+    if (!nextAId) {
+      alert('请选择一个A鲜食基础包！');
+      return;
+    }
+
+    const currentA = demoRecipes.find(r => r.id === selectedAId)?.name || '';
+    const proposedA = demoRecipes.find(r => r.id === nextAId)?.name || '';
+
+    const payload = {
+      dogProfile: {
+        breedName: breedName,
+        age: age,
+        weight: weight,
+        goals: goals
+      },
+      currentSelection: {
+        a_recipe_name: currentA,
+        b_pack_name: selectedBName,
+        c_pack_names: selectedCList
+      },
+      proposedSelection: {
+        a_recipe_name: proposedA,
+        b_pack_name: nextB,
+        c_pack_names: nextC
+      }
+    };
+
+    setIsComparing(true);
+    try {
+      const res = await api.compareSelection(payload);
+      setIsComparing(false);
+      if (res.success && res.comparison && res.comparison.a_comparison && res.comparison.a_comparison.show_dialog) {
+        setAComparisonData({
+          currentName: currentA,
+          proposedName: proposedA,
+          currentScore: res.comparison.a_comparison.current_score,
+          proposedScore: res.comparison.a_comparison.proposed_score,
+          details: res.comparison.a_comparison.comparison_details,
+          reason: res.comparison.a_comparison.score_reason,
+          onConfirm: () => {
+            setSelectedAId(nextAId);
+            setSelectedBName(nextB);
+            setSelectedCList(nextC);
+            if (res.comparison.has_warning) {
+              setWarningData({
+                text: res.comparison.warning_text,
+                pendingAction: () => {
+                  // State already updated above, do nothing
+                }
+              });
+            }
+            setAComparisonData(null);
+          }
+        });
+      } else if (res.success && res.comparison && res.comparison.has_warning) {
+        setWarningData({
+          text: res.comparison.warning_text,
+          pendingAction: () => {
+            setSelectedAId(nextAId);
+            setSelectedBName(nextB);
+            setSelectedCList(nextC);
+          }
+        });
+      } else if (res.success) {
+        setSelectedAId(nextAId);
+        setSelectedBName(nextB);
+        setSelectedCList(nextC);
+      }
+    } catch (e) {
+      setIsComparing(false);
+      setSelectedAId(nextAId);
+      setSelectedBName(nextB);
+      setSelectedCList(nextC);
+    }
+  };
+
+  const handleSelectA = (id) => {
+    handleApplySelection('A', id);
+  };
+
+  const handleToggleC = (name) => {
+    const next = selectedCList.includes(name) ? [] : [name];
+    handleApplySelection('C', next);
+  };
+
+  const activeRecipeObj = React.useMemo(() => {
+    return demoRecipes.find(r => r.id === selectedAId) || categoryRecipes[0];
+  }, [selectedAId, categoryRecipes]);
 
   return (
     <div className="animate-fade flex-col" style={{ flex: 1 }}>
       <TopBar onBack={onBack} title={t('aiAnalysis')} />
       <div style={{ padding: '0 24px 32px' }}>
         <div style={{ marginBottom: 24 }}>
+          {/* 宠物卡片 */}
           <div className="card glass" style={{ padding: 20, marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
               <div>
@@ -132,6 +326,8 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectCategory, la
             </div>
             <p style={{ color: 'var(--gray)', fontSize: 13, lineHeight: 1.6, margin: 0 }}>{breedIntro}</p>
           </div>
+
+          {/* 能量计算卡片 */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
             {[
               { label: t('dailyTotal'), value: `${analysis?.daily_grams || '--'}g`, color: 'var(--primary)' },
@@ -144,6 +340,8 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectCategory, la
               </div>
             ))}
           </div>
+
+          {/* 诉求与建议 */}
           {analysis?.key_nutrition_needs?.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 8 }}>{t('keyNeeds')}</div>
@@ -154,7 +352,8 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectCategory, la
               </div>
             </div>
           )}
-          <div className="card glass" style={{ padding: 16 }}>
+
+          <div className="card glass" style={{ padding: 16, marginBottom: 24 }}>
             <div style={{ fontSize: 12, color: 'var(--secondary)', marginBottom: 8, fontWeight: 600 }}>{t('aiAdvice')}</div>
             <p style={{ color: 'var(--gray)', fontSize: 13, lineHeight: 1.7, margin: 0 }}>{nutritionText}</p>
             {analysis?.cautions?.length > 0 && (
@@ -166,19 +365,330 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectCategory, la
               </div>
             )}
           </div>
-        </div>
-        <h3 style={{ marginBottom: 16, fontSize: 15, color: 'var(--gray)' }}>{t('recCategories')}</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          {AI_CATEGORIES.map(cat => (
-            <div key={cat.key} className="card selectable-card" style={{ padding: 18, textAlign: 'center' }}
-              onClick={() => onSelectCategory({ ...cat, query: cat.getQuery(profile) }, profile)}>
-              <div style={{ fontSize: 28, marginBottom: 8 }}>{cat.icon}</div>
-              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{cat.label}</div>
-              <div style={{ fontSize: 11, color: 'var(--gray)' }}>{cat.desc}</div>
+
+          {/* 新增: A+B+C 组合定制部分 */}
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20, position: 'relative' }}>
+            {isComparing && (
+              <div style={{ position: 'absolute', top: 20, right: 0, fontSize: 12, color: 'var(--primary)' }}>
+                🔄 AI 营养比对中...
+              </div>
+            )}
+            <h3 style={{ marginBottom: 16, fontSize: 15, fontWeight: 700, color: '#fff' }}>
+              🎯 {t('recommendedForYou')}
+            </h3>
+
+            {/* A 鲜食基础包 */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--primary)' }}>{t('packA')}</span>
+                <span style={{ fontSize: 11, color: 'var(--gray)' }}>勾选加入配方计划，点击查看详情</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {categoryRecipes.map(r => {
+                  const isSelected = selectedAId === r.id;
+                  return (
+                    <div key={r.id} className={`card ${isSelected ? 'glass-active' : 'glass'}`} style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 12, border: isSelected ? '1px solid var(--primary)' : '1px solid var(--border)', cursor: 'pointer' }} onClick={() => handleSelectA(r.id)}>
+                      {/* Checkbox (Radio style) */}
+                      <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isSelected ? 'var(--primary)' : 'transparent' }}>
+                        {isSelected && <span style={{ color: '#000', fontSize: 12, fontWeight: 'bold' }}>✓</span>}
+                      </div>
+                      
+                      {/* Text details */}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{r.name}</span>
+                          {defaultRecommendedA.map(x => x.id).includes(r.id) && (
+                            <span style={{ fontSize: 9, background: 'rgba(0,230,255,0.15)', color: 'var(--primary)', padding: '1px 5px', borderRadius: 4 }}>推荐</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
+                          {Object.keys(r.ingredients).slice(0, 4).join('/')}...
+                        </div>
+                      </div>
+
+                      {/* View Details Button */}
+                      <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 11, height: 'fit-content' }} onClick={(e) => { e.stopPropagation(); setShowDetailRecipe(r); }}>
+                        {t('viewDetail')}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          ))}
+
+            {/* B 全价营养包 */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--secondary)', marginBottom: 10 }}>{t('packB')}</div>
+              <div className="card glass" style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', justifyContent: 'space-between', border: '1px solid var(--secondary)' }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {selectedBName}
+                    {selectedBName === recommendedBName && (
+                      <span style={{ fontSize: 9, background: 'rgba(255,0,163,0.15)', color: 'var(--secondary)', padding: '1px 5px', borderRadius: 4 }}>最佳匹配</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 6, lineHeight: 1.4, maxWidth: '80%' }}>
+                    {bPacks.find(b => b.name === selectedBName)?.desc}
+                  </div>
+                </div>
+                <button className="btn" style={{ padding: '6px 12px', fontSize: 12, background: 'var(--secondary)', color: '#fff' }} onClick={() => setShowBSelector(true)}>
+                  {t('changePackB')}
+                </button>
+              </div>
+            </div>
+
+            {/* C 功能支持包 */}
+            <div style={{ marginBottom: 28 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#00FFA3' }}>{t('packC')}</span>
+                <span style={{ fontSize: 11, color: 'var(--gray)' }}>可选（至多勾选1种以提供靶向支持）</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {recommendedCList.map(name => {
+                  const isChecked = selectedCList.includes(name);
+                  const packDetail = cPacks.find(c => c.name === name);
+                  return (
+                    <div key={name} className="card glass" style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 12, cursor: 'pointer', border: isChecked ? '1px solid #00FFA3' : '1px solid var(--border)' }} onClick={() => handleToggleC(name)}>
+                      {/* Checkbox */}
+                      <div style={{ width: 18, height: 18, border: '2px solid #00FFA3', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isChecked ? '#00FFA3' : 'transparent' }}>
+                        {isChecked && <span style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>✓</span>}
+                      </div>
+
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>{packDetail?.desc}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 立即烹饪 A+B+C 组合 */}
+            <button className="btn" style={{ width: '100%', padding: '16px', fontSize: 16, fontWeight: 'bold', background: 'linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%)', color: '#000', border: 'none', borderRadius: 12 }} onClick={() => {
+              // 携带定制参数跳转至烹饪制作界面
+              const finalRecipe = {
+                ...activeRecipeObj,
+                customB: selectedBName,
+                customC: selectedCList[0] || '无',
+                composition_summary: `A基础包（${activeRecipeObj.name}）+ B营养包（${selectedBName}）${selectedCList.length > 0 ? `+ C功能包（${selectedCList[0]}）` : ''}`
+              };
+              onSelectRecipe(finalRecipe);
+            }}>
+              🚀 {t('makeNow')}（{activeRecipeObj?.name} 组合）
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* B 包更换模态弹窗 */}
+      {showBSelector && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div className="card glass animate-fade" style={{ width: '100%', maxWidth: 440, maxHeight: '85vh', overflowY: 'auto', padding: 24, border: '1px solid var(--border)' }}>
+            <h3 style={{ color: 'var(--secondary)', margin: '0 0 16px 0', fontSize: 16, fontWeight: 700 }}>更换全价营养包 B</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+              {bPacks.map(b => {
+                const isRec = b.name === recommendedBName;
+                const isSelected = selectedBName === b.name;
+                return (
+                  <div key={b.name} style={{
+                    padding: '12px 16px',
+                    borderRadius: 10,
+                    background: isSelected ? 'rgba(255,0,163,0.08)' : 'rgba(255,255,255,0.02)',
+                    border: isSelected ? '1px solid var(--secondary)' : isRec ? '1px solid rgba(0,230,255,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                    cursor: 'pointer',
+                    opacity: isRec || isSelected ? 1 : 0.6,
+                    transition: 'all 0.2s'
+                  }} onClick={() => {
+                    setShowBSelector(false);
+                    handleApplySelection('B', b.name);
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? 'var(--secondary)' : isRec ? 'var(--primary)' : '#fff' }}>
+                        {b.name}
+                      </span>
+                      {isRec && (
+                        <span style={{ fontSize: 9, background: 'rgba(0,230,255,0.15)', color: 'var(--primary)', padding: '2px 6px', borderRadius: 4 }}>推荐匹配</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 6, lineHeight: 1.4 }}>
+                      {b.desc}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <button className="btn btn-secondary" style={{ width: '100%' }} onClick={() => setShowBSelector(false)}>关闭</button>
+          </div>
+        </div>
+      )}
+
+      {/* A 食谱详情弹窗 */}
+      {showDetailRecipe && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div className="card glass animate-fade" style={{ width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto', padding: 24, border: '1px solid var(--border)', position: 'relative' }}>
+            <button style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--gray)', fontSize: 24, cursor: 'pointer' }} onClick={() => setShowDetailRecipe(null)}>×</button>
+            
+            {showDetailRecipe.img && (
+              <img src={showDetailRecipe.img} alt={showDetailRecipe.name} style={{ width: '100%', height: 180, objectFit: 'cover', borderRadius: 12, marginBottom: 16 }} />
+            )}
+            
+            <h2 style={{ color: 'var(--primary)', margin: '0 0 4px 0', fontSize: 18, fontWeight: 700 }}>{showDetailRecipe.name}</h2>
+            <p style={{ color: 'var(--gray)', fontSize: 12, margin: '0 0 16px 0' }}>{showDetailRecipe.tags?.join(' · ')}</p>
+            
+            {/* 食材明细与克重 */}
+            <div style={{ marginBottom: 16 }}>
+              <h4 style={{ color: '#fff', fontSize: 13, margin: '0 0 8px 0', fontWeight: 600 }}>配方食材组成 (A鲜食基础包)</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {Object.entries(showDetailRecipe.ingredients).map(([ing, pct]) => {
+                  const perMealGrams = analysis?.per_meal_grams || 100;
+                  const grams = Math.round((pct / 100) * perMealGrams);
+                  return (
+                    <div key={ing} style={{ background: 'rgba(255,255,255,0.03)', padding: '8px 10px', borderRadius: 8, fontSize: 12, display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text)' }}>{ing}</span>
+                      <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{pct}% ({grams}g)</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 食材主要功效 */}
+            {showDetailRecipe.ingredient_benefits && (
+              <div style={{ marginBottom: 16 }}>
+                <h4 style={{ color: '#fff', fontSize: 13, margin: '0 0 8px 0', fontWeight: 600 }}>食材功效营养解析</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {Object.entries(showDetailRecipe.ingredient_benefits).map(([name, ben]) => (
+                    <div key={name} style={{ fontSize: 11, lineHeight: 1.4, color: 'var(--gray)' }}>
+                      <strong style={{ color: 'var(--text)' }}>{name}: </strong>{ben}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* B包及C包建议 */}
+            <div style={{ marginBottom: 20, padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px dashed var(--border)' }}>
+              <h4 style={{ color: '#fff', fontSize: 13, margin: '0 0 8px 0', fontWeight: 600 }}>合规建议配比</h4>
+              <div style={{ fontSize: 11, color: 'var(--gray)', lineHeight: 1.5 }}>
+                <div style={{ marginBottom: 4 }}><strong style={{ color: 'var(--secondary)' }}>推荐B包:</strong> {showDetailRecipe.b_pack}</div>
+                <div><strong style={{ color: '#00FFA3' }}>推荐C包:</strong> {showDetailRecipe.c_pack}</div>
+              </div>
+            </div>
+            
+            <button className="btn" style={{ width: '100%' }} onClick={() => setShowDetailRecipe(null)}>关闭</button>
+          </div>
+        </div>
+      )}
+
+      {/* 调整配方安全警告确认弹窗 */}
+      {warningData && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div className="card glass animate-fade" style={{ width: '100%', maxWidth: 400, padding: 24, border: '1px solid #FF9600', textAlign: 'center' }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
+            <h3 style={{ color: '#FF9600', margin: '0 0 12px 0', fontSize: 16, fontWeight: 700 }}>配方调整安全提示</h3>
+            <p style={{ color: 'var(--text)', fontSize: 12, lineHeight: 1.6, margin: '0 0 24px 0', textAlign: 'left' }}>
+              {warningData.text}
+            </p>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button className="btn" style={{ flex: 1, background: '#FF9600', color: '#000', border: 'none', fontWeight: 700 }} onClick={() => {
+                warningData.pendingAction();
+                setWarningData(null);
+              }}>
+                确认调整
+              </button>
+              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setWarningData(null)}>
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI 营养配方对比报告弹窗 */}
+      {aComparisonData && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div className="card glass animate-fade" style={{ width: '100%', maxWidth: 450, padding: 24, border: '1px solid var(--primary)', textAlign: 'center', boxShadow: '0 8px 32px rgba(0,230,255,0.15)' }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
+            <h3 style={{ color: 'var(--primary)', margin: '0 0 16px 0', fontSize: 16, fontWeight: 700 }}>AI 营养配方对比报告</h3>
+            
+            {/* 打分对比排版 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}>
+              {/* 当前推荐 */}
+              <div 
+                onClick={() => setAComparisonData(null)}
+                onMouseEnter={() => setHoveredCard('current')}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={{ 
+                  flex: 1, 
+                  padding: 12, 
+                  background: 'rgba(255,255,255,0.03)', 
+                  borderRadius: 12, 
+                  border: hoveredCard === 'current' ? '1.5px solid #4CAF50' : '1px dashed rgba(255,255,255,0.15)',
+                  cursor: 'pointer',
+                  transform: hoveredCard === 'current' ? 'scale(1.03)' : 'none',
+                  transition: 'all 0.25s ease',
+                  boxShadow: hoveredCard === 'current' ? '0 0 16px rgba(76,175,80,0.25)' : 'none'
+                }}
+              >
+                <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 4 }}>当前推荐 (点击保持)</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aComparisonData.currentName}</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#4CAF50' }}>{aComparisonData.currentScore}%</div>
+                <div style={{ fontSize: 10, color: '#4CAF50' }}>适配得分</div>
+              </div>
+              
+              {/* 更换配方 */}
+              <div 
+                onClick={aComparisonData.onConfirm}
+                onMouseEnter={() => setHoveredCard('proposed')}
+                onMouseLeave={() => setHoveredCard(null)}
+                style={{ 
+                  flex: 1, 
+                  padding: 12, 
+                  background: 'rgba(255,255,255,0.03)', 
+                  borderRadius: 12, 
+                  border: hoveredCard === 'proposed' ? '1.5px solid var(--primary)' : '1px dashed rgba(255,255,255,0.15)',
+                  cursor: 'pointer',
+                  transform: hoveredCard === 'proposed' ? 'scale(1.03)' : 'none',
+                  transition: 'all 0.25s ease',
+                  boxShadow: hoveredCard === 'proposed' ? '0 0 16px rgba(0,230,255,0.25)' : 'none'
+                }}
+              >
+                <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 4 }}>计划更换 (点击更换)</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aComparisonData.proposedName}</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--primary)' }}>{aComparisonData.proposedScore}%</div>
+                <div style={{ fontSize: 10, color: 'var(--primary)' }}>适配得分</div>
+              </div>
+            </div>
+
+            {/* 对比详情与打分原因 */}
+            <div style={{ textAlign: 'left', marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, marginBottom: 4 }}>⚖️ 营养特性对比</div>
+                <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>{aComparisonData.details}</div>
+              </div>
+              <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8 }}>
+                <div style={{ fontSize: 11, color: '#4CAF50', fontWeight: 600, marginBottom: 4 }}>🎯 评分差异解释</div>
+                <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>{aComparisonData.reason}</div>
+              </div>
+            </div>
+
+            {/* 操作按钮 */}
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button 
+                className="btn btn-secondary" 
+                style={{ flex: 1, background: 'var(--primary)', color: '#000', border: '1px solid var(--primary)', fontWeight: 700 }} 
+                onClick={aComparisonData.onConfirm}
+              >
+                确认更换
+              </button>
+              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setAComparisonData(null)}>
+                保持推荐
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

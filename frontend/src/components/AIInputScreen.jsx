@@ -1,6 +1,8 @@
 // AIInputScreen.jsx — AI健康食谱：三角形输入界面 (i18n)
 import React, { useState, useEffect } from 'react';
 import TopBar from './TopBar';
+import SafetyWarning from './SafetyWarning';
+import CautionNotice from './CautionNotice';
 import { api } from '../api/index';
 import { useTranslation } from '../i18n/translations';
 import { tData } from '../i18n/dataTranslations';
@@ -12,6 +14,9 @@ export default function AIInputScreen({ onBack, onAnalyze, lang }) {
   const [customBreed, setCustomBreed] = useState('');
   const [age, setAge] = useState(3);
   const [weight, setWeight] = useState(15);
+  const [ingredients, setIngredients] = useState('');
+  const [safetyResult, setSafetyResult] = useState(null);
+  const [checking, setChecking] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -24,12 +29,44 @@ export default function AIInputScreen({ onBack, onAnalyze, lang }) {
     if (b) setWeight(b.weight_avg || 15);
   };
 
+  // 食材安全检查
+  const checkIngredientSafety = async (ingredientList) => {
+    setChecking(true);
+    try {
+      const res = await fetch('/api/ingredients/safety-check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ingredients: ingredientList }),
+      });
+      const data = await res.json();
+      setSafetyResult(data);
+      return data;
+    } catch (err) {
+      console.error('Safety check failed:', err);
+      return null;
+    } finally {
+      setChecking(false);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!breedId) return;
+
+    // 如果有食材输入，先执行安全检查
+    if (ingredients.trim()) {
+      const ingredientList = ingredients.split(/[,，;\n]+/).map(s => s.trim()).filter(Boolean);
+      const safety = await checkIngredientSafety(ingredientList);
+
+      if (safety?.has_toxic) {
+        // 有毒性食材，不继续
+        return;
+      }
+    }
+
     setLoading(true);
     const breed = breeds.find(b => b.id === breedId);
     const breedName = breedId === 'custom' ? customBreed : breed?.name;
-    const result = await api.aiAnalysis({ breedId, breedName, age, weight, customBreedName: customBreed, lang });
+    const result = await api.aiAnalysis({ breedId, breedName, age, weight, ingredients: ingredients.trim(), customBreedName: customBreed, lang });
     setLoading(false);
     if (result.success) {
       onAnalyze({ breedId, breedName, age, weight, breed, analysis: result.analysis });
@@ -38,6 +75,10 @@ export default function AIInputScreen({ onBack, onAnalyze, lang }) {
 
   const isReady = breedId && (breedId !== 'custom' || customBreed);
   const selectedBreed = breeds.find(b => b.id === breedId);
+  const toxicIngredients = safetyResult?.toxic_ingredients || [];
+  const cautionIngredients = safetyResult?.caution_ingredients || [];
+  const hasToxic = safetyResult?.has_toxic;
+  const canProceed = !hasToxic;
 
   // 三角形顶点位置
   const circleStyle = {
@@ -51,7 +92,7 @@ export default function AIInputScreen({ onBack, onAnalyze, lang }) {
   return (
     <div className="animate-fade flex-col" style={{ flex: 1 }}>
       <TopBar onBack={onBack} title={t('aiTitle')} />
-      <div style={{ padding: '0 24px', flex: 1 }}>
+      <div style={{ padding: '0 24px', flex: 1, overflowY: 'auto' }}>
         <p style={{ color: 'var(--gray)', fontSize: 13, marginBottom: 32, textAlign: 'center' }}>
           {t('aiSubtitle')}
         </p>
@@ -154,13 +195,40 @@ export default function AIInputScreen({ onBack, onAnalyze, lang }) {
           />
         )}
 
+        {/* 食材输入 */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', fontSize: 13, color: 'var(--gray)', marginBottom: 8 }}>
+            食材列表（可选，逗号分隔）
+          </label>
+          <textarea
+            placeholder="例如：鸡胸肉, 胡萝卜, 南瓜"
+            value={ingredients}
+            onChange={e => { setIngredients(e.target.value); setSafetyResult(null); }}
+            style={{
+              width: '100%', minHeight: 80, padding: '12px 16px',
+              background: 'rgba(157,0,255,0.05)', border: '1px solid rgba(157,0,255,0.3)',
+              borderRadius: 'var(--radius-sm)', color: 'white', fontSize: 14, outline: 'none',
+              resize: 'vertical', fontFamily: 'inherit',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
+
+        {/* 安全检查结果 */}
+        {safetyResult && (
+          <div style={{ marginBottom: 16 }}>
+            <SafetyWarning toxicIngredients={toxicIngredients} />
+            <CautionNotice cautionIngredients={cautionIngredients} />
+          </div>
+        )}
+
         <button
           className="btn-primary"
-          disabled={!isReady || loading}
+          disabled={!isReady || loading || checking || hasToxic}
           onClick={handleAnalyze}
-          style={{ opacity: (!isReady || loading) ? 0.5 : 1, boxShadow: isReady ? '0 0 30px rgba(0,230,255,0.4)' : 'none' }}
+          style={{ opacity: (!isReady || loading || checking || hasToxic) ? 0.5 : 1, boxShadow: isReady ? '0 0 30px rgba(0,230,255,0.4)' : 'none' }}
         >
-          {loading ? t('analyzing') : t('startAnalysis')}
+          {checking ? '安全检查中...' : loading ? t('analyzing') : t('startAnalysis')}
         </button>
       </div>
     </div>
