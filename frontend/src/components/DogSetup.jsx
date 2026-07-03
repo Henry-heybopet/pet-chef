@@ -305,7 +305,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
     }
   };
 
-  const handleSave = () => {
+  const handleSave = (shouldGoToAnalysis = false) => {
     if (dateError) return;
     const ageDetails = calculateAgeDetails(birthDate);
     const breed = breeds.find(b => b.id === breedId);
@@ -354,34 +354,36 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
       aiBcsData
     };
 
-    onSave(profileData);
-    
     localStorage.setItem('petchef_onboarding_completed', 'true');
     
-    if (onShowAnalysis) {
-      onShowAnalysis(profileData);
+    if (shouldGoToAnalysis) {
+      if (onShowAnalysis) {
+        onShowAnalysis(profileData);
+      } else {
+        let ageKey = 'adult';
+        let label = '成宠维持型';
+        let query = { custom_category: 'adult' };
+
+        if (ageDetails.age < 1) {
+          ageKey = 'puppy';
+          label = 'B1 幼宠成长型';
+          query = { custom_category: 'puppy' };
+        } else if (ageDetails.age >= 8) {
+          ageKey = 'senior';
+          label = '老年支持型';
+          query = { custom_category: 'senior' };
+        }
+
+        if (feedingGoal === 'weight_loss') {
+          ageKey = 'weight';
+          label = '体重控制型';
+          query = { custom_category: 'weight' };
+        }
+
+        onSelectCategory({ id: ageKey, label, query });
+      }
     } else {
-      let ageKey = 'adult';
-      let label = '成宠维持型';
-      let query = { custom_category: 'adult' };
-
-      if (ageDetails.age < 1) {
-        ageKey = 'puppy';
-        label = 'B1 幼宠成长型';
-        query = { custom_category: 'puppy' };
-      } else if (ageDetails.age >= 8) {
-        ageKey = 'senior';
-        label = '老年支持型';
-        query = { custom_category: 'senior' };
-      }
-
-      if (feedingGoal === 'weight_loss') {
-        ageKey = 'weight';
-        label = '体重控制型';
-        query = { custom_category: 'weight' };
-      }
-
-      onSelectCategory({ id: ageKey, label, query });
+      onSave(profileData);
     }
   };
 
@@ -866,16 +868,16 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
               <button 
                 className="select-card-btn" 
                 style={{ width: '30%', padding: '14px 0' }}
-                onClick={() => setActiveTab(1)}
+                onClick={() => handleSave(false)}
               >
-                ← 上一步
+                保存
               </button>
               <button 
                 className="btn-primary" 
                 style={{ flex: 1, margin: 0 }}
-                onClick={handleSave}
+                onClick={() => handleSave(true)}
               >
-                保存并进行 AI 营养分析 →
+                保存并进行AI分析 →
               </button>
             </div>
 

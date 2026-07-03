@@ -310,6 +310,7 @@ function AppInner() {
     } else {
       addProfile(p);
     }
+    setScreen('pet_management');
   };
 
   const handleSelectCategory = (cat, p) => {
