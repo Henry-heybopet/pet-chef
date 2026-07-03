@@ -96,13 +96,8 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
   const { analysis, breedName, age, weight } = profile;
   const goals = profile.goals || [];
 
-  const lifeStageLabel = lang === 'zh'
-    ? ({ '幼犬': '🐾 幼犬阶段', '成年犬': '🐕 成年阶段', '老年犬': '🦴 老年阶段' }[analysis?.life_stage] || '🐕 成年阶段')
-    : ({ '幼犬': '🐾 Puppy', '成年犬': '🐕 Adult', '老年犬': '🦴 Senior' }[analysis?.life_stage] || '🐕 Adult');
-    
-  const activityLabel = lang === 'zh'
-    ? ({ low: '低活跃', medium: '中等活跃', high: '高活跃', very_high: '极高活跃' }[analysis?.activity_level] || '中等活跃')
-    : ({ low: 'Low', medium: 'Medium', high: 'High', very_high: 'Very High' }[analysis?.activity_level] || 'Medium');
+  const lifeStageLabel = { '幼犬': '🐾 Puppy', '成年犬': '🐕 Adult', '老年犬': '🦴 Senior' }[analysis?.life_stage] || '🐕 Adult';
+  const activityLabel = { low: lang === 'zh' ? '低活跃' : 'Low', medium: lang === 'zh' ? '中等活跃' : 'Medium', high: lang === 'zh' ? '高活跃' : 'High', very_high: lang === 'zh' ? '极高活跃' : 'Very High' }[analysis?.activity_level] || 'Medium';
 
   // Translate breed_intro: if it looks like Chinese fallback, use tBreedDesc
   const breedIntro = (() => {

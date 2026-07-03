@@ -8,7 +8,7 @@ const rateLimit = require('express-rate-limit');
 
 const { breedsDb } = require('./data/breeds_db');
 const { recipesDb } = require('./data/recipes_db');
-const { analyzeBreedNutrition, generateAIRecipe } = require('./services/gemini');
+const { analyzeBreedNutrition, generateAIRecipe, compareRecipeSelection } = require('./services/gemini');
 const { evaluatePetBCS } = require('./services/deepseek');
 const { validateIngredientSafety, hasToxicIngredients, hasCautionIngredients, generateSafetyWarnings } = require('./services/safety_filter');
 const { startCooking, pauseCooking, stopCooking, getDeviceStatus } = require('./services/tuya');
@@ -23,12 +23,31 @@ async function fetchRecipesFromDB(filterFn) {
   if (pgAvailable) {
     try {
       const result = await query('SELECT * FROM recipes WHERE status = $1', ['active']);
-      const recipes = result.rows.map(r => ({
-        ...r,
-        tags: Array.isArray(r.tags) ? r.tags : (r.tags || '{}').slice(1, -1).split(',').filter(Boolean),
-        ingredients: typeof r.ingredients === 'string' ? JSON.parse(r.ingredients) : r.ingredients,
-        cooking_base: typeof r.cooking_base === 'string' ? JSON.parse(r.cooking_base) : r.cooking_base,
-      }));
+      const recipes = result.rows.map(r => {
+        const healthTags = Array.isArray(r.health_tags) 
+          ? r.health_tags 
+          : (typeof r.health_tags === 'string' ? JSON.parse(r.health_tags) : (r.health_tags || []));
+        const ingredients = typeof r.ingredients === 'string' ? JSON.parse(r.ingredients) : (r.ingredients || {});
+        const cookingBase = typeof r.cooking_profile === 'string' ? JSON.parse(r.cooking_profile) : (r.cooking_profile || {});
+        const nut = typeof r.nutrition_snapshot === 'string' ? JSON.parse(r.nutrition_snapshot) : (r.nutrition_snapshot || {});
+        return {
+          id: r.id,
+          name: r.name,
+          category: r.category,
+          life_stage: r.life_stage,
+          tags: healthTags,
+          ingredients: ingredients,
+          cooking_base: cookingBase,
+          b_pack: r.b_pack || nut.b_pack || '无',
+          c_pack: r.c_pack || nut.c_pack || '无',
+          img: r.img || '',
+          water_content_pct: r.water_content_pct || nut.water_content_pct || 70,
+          protein_pct: r.protein_pct || nut.protein_pct || 30,
+          fat_pct: r.fat_pct || nut.fat_pct || 15,
+          carb_pct: r.carb_pct || nut.carb_pct || 35,
+          fiber_pct: r.fiber_pct || nut.fiber_pct || 5,
+        };
+      });
       return { recipes, source: 'pg' };
     } catch (err) {
       console.warn('[DB] PostgreSQL query failed, falling back to JSON:', err.message);
@@ -235,6 +254,25 @@ app.post('/api/v1/recommend', (req, res) => {
 });
 
 // ============================================================
+// POST /api/v1/recommend/compare — 比较并评估食谱配方变更的营养风险
+// body: { dogProfile, currentSelection, proposedSelection }
+// ============================================================
+app.post('/api/v1/recommend/compare', async (req, res) => {
+  const { dogProfile, currentSelection, proposedSelection } = req.body;
+  if (!dogProfile || !currentSelection || !proposedSelection) {
+    return res.status(400).json({ success: false, error: 'Missing required parameters' });
+  }
+
+  try {
+    const comparison = await compareRecipeSelection(dogProfile, currentSelection, proposedSelection);
+    res.json({ success: true, comparison });
+  } catch (err) {
+    console.error('Comparison API error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ============================================================
 // POST /api/v1/ai-analysis — Gemini AI 分析犬种营养需求
 // body: { breedId, breedName, age, weight, customBreedName }
 // ============================================================
@@ -260,6 +298,13 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
 
   if (breed?.nutrition_notes) nutritionNeeds.push(...breed.nutrition_notes.slice(0, 2));
 
+  // 校验宠物是否明显偏瘦
+  const cautions = [];
+  if (breed && weight < breed.weight_avg * 0.7) {
+    nutritionNeeds.unshift('营养不良/体重偏瘦');
+    cautions.push(`⚠️ 您的宠物当前体重（${weight}kg）显著低于${breed.name}的平均体重（${breed.weight_avg}kg左右），属于明显偏瘦/营养不良状态，建议逐步增加喂食量，并配合全价高能营养包以促进体重恢复。`);
+  }
+
   res.json({
     success: true,
     analysis: {
@@ -267,6 +312,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       life_stage: lifeStage,
       activity_level: breed?.activity || 'medium',
       key_nutrition_needs: nutritionNeeds,
+      cautions: cautions,
       nutrition_analysis: `根据您的${breedName || '爱犬'}${age}岁、${weight}kg的信息，每日所需鲜食量约为${intake.daily_grams}克，建议每日分${intake.meals_per_day}次喂食，每次约${intake.per_meal_grams}克。`,
       ...intake,
     },
