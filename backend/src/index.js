@@ -9,6 +9,7 @@ const rateLimit = require('express-rate-limit');
 const { breedsDb } = require('./data/breeds_db');
 const { recipesDb } = require('./data/recipes_db');
 const { analyzeBreedNutrition, generateAIRecipe } = require('./services/gemini');
+const { evaluatePetBCS } = require('./services/deepseek');
 const { validateIngredientSafety, hasToxicIngredients, hasCautionIngredients, generateSafetyWarnings } = require('./services/safety_filter');
 const { startCooking, pauseCooking, stopCooking, getDeviceStatus } = require('./services/tuya');
 const { calcCookingParams, calcDailyIntake, calcIngredientGrams } = require('./services/cooking_engine');
@@ -420,6 +421,67 @@ app.get('/api/v1/tuya/status', async (req, res) => {
   } catch (err) {
     console.error('Tuya status error:', err.message);
     res.json({ success: true, simulated: true, status: { online: true, cooking: false }, error_detail: err.message });
+  }
+});
+
+// ============================================================
+// POST /api/v1/pets/evaluate-bcs — AI 评估宠物 BCS 与标准发育体重
+// ============================================================
+app.post('/api/v1/pets/evaluate-bcs', async (req, res) => {
+  const { breedName, ageMonths, weight } = req.body || {};
+  if (!breedName || !weight) {
+    return res.status(400).json({ success: false, error: 'breedName and weight are required' });
+  }
+
+  try {
+    const evaluation = await evaluatePetBCS({ breedName, ageMonths: ageMonths || 12, weight });
+    res.json({ success: true, evaluation });
+  } catch (err) {
+    console.warn('[AI] DeepSeek evaluation failed, using local growth fallback:', err.message);
+    
+    // local fallback
+    let adultWeight = 15;
+    const selected = breedsDb.find(b => b.name === breedName || b.id === breedName);
+    if (selected && selected.weight_avg) {
+      adultWeight = selected.weight_avg;
+    }
+
+    const ageMonthsVal = ageMonths || 12;
+    let factor = 1.0;
+    if (ageMonthsVal < 12) {
+      if (ageMonthsVal <= 1) factor = 0.1;
+      else if (ageMonthsVal <= 2) factor = 0.1 + (ageMonthsVal - 1) * 0.1;
+      else if (ageMonthsVal <= 3) factor = 0.2 + (ageMonthsVal - 2) * 0.1;
+      else if (ageMonthsVal <= 4) factor = 0.3 + (ageMonthsVal - 3) * 0.15;
+      else if (ageMonthsVal <= 6) factor = 0.45 + (ageMonthsVal - 4) * 0.1;
+      else if (ageMonthsVal <= 8) factor = 0.65 + (ageMonthsVal - 6) * 0.075;
+      else factor = 0.8 + (ageMonthsVal - 8) * 0.05;
+    }
+    const standardWeight = parseFloat((adultWeight * factor).toFixed(1));
+    const ratio = weight / standardWeight;
+
+    let score = 5;
+    let label = '理想体态';
+    let description = '发育标准。肋骨易于触及但覆有适当脂肪，腰部轮廓明显。';
+    if (ratio <= 0.65) { score = 1; label = '极度消瘦'; description = '极度消瘦。发育受阻，请咨询兽医。'; }
+    else if (ratio <= 0.75) { score = 2; label = '偏瘦'; description = '偏瘦。建议逐渐补充优质蛋白营养。'; }
+    else if (ratio <= 0.85) { score = 3; label = '稍瘦'; description = '稍瘦。可以适当增加喂食分量。'; }
+    else if (ratio <= 0.95) { score = 4; label = '偏苗条'; description = '偏苗条。体态匀称，状态较好。'; }
+    else if (ratio <= 1.05) { score = 5; label = '理想体态'; description = '理想体态。该年龄阶段发育标准。'; }
+    else if (ratio <= 1.15) { score = 6; label = '偏丰满'; description = '偏丰满。略微有些圆润。'; }
+    else if (ratio <= 1.25) { score = 7; label = '超重'; description = '超重。建议适当调低喂食比例。'; }
+    else if (ratio <= 1.40) { score = 8; label = '肥胖'; description = '肥胖。建议进入科学控卡喂食。'; }
+    else { score = 9; label = '极度肥胖'; description = '极度肥胖。骨骼负荷过大，建议医疗减重。'; }
+
+    res.json({
+      success: true,
+      evaluation: {
+        standard_weight: standardWeight,
+        bcs_score: score,
+        bcs_label: label,
+        bcs_description: description
+      }
+    });
   }
 });
 

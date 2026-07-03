@@ -12,7 +12,7 @@ export default function BottomTabBar({ tabs, activeTab, onSelect }) {
     { key: 'recipes', label: '食谱', emoji: '🍲' },
     { key: 'pet', label: '宠物', emoji: '🐶' },
     { key: 'cook', label: '烹饪', emoji: '🤖' },
-    { key: 'data', label: '数据', emoji: '📊' },
+    { key: 'mall', label: '商城', emoji: '🛒' },
   ];
 
   const tabList = tabs || defaultTabs;

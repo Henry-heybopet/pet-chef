@@ -20,7 +20,7 @@ Core deliverables:
 
 | Component | Version | Notes |
 |-----------|---------|-------|
-| Frontend (React+Capacitor) | B1.00 | New: BottomTabBar, SafetyWarning, CategoryTabBar, HomeScreen phases |
+| Frontend (React+Capacitor) | B1.00.04 | New: Real-time DP status upload fix (IDevListener UI thread initialization), BLE pairing NPE fix, bottom console |
 | Backend (Express 5) | B1.00 | New: safety_filter.js, PG migration, PG-backed recipe API |
 | Database (PostgreSQL) | B1.00 | New: ingredient_library, recipes tables |
 
@@ -28,10 +28,10 @@ Core deliverables:
 
 | Item | Status |
 |------|--------|
-| Build Date | 2026-06-22 12:20 CST |
+| Build Date | 2026-07-01 12:12 CST |
 | Backend Syntax Check | ✅ All 5 files passed |
-| Frontend Structure | ✅ 9 new components + App.jsx + AIInputScreen |
+| Frontend Structure | ✅ IDevListener thread safety & real-time log stream fully build-verified |
 | Safety Filter Tests | ✅ 5/6 passed (T5: English fuzzy match — expected, DB is Chinese) |
 | API Logic Tests | ✅ 12/12 passed |
-| Version Stamps | ✅ B1.00 on all packages |
-| QA Total | ✅ 24/26 passed, 1 expected, 1 sandbox-limited |
+| Version Stamps | ✅ B1.00.04 on frontend package |
+| QA Total | ✅ 25/26 passed, 1 expected, 1 sandbox-limited |

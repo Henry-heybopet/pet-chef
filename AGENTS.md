@@ -1,4 +1,29 @@
-# Codex Project Rules
+# Project Rules — pet chef
+
+This project-level AGENTS.md provides project-specific paths, commands, test commands, and handoff conventions for the pet chef project.
+
+This file is shared by both Codex and Antigravity when they work in this repository.
+
+It must be used together with the DevOps Ponytail Delivery Skill, located either:
+
+- globally for Codex at `/Users/yhl/.codex/skills/devops-ponytail-delivery/SKILL.md`
+- locally for this repository at `.agents/skills/devops-ponytail-delivery/SKILL.md`
+
+If there is any conflict, the DevOps Ponytail Delivery Skill and repository safety rules take priority, especially rules about:
+
+- protecting existing user work
+- checking git status before major work
+- using worktree or feature branch for large tasks
+- security
+- payment correctness
+- device safety
+- data migration safety
+- testing and validation
+- rollback
+- observability
+- not claiming completion without verification
+
+Project-level rules may add stricter requirements or project-specific commands, but they must not weaken the global safety and delivery rules.
 
 ## Project
 

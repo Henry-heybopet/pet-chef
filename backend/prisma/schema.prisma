@@ -36,12 +36,49 @@ enum ActivityLevel {
   low
   medium
   high
+  working
 }
 
 enum LifeStage {
   puppy
   adult
   senior
+}
+
+enum FeedingGoal {
+  maintenance
+  weight_loss
+  muscle_gain
+  post_surgery_recovery
+  coat_care
+  gastrointestinal_care
+}
+
+enum BodySize {
+  mini
+  small
+  medium
+  large
+  giant
+}
+
+enum Environment {
+  indoor
+  outdoor
+  mixed
+}
+
+enum AllergySeverity {
+  mild
+  moderate
+  severe
+}
+
+enum SpecialPeriod {
+  pregnancy
+  lactation
+  post_op_rest
+  illness_recovery
 }
 
 enum ProductType {
@@ -219,6 +256,12 @@ model Pet {
   doctor_notes         String?
   user_notes           String?
   avatar_url           String?
+  feeding_goal         FeedingGoal?
+  body_size            BodySize?
+  environment          Environment?
+  allergy_symptoms     Json          @default("[]")
+  allergy_severity     AllergySeverity?
+  special_period       SpecialPeriod?
   created_at           DateTime      @default(now())
   updated_at           DateTime      @updatedAt
   deleted_at           DateTime?
