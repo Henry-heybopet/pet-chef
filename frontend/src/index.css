@@ -1727,3 +1727,63 @@ select option {
   border-radius: 10px;
   background: rgba(255,255,255,0.02);
 }
+
+
+.ai-waiting-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.ai-waiting-modal {
+  width: min(340px, 86vw);
+  border: 1px solid rgba(0, 230, 255, 0.35);
+  border-radius: 12px;
+  padding: 22px 20px 18px;
+  background: rgba(6, 14, 28, 0.96);
+  box-shadow: 0 0 42px rgba(0, 230, 255, 0.18);
+  text-align: center;
+}
+
+.ai-waiting-title {
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 800;
+  margin-bottom: 16px;
+}
+
+.ai-waiting-visual {
+  width: 220px;
+  aspect-ratio: 578 / 319;
+  margin: 0 auto 14px;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 230, 255, 0.18);
+  box-shadow: 0 0 24px rgba(0, 230, 255, 0.22);
+  animation: aiPulse 1.8s ease-in-out infinite;
+}
+
+.ai-waiting-visual img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ai-waiting-powered {
+  color: var(--gray);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+@keyframes aiPulse {
+  0%, 100% { opacity: 0.86; }
+  50% { opacity: 1; }
+}
