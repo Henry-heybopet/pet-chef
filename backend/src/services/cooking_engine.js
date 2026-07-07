@@ -8,11 +8,11 @@ const { ingredientsDb } = require('../data/ingredients_db');
  * @param {Object} ingredients - { 食材名: 百分比 }
  * @returns {number} 含水量 0~1
  */
-function calcWaterContent(ingredients) {
+function calcWaterContent(ingredients, ingredientMap = ingredientsDb) {
   let totalWeight = 0, totalWater = 0;
   Object.entries(ingredients).forEach(([name, pct]) => {
     if (typeof pct !== 'number') return;
-    const ing = ingredientsDb[name];
+    const ing = ingredientMap[name];
     const waterPct = ing ? ing.water_pct : 0.70;
     totalWeight += pct;
     totalWater += pct * waterPct;

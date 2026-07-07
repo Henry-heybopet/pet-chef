@@ -126,6 +126,7 @@ const initialDb = {
   pets: [],
   devices: [],
   device_pet_bindings: [],
+  cooking_operations: [],
   device_operation_records: [],
   feeding_records: [],
   health_records: [],
@@ -161,6 +162,9 @@ function loadDb() {
     if (!fs.existsSync(dataFile)) return structuredClone(initialDb);
     const parsed = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
     const merged = { ...structuredClone(initialDb), ...parsed };
+    if (!parsed.cooking_operations && Array.isArray(parsed.device_operation_records)) {
+      merged.cooking_operations = parsed.device_operation_records;
+    }
     if (!parsed.seed_version || parsed.seed_version < initialDb.seed_version) {
       merged.products = seedProducts;
       merged.seed_version = initialDb.seed_version;
@@ -332,10 +336,56 @@ function userOwnsHousehold(userId, householdId) {
 }
 
 function listByHousehold(table, userId, householdId) {
-  return db[table].filter(item =>
+  return (db[table] || []).filter(item =>
     item.household_id === householdId &&
     userOwnsHousehold(userId, householdId)
   );
+}
+
+function normalizeArray(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === 'string') {
+    return value.split(/[,，、;；\s]+/).map(item => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function firstDefined(...values) {
+  return values.find(value => value !== undefined);
+}
+
+function normalizePetPayload(payload = {}, { partial = false } = {}) {
+  const normalized = {};
+  const set = (key, value, fallback) => {
+    if (value !== undefined) normalized[key] = value;
+    else if (!partial) normalized[key] = fallback;
+  };
+
+  set('name', payload.name, '我的爱犬');
+  set('species', payload.species, 'dog');
+  set('breed', firstDefined(payload.breed, payload.breedName), '');
+  set('sex', payload.sex, '');
+  set('neutered', payload.neutered === undefined ? undefined : Boolean(payload.neutered), false);
+  set('birth_date', firstDefined(payload.birth_date, payload.birthDate), '');
+  set('age_months', payload.age_months === undefined ? undefined : Number(payload.age_months), 0);
+  set('current_weight_kg', firstDefined(payload.current_weight_kg, payload.weight) === undefined ? undefined : Number(firstDefined(payload.current_weight_kg, payload.weight)), 0);
+  set('target_weight_kg', firstDefined(payload.target_weight_kg, payload.targetWeight) === undefined ? undefined : Number(firstDefined(payload.target_weight_kg, payload.targetWeight)), 0);
+  set('body_condition_score', firstDefined(payload.body_condition_score, payload.bcs), '');
+  set('activity_level', firstDefined(payload.activity_level, payload.activityLevel), 'medium');
+  set('life_stage', firstDefined(payload.life_stage, payload.lifeStage), 'adult');
+  set('allergens', firstDefined(payload.allergens, payload.allergensText) === undefined ? undefined : normalizeArray(firstDefined(payload.allergens, payload.allergensText)), []);
+  set('food_restrictions', firstDefined(payload.food_restrictions, payload.foodRestrictions) === undefined ? undefined : normalizeArray(firstDefined(payload.food_restrictions, payload.foodRestrictions)), []);
+  set('health_tags', firstDefined(payload.health_tags, payload.healthTags) === undefined ? undefined : normalizeArray(firstDefined(payload.health_tags, payload.healthTags)), []);
+  set('doctor_notes', firstDefined(payload.doctor_notes, payload.doctorNotes), '');
+  set('user_notes', firstDefined(payload.user_notes, payload.userNotes), '');
+  set('avatar_url', firstDefined(payload.avatar_url, payload.avatar), '');
+  set('feeding_goal', firstDefined(payload.feeding_goal, payload.feedingGoal), null);
+  set('body_size', firstDefined(payload.body_size, payload.bodySize), null);
+  set('environment', payload.environment, null);
+  set('allergy_symptoms', firstDefined(payload.allergy_symptoms, payload.allergySymptoms, payload.allergySymptomsText) === undefined ? undefined : normalizeArray(firstDefined(payload.allergy_symptoms, payload.allergySymptoms, payload.allergySymptomsText)), []);
+  set('allergy_severity', firstDefined(payload.allergy_severity, payload.allergySeverity), null);
+  set('special_period', firstDefined(payload.special_period, payload.specialPeriod), null);
+  return Object.fromEntries(Object.entries(normalized).filter(([, value]) => value !== undefined));
 }
 
 function createPet(userId, payload) {
@@ -348,26 +398,10 @@ function createPet(userId, payload) {
     id: id('pet'),
     household_id: household.id,
     owner_user_id: userId,
-    name: payload.name || '我的爱犬',
-    species: payload.species || 'dog',
-    breed: payload.breed || '',
-    sex: payload.sex || '',
-    neutered: Boolean(payload.neutered),
-    birth_date: payload.birth_date || '',
-    age_months: Number(payload.age_months || 0),
-    current_weight_kg: Number(payload.current_weight_kg || payload.weight || 0),
-    target_weight_kg: Number(payload.target_weight_kg || 0),
-    body_condition_score: payload.body_condition_score || '',
-    activity_level: payload.activity_level || 'medium',
-    life_stage: payload.life_stage || 'adult',
-    allergens: payload.allergens || [],
-    food_restrictions: payload.food_restrictions || [],
-    health_tags: payload.health_tags || [],
-    doctor_notes: payload.doctor_notes || '',
-    user_notes: payload.user_notes || '',
-    avatar_url: payload.avatar_url || '',
+    ...normalizePetPayload(payload),
     created_at: now(),
     updated_at: now(),
+    deleted_at: null,
   };
   db.pets.push(pet);
   saveDb();
@@ -377,9 +411,54 @@ function createPet(userId, payload) {
 function updateById(table, idValue, patch) {
   const item = db[table].find(row => row.id === idValue);
   if (!item) return null;
-  Object.assign(item, patch, { updated_at: now() });
+  Object.assign(item, table === 'pets' ? normalizePetPayload(patch, { partial: true }) : patch, { updated_at: now() });
   saveDb();
   return item;
+}
+
+function getPetById(petId) {
+  return db.pets.find(pet => pet.id === petId && !pet.deleted_at) || null;
+}
+
+function getPetForUser(userId, petId) {
+  const pet = getPetById(petId);
+  if (!pet) return null;
+  if (!userId) return pet;
+  if (pet.owner_user_id === userId || userOwnsHousehold(userId, pet.household_id)) return pet;
+  return null;
+}
+
+function petToDogProfile(pet, extras = {}) {
+  if (!pet) return null;
+  const ageMonths = Number(pet.age_months || 0);
+  const age = ageMonths > 0 ? Number((ageMonths / 12).toFixed(1)) : Number(extras.age || 3);
+  const bcsMatch = String(pet.body_condition_score || '').match(/\d+/);
+  const bcs = bcsMatch ? Number(bcsMatch[0]) : pet.body_condition_score;
+  return {
+    id: pet.id,
+    pet_id: pet.id,
+    name: pet.name,
+    breedName: pet.breed,
+    age,
+    age_months: ageMonths || undefined,
+    weight: pet.current_weight_kg,
+    targetWeight: pet.target_weight_kg,
+    bcs,
+    bodySize: pet.body_size,
+    activityLevel: pet.activity_level,
+    environment: pet.environment,
+    feedingGoal: pet.feeding_goal,
+    goals: pet.feeding_goal ? [pet.feeding_goal] : [],
+    healthTags: pet.health_tags || [],
+    allergens: pet.allergens || [],
+    allergySymptoms: pet.allergy_symptoms || [],
+    allergySeverity: pet.allergy_severity,
+    specialPeriod: pet.special_period,
+    neutered: pet.neutered,
+    updated_at: pet.updated_at,
+    pet_updated_at: pet.updated_at,
+    ...extras,
+  };
 }
 
 function upsertDevice(userId, payload) {
@@ -458,6 +537,32 @@ function createRecord(table, userId, payload) {
   db[table].push(record);
   saveDb();
   return record;
+}
+
+function createCookingOperation(userId, payload = {}) {
+  const {
+    tuya_dp_payload,
+    target_temperature_c,
+    target_time_seconds,
+    target_power,
+    target_speed,
+    ...rest
+  } = payload;
+
+  const cookingParams = rest.cooking_params_snapshot || {
+    target_temperature_c,
+    target_time_seconds,
+    target_power,
+    target_speed,
+  };
+
+  return createRecord('cooking_operations', userId, {
+    operation_type: rest.operation_type || 'start_cooking',
+    status: rest.status || (rest.result === 'success' ? 'completed' : 'created'),
+    ...rest,
+    cooking_params_snapshot: cookingParams,
+    tuya_command_snapshot: rest.tuya_command_snapshot || tuya_dp_payload,
+  });
 }
 
 function createOrder(userId, payload) {
@@ -598,9 +703,13 @@ module.exports = {
   listByHousehold,
   createPet,
   updateById,
+  getPetById,
+  getPetForUser,
+  petToDogProfile,
   upsertDevice,
   bindDevicePet,
   createRecord,
+  createCookingOperation,
   createOrder,
   getOrder,
   createPayment,

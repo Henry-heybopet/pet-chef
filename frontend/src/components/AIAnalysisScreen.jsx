@@ -91,7 +91,7 @@ function tFallbackAnalysis(text, breedName, age, weight, analysis, lang) {
   return text;
 }
 
-export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang }) {
+export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang, authToken }) {
   const t = useTranslation(lang);
   const { analysis, breedName, age, weight } = profile;
   const goals = profile.goals || [];
@@ -119,7 +119,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     } else if (analysis?.life_stage === '老年犬') {
       targetCat = '老年犬通用';
     }
-    
+
     // 增加对功能性目标的辅助匹配
     let recipes = demoRecipes.filter(r => r.category === targetCat);
     if (recipes.length === 0) {
@@ -215,6 +215,68 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     { name: '抗炎免疫支持功能包C', desc: '酵母β-葡聚糖 / 蓝莓花青素，清除自由基抗衰。' }
   ];
 
+  // 缓存与预取比对数据状态
+  const [comparisonsCache, setComparisonsCache] = React.useState(() => {
+    return profile?.comparisons || {};
+  });
+
+  React.useEffect(() => {
+    if (profile?.comparisons) {
+      setComparisonsCache(profile.comparisons);
+    }
+  }, [profile]);
+
+  // 检测食谱是否包含宠物的过敏原
+  const checkRecipeAllergen = React.useCallback((recipe) => {
+    if (!profile || !profile.allergens || profile.allergens.length === 0) return null;
+    const ingredients = Object.keys(recipe.ingredients || {});
+
+    // 支持历史未拆分的长字符串动态分拆
+    const splitAllergens = [];
+    profile.allergens.forEach(allg => {
+      if (typeof allg === 'string') {
+        splitAllergens.push(...allg.split(/[,，、;；\s]+/).map(s => s.trim()).filter(Boolean));
+      } else {
+        splitAllergens.push(allg);
+      }
+    });
+
+    const ALLERGEN_ALIASES = {
+      '土豆': ['红薯', '马铃薯', '甘薯', '紫薯', '薯'],
+      '红薯': ['红薯', '甘薯', '马铃薯', '紫薯', '土豆'],
+      '燕麦': ['燕麦', '麦', '麸质', '谷物', '燕麦片', '全熟燕麦片'],
+      '鸡肉': ['鸡', '鸡肉', '鸡小胸', '鸡胸'],
+      '牛肉': ['牛', '牛肉', '牛腩', '牛腱'],
+      '鱼': ['鱼', '海鲜', '海鱼', '金枪鱼', '三文鱼', '鳕鱼'],
+      '鸭肉': ['鸭', '鸭肉'],
+      '兔肉': ['兔', '兔肉', '兔脊肉']
+    };
+
+    for (const allergen of splitAllergens) {
+      if (allergen && typeof allergen === 'string' && allergen.trim() !== '') {
+        const cleanAllergen = allergen.trim();
+        // 1. 直切匹配
+        for (const ing of ingredients) {
+          if (ing.includes(cleanAllergen) || cleanAllergen.includes(ing)) {
+            return cleanAllergen;
+          }
+        }
+        // 2. 别名匹配
+        const aliases = ALLERGEN_ALIASES[cleanAllergen];
+        if (aliases) {
+          for (const alias of aliases) {
+            for (const ing of ingredients) {
+              if (ing.includes(alias) || alias.includes(ing)) {
+                return cleanAllergen;
+              }
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }, [profile]);
+
   // 封装调用对比接口的流程
   const handleApplySelection = async (type, value) => {
     const nextAId = type === 'A' ? value : selectedAId;
@@ -228,14 +290,14 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
 
     const currentA = demoRecipes.find(r => r.id === selectedAId)?.name || '';
     const proposedA = demoRecipes.find(r => r.id === nextAId)?.name || '';
+    if (!profile?.id) {
+      alert('请先保存宠物档案后再进行配方对比。');
+      return;
+    }
 
     const payload = {
-      dogProfile: {
-        breedName: breedName,
-        age: age,
-        weight: weight,
-        goals: goals
-      },
+      pet_id: profile.id,
+      lang,
       currentSelection: {
         a_recipe_name: currentA,
         b_pack_name: selectedBName,
@@ -250,7 +312,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
 
     setIsComparing(true);
     try {
-      const res = await api.compareSelection(payload);
+      const res = await api.compareSelection(payload, authToken);
       setIsComparing(false);
       if (res.success && res.comparison && res.comparison.a_comparison && res.comparison.a_comparison.show_dialog) {
         setAComparisonData({
@@ -267,9 +329,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
             if (res.comparison.has_warning) {
               setWarningData({
                 text: res.comparison.warning_text,
-                pendingAction: () => {
-                  // State already updated above, do nothing
-                }
+                pendingAction: () => {}
               });
             }
             setAComparisonData(null);
@@ -291,14 +351,48 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
       }
     } catch (e) {
       setIsComparing(false);
-      setSelectedAId(nextAId);
-      setSelectedBName(nextB);
-      setSelectedCList(nextC);
+      alert(e.message || '配方对比失败，请稍后重试。');
     }
   };
 
-  const handleSelectA = (id) => {
-    handleApplySelection('A', id);
+  const handleSelectA = async (id) => {
+    const proposedRecipe = demoRecipes.find(r => r.id === id);
+    if (!proposedRecipe) return;
+
+    // 过敏原拦截阻断
+    const matchedAllergen = checkRecipeAllergen(proposedRecipe);
+    if (matchedAllergen) {
+      const proceed = window.confirm(`注意！您选择的“${proposedRecipe.name}”含有“${matchedAllergen}”，与您的爱犬的过敏原高度匹配，建议不要选择！是否确定要更换？`);
+      if (!proceed) return;
+    }
+
+    const proposedName = proposedRecipe.name;
+    const cached = comparisonsCache[proposedName];
+
+    if (cached && cached.a_comparison && cached.a_comparison.show_dialog) {
+      const currentRecipe = demoRecipes.find(r => r.id === selectedAId);
+      setAComparisonData({
+        currentName: currentRecipe?.name || '',
+        proposedName: proposedName,
+        currentScore: cached.a_comparison.current_score,
+        proposedScore: cached.a_comparison.proposed_score,
+        details: cached.a_comparison.comparison_details,
+        reason: cached.a_comparison.score_reason,
+        onConfirm: () => {
+          setSelectedAId(id);
+          if (cached.has_warning) {
+            setWarningData({
+              text: cached.warning_text,
+              pendingAction: () => {}
+            });
+          }
+          setAComparisonData(null);
+        }
+      });
+    } else {
+      // 降级使用普通对比流程
+      handleApplySelection('A', id);
+    }
   };
 
   const handleToggleC = (name) => {
@@ -386,19 +480,28 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {categoryRecipes.map(r => {
                   const isSelected = selectedAId === r.id;
+                  const matchedAllergen = checkRecipeAllergen(r);
+                  const cachedScore = comparisonsCache[r.name]?.a_comparison?.proposed_score;
                   return (
-                    <div key={r.id} className={`card ${isSelected ? 'glass-active' : 'glass'}`} style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 12, border: isSelected ? '1px solid var(--primary)' : '1px solid var(--border)', cursor: 'pointer' }} onClick={() => handleSelectA(r.id)}>
+                    <div key={r.id} className={`card ${isSelected ? 'glass-active' : 'glass'}`} style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 12, border: matchedAllergen ? '1px dashed #ef4444' : (isSelected ? '1px solid var(--primary)' : '1px solid var(--border)'), background: matchedAllergen ? 'rgba(239,68,68,0.03)' : '', cursor: 'pointer' }} onClick={() => handleSelectA(r.id)}>
                       {/* Checkbox (Radio style) */}
-                      <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isSelected ? 'var(--primary)' : 'transparent' }}>
+                      <div style={{ width: 20, height: 20, borderRadius: '50%', border: matchedAllergen ? '2px solid #ef4444' : '2px solid var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isSelected ? (matchedAllergen ? '#ef4444' : 'var(--primary)') : 'transparent' }}>
                         {isSelected && <span style={{ color: '#000', fontSize: 12, fontWeight: 'bold' }}>✓</span>}
                       </div>
                       
                       {/* Text details */}
                       <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{r.name}</span>
-                          {defaultRecommendedA.map(x => x.id).includes(r.id) && (
-                            <span style={{ fontSize: 9, background: 'rgba(0,230,255,0.15)', color: 'var(--primary)', padding: '1px 5px', borderRadius: 4 }}>推荐</span>
+                          {cachedScore && (
+                            <span style={{ fontSize: 11, color: matchedAllergen ? '#f87171' : 'var(--primary)', fontWeight: 800 }}>({cachedScore}% 适配)</span>
+                          )}
+                          {matchedAllergen ? (
+                            <span style={{ fontSize: 9, background: 'rgba(239,68,68,0.15)', color: '#f87171', padding: '1px 5px', borderRadius: 4, border: '1px solid rgba(239,68,68,0.3)', fontWeight: 700 }}>⚠️ 含有过敏原: {matchedAllergen}</span>
+                          ) : (
+                            defaultRecommendedA.map(x => x.id).includes(r.id) && (
+                              <span style={{ fontSize: 9, background: 'rgba(0,230,255,0.15)', color: 'var(--primary)', padding: '1px 5px', borderRadius: 4 }}>推荐</span>
+                            )
                           )}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>

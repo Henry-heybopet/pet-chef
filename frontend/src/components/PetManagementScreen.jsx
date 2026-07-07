@@ -48,7 +48,8 @@ export default function PetManagementScreen({ profiles = [], onAddPet, onEditPet
         ) : (
           profiles.map(pet => {
             const breedLabel = tData(pet.breedName, lang);
-            const genderLabel = pet.gender === 'female' ? (lang === 'zh' ? '母 ♀' : 'Female ♀') : (lang === 'zh' ? '公 ♂' : 'Male ♂');
+            const sex = pet.sex || pet.gender;
+            const genderLabel = sex === 'female' ? (lang === 'zh' ? '母 ♀' : 'Female ♀') : (lang === 'zh' ? '公 ♂' : 'Male ♂');
             const ageText = pet.age_months 
               ? `${Math.floor(pet.age_months / 12)}岁${Math.round(pet.age_months % 12)}个月` 
               : `${pet.age || 0}岁`;
@@ -143,8 +144,8 @@ export default function PetManagementScreen({ profiles = [], onAddPet, onEditPet
                     <span style={{ fontWeight: '800', fontSize: '15px', color: '#fff' }}>{pet.name}</span>
                     <span style={{ 
                       fontSize: '11px', 
-                      background: pet.gender === 'female' ? 'rgba(255,0,163,0.1)' : 'rgba(0,230,255,0.1)',
-                      color: pet.gender === 'female' ? 'var(--secondary)' : 'var(--primary)',
+                      background: sex === 'female' ? 'rgba(255,0,163,0.1)' : 'rgba(0,230,255,0.1)',
+                      color: sex === 'female' ? 'var(--secondary)' : 'var(--primary)',
                       padding: '2px 6px',
                       borderRadius: '6px',
                       fontWeight: 'bold'

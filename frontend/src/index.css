@@ -101,6 +101,75 @@ body {
   text-align: center;
 }
 
+.home-auth-widget {
+  position: absolute;
+  top: var(--control-top);
+  left: 16px;
+  z-index: 55;
+  width: min(206px, calc(100vw - 136px));
+  padding: 10px;
+  border: 1px solid rgba(0, 230, 255, 0.2);
+  border-radius: 14px;
+  background: rgba(10, 18, 28, 0.86);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.home-auth-title {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 7px;
+}
+
+.home-auth-form {
+  display: grid;
+  gap: 7px;
+}
+
+.home-auth-form input {
+  width: 100%;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.26);
+  color: #fff;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.home-auth-form button,
+.home-auth-session button {
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #00e6ff, #0f8cff);
+  color: #041018;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.home-auth-form button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.home-auth-session {
+  display: grid;
+  gap: 7px;
+  color: #fff;
+  font-size: 12px;
+}
+
+.home-auth-message {
+  margin-top: 6px;
+  color: #ffd166;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .home-logo-wrap {
   margin: -6% 0 -7%;
 }
@@ -1658,4 +1727,3 @@ select option {
   border-radius: 10px;
   background: rgba(255,255,255,0.02);
 }
-

@@ -309,7 +309,11 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
   };
 
   const handleSave = (shouldGoToAnalysis = false) => {
-    if (dateError) return;
+    if (dateError) {
+      setActiveTab(1);
+      window.alert(dateError);
+      return;
+    }
     const ageDetails = calculateAgeDetails(birthDate);
     const breed = breeds.find(b => b.id === breedId);
 
@@ -347,9 +351,9 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
       neutered: neuteredVal,
       healthTags,
       allergensText,
-      allergens: allergensText.trim() ? [allergensText.trim()] : [],
+      allergens: allergensText.trim() ? allergensText.split(/[,，、;；\s]+/).map(s => s.trim()).filter(Boolean) : [],
       allergySymptomsText,
-      allergySymptoms: allergySymptomsText.trim() ? [allergySymptomsText.trim()] : [],
+      allergySymptoms: allergySymptomsText.trim() ? allergySymptomsText.split(/[,，、;；\s]+/).map(s => s.trim()).filter(Boolean) : [],
       allergySeverity,
       specialPeriod: specialPeriodVal,
       

@@ -6,6 +6,10 @@ node_modules
 dist
 *.log
 backend/.data/
+backend/public/uploads/
+backend/src/data/compare_cache*.json
+frontend/public/*.docx
+frontend/public/*.xlsx
 
 # Office/WPS temporary lock files
 ~$*

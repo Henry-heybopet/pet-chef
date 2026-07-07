@@ -9,7 +9,6 @@ import { HeyboTuya } from './native/heyboTuya';
 
 import DogSetup from './components/DogSetup';
 import PetManagementScreen from './components/PetManagementScreen';
-import AIInputScreen from './components/AIInputScreen';
 import AIAnalysisScreen from './components/AIAnalysisScreen';
 import RecipeList from './components/RecipeList';
 import RecipeMake from './components/RecipeMake';
@@ -18,6 +17,7 @@ import TuyaDeviceFlow from './components/TuyaDeviceFlow';
 import BottomTabBar from './components/BottomTabBar';
 import RecipeCategoryCatalog from './components/RecipeCategoryCatalog';
 import PetProfileDetails from './components/PetProfileDetails';
+import { dogBreeds } from './data/breeds';
 
 // ——— Language Selector (top-right globe button) ———
 function LangSelector() {
@@ -57,6 +57,66 @@ function LangSelector() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function AuthWidget({ user, token, authPrompt, onLogin, onLogout }) {
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (authPrompt) setMessage('请先注册/登录');
+  }, [authPrompt]);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await api.phoneLogin({ phone, password });
+      if (!result?.success) throw new Error(result?.error || '注册/登录失败');
+      onLogin(result);
+      setPassword('');
+      setMessage('登录成功');
+    } catch (error) {
+      setMessage(error?.message || '注册/登录失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="home-auth-widget">
+      <div className="home-auth-title">{token ? '已登录' : '注册/登录'}</div>
+      {token ? (
+        <div className="home-auth-session">
+          <span>{user?.primary_phone || user?.display_name || '当前用户'}</span>
+          <button type="button" onClick={onLogout}>退出</button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="home-auth-form">
+          <input
+            value={phone}
+            onChange={event => setPhone(event.target.value)}
+            inputMode="tel"
+            placeholder="手机号"
+            autoComplete="tel"
+          />
+          <input
+            value={password}
+            onChange={event => setPassword(event.target.value.replace(/\D/g, '').slice(0, 6))}
+            inputMode="numeric"
+            type="password"
+            placeholder="6位数字密码"
+            autoComplete="current-password"
+          />
+          <button type="submit" disabled={busy}>{busy ? '处理中' : '注册/登录'}</button>
+        </form>
+      )}
+      {message && <div className="home-auth-message">{message}</div>}
     </div>
   );
 }
@@ -120,12 +180,13 @@ function TuyaSdkPanel() {
 }
 
 // ——— HomeScreen ———
-function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry }) {
+function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken, authPrompt, onLogin, onLogout }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
 
   return (
     <div className="animate-fade home-screen">
+      <AuthWidget user={authUser} token={authToken} authPrompt={authPrompt} onLogin={onLogin} onLogout={onLogout} />
       <LangSelector />
       <div className="home-hero">
         <div className="home-logo-wrap">
@@ -178,7 +239,7 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry }) {
 
 // ——— Main App Router ———
 function AppInner() {
-  const { profiles, profile, setActiveId, addProfile, updateProfile, deleteProfile, hasProfile } = useDogProfile();
+  const { profiles, profile, setActiveId, addProfile, updateProfile, deleteProfile, replaceProfiles, hasProfile } = useDogProfile();
   const { lang } = useLanguage();
   const [screen, setScreen] = useState('home');
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
@@ -189,6 +250,9 @@ function AppInner() {
   const [cookingData, setCookingData] = useState(null);
   const [entrySource, setEntrySource] = useState(null);
   const [editingPet, setEditingPet] = useState(null);
+  const [authToken, setAuthToken] = useState('');
+  const [authUser, setAuthUser] = useState(null);
+  const [authPrompt, setAuthPrompt] = useState(0);
   const swipeStartRef = useRef(null);
 
   // Derived active tab based on current screen
@@ -218,12 +282,43 @@ function AppInner() {
   useEffect(() => {
     const onboardingDone = localStorage.getItem('petchef_onboarding_completed') === 'true';
     const hasCooked = localStorage.getItem('petchef_has_cooked') === 'true';
+    const savedToken = localStorage.getItem('petchef_auth_token') || '';
+    const savedUser = localStorage.getItem('petchef_auth_user');
     setHasCompletedOnboarding(onboardingDone);
     setHasCookedBefore(hasCooked);
+    setAuthToken(savedToken);
+    if (savedUser) {
+      try { setAuthUser(JSON.parse(savedUser)); } catch {}
+    }
     if (onboardingDone) {
       setScreen('home');
     }
   }, []);
+
+  const handleAuthLogin = (result) => {
+    setAuthToken(result.token);
+    setAuthUser(result.user);
+    localStorage.setItem('petchef_auth_token', result.token);
+    localStorage.setItem('petchef_auth_user', JSON.stringify(result.user || null));
+  };
+
+  const handleAuthLogout = () => {
+    setAuthToken('');
+    setAuthUser(null);
+    replaceProfiles([]);
+    localStorage.removeItem('petchef_auth_token');
+    localStorage.removeItem('petchef_auth_user');
+    setScreen('home');
+  };
+
+  const requireAuth = (next) => {
+    if (authToken) {
+      next();
+      return;
+    }
+    setAuthPrompt(value => value + 1);
+    setScreen('home');
+  };
 
   // 标记引导完成
   const markOnboardingComplete = () => {
@@ -267,7 +362,7 @@ function AppInner() {
   };
 
   const goHome = () => { setScreen('home'); };
-  const handleDogEntry = () => setScreen('pet_management');
+  const handleDogEntry = () => requireAuth(() => setScreen('pet_management'));
   
   const handleAddPet = () => {
     setEditingPet(null);
@@ -279,36 +374,148 @@ function AppInner() {
     setScreen('dog_setup');
   };
 
+  const toDateInput = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+    return date.toISOString().slice(0, 10);
+  };
+
+  const toUiPet = (pet) => {
+    const breedName = pet.breed || pet.breedName;
+    const breed = dogBreeds.find(item =>
+      item.id === pet.breedId ||
+      item.name === breedName ||
+      (breedName && (breedName.includes(item.name) || item.name.includes(breedName)))
+    );
+    const ageMonths = pet.age_months ?? pet.ageMonths;
+    return {
+      ...pet,
+      birthDate: toDateInput(pet.birth_date || pet.birthDate),
+      breedId: pet.breedId || breed?.id || (breedName ? 'custom' : ''),
+      breedName,
+      customBreed: breed ? '' : (pet.customBreed || breedName || ''),
+      breed: breed || pet.breed,
+      bodySize: pet.body_size || pet.bodySize || breed?.size,
+      activityLevel: pet.activity_level || pet.activityLevel,
+      targetWeight: pet.target_weight_kg ?? pet.targetWeight,
+      weight: pet.current_weight_kg ?? pet.weight,
+      bcs: pet.body_condition_score ?? pet.bcs,
+      feedingGoal: pet.feeding_goal || pet.feedingGoal,
+      healthTags: pet.health_tags || pet.healthTags || [],
+      allergySymptoms: pet.allergy_symptoms || pet.allergySymptoms || [],
+      allergySeverity: pet.allergy_severity || pet.allergySeverity,
+      specialPeriod: pet.special_period || pet.specialPeriod,
+      avatar: pet.avatar_url || pet.avatar,
+      gender: pet.sex || pet.gender,
+      age: ageMonths ? Number((Number(ageMonths) / 12).toFixed(1)) : pet.age,
+    };
+  };
+
+  useEffect(() => {
+    if (!authToken) return;
+    api.listPets(authToken)
+      .then(result => {
+        if (result?.success) replaceProfiles((result.pets || []).map(toUiPet));
+      })
+      .catch(error => console.error('Load DB pets failed:', error));
+  }, [authToken]);
+
+  const savePetProfile = async (draft) => {
+    if (!authToken) return draft;
+    const { avatar } = draft;
+    const ageMonths = draft.age_months ?? draft.ageMonths ?? null;
+    const lifeStage = ageMonths !== null
+      ? (Number(ageMonths) < 12 ? 'puppy' : Number(ageMonths) >= 96 ? 'senior' : 'adult')
+      : (draft.lifeStage || null);
+    const payload = {
+      name: draft.name,
+      species: draft.species || 'dog',
+      breed: draft.breedName || draft.breed || draft.customBreed || null,
+      sex: draft.sex || null,
+      neutered: Boolean(draft.neutered),
+      birth_date: draft.birthDate || null,
+      age_months: ageMonths,
+      current_weight_kg: draft.weight ?? null,
+      target_weight_kg: draft.targetWeight ?? null,
+      body_condition_score: draft.bcs === undefined || draft.bcs === null ? null : String(draft.bcs),
+      activity_level: draft.activityLevel || 'medium',
+      life_stage: lifeStage,
+      allergens: draft.allergens || [],
+      food_restrictions: draft.foodRestrictions || [],
+      health_tags: draft.healthTags || [],
+      doctor_notes: draft.doctorNotes || null,
+      user_notes: draft.userNotes || null,
+      feeding_goal: draft.feedingGoal || null,
+      body_size: draft.bodySize || null,
+      environment: draft.environment || null,
+      allergy_symptoms: draft.allergySymptoms || [],
+      allergy_severity: draft.allergySeverity || null,
+      special_period: draft.specialPeriod || null,
+    };
+    if (avatar) {
+      if (String(avatar).startsWith('data:')) {
+        const uploaded = await api.uploadAvatar(avatar, authToken);
+        if (!uploaded?.success) throw new Error(uploaded?.error || '上传宠物头像失败');
+        payload.avatar_url = uploaded.avatar_url;
+      } else {
+        payload.avatar_url = avatar;
+      }
+    }
+    let result = editingPet?.id
+      ? await api.updatePet(editingPet.id, payload, authToken)
+      : await api.createPet(payload, authToken);
+    if (!result?.success && editingPet?.id) {
+      result = await api.createPet(payload, authToken);
+    }
+    if (!result?.success) throw new Error(result?.error || '保存宠物档案失败');
+    return toUiPet(result.pet);
+  };
+
+  const analyzePetProfile = async (pet) => {
+    if (pet?.id) {
+      const byPetId = await api.aiAnalysisByPet(pet.id, lang, authToken);
+      if (byPetId?.success) return byPetId;
+      throw new Error(byPetId?.error || 'AI 分析失败');
+    }
+    throw new Error('请先保存宠物档案后再进行 AI 分析');
+  };
+
   const handleSelectPet = async (pet) => {
     setActiveId(pet.id);
     setEntrySource('dog');
     try {
-      const result = await api.aiAnalysis({ breedId: pet.breedId, breedName: pet.breedName, age: pet.age, weight: pet.weight, lang });
+      const result = await analyzePetProfile(pet);
       if (result.success) {
         setAiProfile({
-          id: pet.id,
-          breedId: pet.breedId,
-          breedName: pet.breedName,
-          age: pet.age,
-          weight: pet.weight,
-          breed: pet.breed,
-          goals: pet.feedingGoal ? [pet.feedingGoal] : [],
-          analysis: result.analysis
+          ...pet,
+          goals: pet.feedingGoal ? [pet.feedingGoal] : (pet.goals || []),
+          analysis: result.analysis,
+          comparisons: result.comparisons
         });
         setScreen('ai_analysis');
         return;
       }
     } catch (e) {
       console.error('AI analysis request failed for pet:', e);
+      window.alert(e?.message || 'AI 分析失败');
     }
     setScreen('pet_management');
   };
 
-  const handleProfileSave = (p) => {
+  const handleProfileSave = async (p) => {
+    let savedPet = p;
+    try {
+      savedPet = await savePetProfile(p);
+    } catch (error) {
+      console.error('Save pet profile failed:', error);
+      window.alert(error?.message || '保存宠物档案失败，请稍后重试');
+      return;
+    }
     if (editingPet && editingPet.id) {
-      updateProfile(editingPet.id, p);
+      updateProfile(editingPet.id, savedPet);
     } else {
-      addProfile(p);
+      addProfile(savedPet);
     }
     setScreen('pet_management');
   };
@@ -321,63 +528,64 @@ function AppInner() {
     setScreen('recipe_list');
   };
 
-  const handleAIEntry = () => setScreen('ai_input');
-  const handleDeviceEntry = () => setScreen('device_flow');
+  const handleAIEntry = () => requireAuth(() => {
+    if (profile?.id) handleAIShortcut(profile);
+    else setScreen('pet_management');
+  });
+  const handleDeviceEntry = () => requireAuth(() => setScreen('device_flow'));
 
   const handleAIShortcut = async (p) => {
     if (p && p.id) setActiveId(p.id);
     setEntrySource('ai');
     try {
-      const result = await api.aiAnalysis({ breedId: p.breedId, breedName: p.breedName, age: p.age, weight: p.weight, lang });
+      const result = await analyzePetProfile(p);
       if (result.success) {
         setAiProfile({
-          breedId: p.breedId,
-          breedName: p.breedName,
-          age: p.age,
-          weight: p.weight,
-          breed: p.breed,
-          goals: p.feedingGoal ? [p.feedingGoal] : [],
-          analysis: result.analysis
+          ...p,
+          goals: p.feedingGoal ? [p.feedingGoal] : (p.goals || []),
+          analysis: result.analysis,
+          comparisons: result.comparisons
         });
         setScreen('ai_analysis'); return;
       }
-    } catch (e) { console.error('AI shortcut failed:', e); }
-    setScreen('ai_input');
-  };
-
-  const handleAIAnalyzed = (result) => {
-    setAiProfile(result);
-    setEntrySource('ai'); setScreen('ai_analysis');
+    } catch (e) {
+      console.error('AI shortcut failed:', e);
+      alert(e.message || 'AI 分析失败，请先确认宠物档案已保存。');
+    }
+    setScreen('pet_management');
   };
 
   const handleShowAnalysis = async (p) => {
     let savedPet = p;
+    try {
+      savedPet = await savePetProfile(p);
+    } catch (error) {
+      console.error('Save pet profile failed:', error);
+      window.alert(error?.message || '保存宠物档案失败，请稍后重试');
+      return;
+    }
     if (editingPet && editingPet.id) {
-      updateProfile(editingPet.id, p);
-      savedPet = { ...editingPet, ...p };
+      updateProfile(editingPet.id, savedPet);
     } else {
-      savedPet = addProfile(p);
+      savedPet = addProfile(savedPet);
     }
     setActiveId(savedPet.id);
     setEntrySource('dog');
     try {
-      const result = await api.aiAnalysis({ breedId: savedPet.breedId, breedName: savedPet.breedName, age: savedPet.age, weight: savedPet.weight, lang });
+      const result = await analyzePetProfile(savedPet);
       if (result.success) {
         setAiProfile({
-          id: savedPet.id,
-          breedId: savedPet.breedId,
-          breedName: savedPet.breedName,
-          age: savedPet.age,
-          weight: savedPet.weight,
-          breed: savedPet.breed,
-          goals: savedPet.feedingGoal ? [savedPet.feedingGoal] : [],
-          analysis: result.analysis
+          ...savedPet,
+          goals: savedPet.feedingGoal ? [savedPet.feedingGoal] : (savedPet.goals || []),
+          analysis: result.analysis,
+          comparisons: result.comparisons
         });
         setScreen('ai_analysis');
         return;
       }
     } catch (e) {
       console.error('AI analysis request failed on setup completion:', e);
+      window.alert(e?.message || 'AI 分析失败');
     }
     setScreen('pet_management');
   };
@@ -409,8 +617,8 @@ function AppInner() {
   const goBack = () => {
     if (screen === 'home') return false;
     if (screen === 'dog_setup') setScreen('pet_management');
-    if (screen === 'pet_management' || screen === 'ai_input' || screen === 'device_flow' || screen === 'mall_placeholder') setScreen('home');
-    if (screen === 'ai_analysis') setScreen(entrySource === 'ai' ? 'ai_input' : 'pet_management');
+    if (screen === 'pet_management' || screen === 'device_flow' || screen === 'mall_placeholder') setScreen('home');
+    if (screen === 'ai_analysis') setScreen('pet_management');
     if (screen === 'recipe_catalog') setScreen('home');
     if (screen === 'recipe_list') {
       if (entrySource === 'catalog') setScreen('recipe_catalog');
@@ -452,6 +660,11 @@ function AppInner() {
           onDogEntry={handleDogEntry}
           onAIEntry={handleAIEntry}
           onDeviceEntry={handleDeviceEntry}
+          authUser={authUser}
+          authToken={authToken}
+          authPrompt={authPrompt}
+          onLogin={handleAuthLogin}
+          onLogout={handleAuthLogout}
         />
       )}
       {screen === 'recipe_catalog' && (
@@ -480,8 +693,7 @@ function AppInner() {
         />
       )}
       {screen === 'dog_setup' && <DogSetup onBack={goHome} profile={editingPet} onSave={handleProfileSave} onSelectCategory={handleSelectCategory} onShowAnalysis={handleShowAnalysis} lang={lang} />}
-      {screen === 'ai_input' && <AIInputScreen onBack={goHome} onAnalyze={handleAIAnalyzed} lang={lang} />}
-      {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} onSelectRecipe={handleSelectRecipe} lang={lang} />}
+      {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} onSelectRecipe={handleSelectRecipe} lang={lang} authToken={authToken} />}
       {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={profile} onSelectRecipe={handleSelectRecipe} lang={lang} />}
       {screen === 'recipe_make' && <RecipeMake onBack={goBack} recipe={selectedRecipe} profile={profile} onStartCooking={handleStartCooking} lang={lang} />}
       {screen === 'cooking' && <CookingScreen onBack={goHome} cookingData={cookingData} lang={lang} />}

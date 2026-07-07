@@ -1395,20 +1395,23 @@ export default function TuyaDeviceFlow({ onBack }) {
                   暂无云端操作历史，当通过App下发DIY烹饪命令时会自动记录。
                 </div>
               ) : (
-                historyRecords.map((rec, i) => (
-                  <div key={i} style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.02)', borderLeft: '3px solid #20f29b', borderRadius: '4px', fontSize: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', marginBottom: '4px' }}>
-                      <span>类型: <strong style={{ color: 'white' }}>{rec.operation_type === 'start_cooking' ? '启动烹饪' : rec.operation_type}</strong></span>
-                      <span>{new Date(rec.created_at || rec.started_at).toLocaleString()}</span>
+                historyRecords.map((rec, i) => {
+                  const params = rec.cooking_params_snapshot || rec;
+                  return (
+                    <div key={i} style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.02)', borderLeft: '3px solid #20f29b', borderRadius: '4px', fontSize: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', marginBottom: '4px' }}>
+                        <span>类型: <strong style={{ color: 'white' }}>{rec.operation_type === 'start_cooking' ? '启动烹饪' : rec.operation_type}</strong></span>
+                        <span>{new Date(rec.created_at || rec.started_at).toLocaleString()}</span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginTop: '6px', color: '#64748b' }}>
+                        <div>温度: <span style={{ color: 'white', fontWeight: '700' }}>{params.target_temperature_c}℃</span></div>
+                        <div>时长: <span style={{ color: 'white', fontWeight: '700' }}>{Math.round((params.target_time_seconds || 0) / 60)}分钟</span></div>
+                        <div>功率: <span style={{ color: 'white', fontWeight: '700' }}>{params.target_power}档</span></div>
+                        <div>转速: <span style={{ color: 'white', fontWeight: '700' }}>{params.target_speed}档</span></div>
+                      </div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginTop: '6px', color: '#64748b' }}>
-                      <div>温度: <span style={{ color: 'white', fontWeight: '700' }}>{rec.target_temperature_c}℃</span></div>
-                      <div>时长: <span style={{ color: 'white', fontWeight: '700' }}>{Math.round(rec.target_time_seconds / 60)}分钟</span></div>
-                      <div>功率: <span style={{ color: 'white', fontWeight: '700' }}>{rec.target_power}档</span></div>
-                      <div>转速: <span style={{ color: 'white', fontWeight: '700' }}>{rec.target_speed}档</span></div>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </section>

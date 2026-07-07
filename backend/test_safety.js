@@ -36,8 +36,8 @@ assert(hasCautionIngredients(result4) === true, 'T4: Should detect caution ingre
 assert(result4.caution.length >= 2, `T4: Should have 2+ caution. Found: ${result4.caution.length}`);
 
 // Test 5: Fuzzy matching works
-const result5 = validateIngredientSafety(['chicken breast', 'Grape']);
-assert(result5.toxic.length >= 1 || result5.safe.length >= 1, 'T5: Fuzzy match should work');
+const result5 = validateIngredientSafety(['鸡胸', '红葡萄']);
+assert(result5.toxic.length >= 1 && result5.safe.length >= 1, 'T5: Fuzzy match should work');
 
 // Test 6: Format warnings
 const warnings = generateSafetyWarnings(result1);

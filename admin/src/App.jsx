@@ -1,9 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   REGIONS,
   MEDICINE_REGISTRY,
-  mockUsers,
-  mockPets,
   mockDevices,
   mockRecipes,
   mockProducts,
@@ -12,6 +10,86 @@ import {
   mockDoctorReviews,
   mockFaultLogs
 } from './mockData';
+
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+function prettyJson(value, fallback = {}) {
+  return JSON.stringify(value || fallback, null, 2);
+}
+
+function parseJsonField(label, value) {
+  try {
+    return value?.trim() ? JSON.parse(value) : {};
+  } catch {
+    throw new Error(`${label} 不是合法 JSON`);
+  }
+}
+
+function recipeNutrition(recipe) {
+  const n = recipe.nutrition_snapshot || {};
+  return {
+    protein: n.protein || n.protein_pct || recipe.protein_pct || '-',
+    fat: n.fat || n.fat_pct || recipe.fat_pct || '-',
+    moisture: n.moisture || n.water_content_pct || recipe.water_content_pct || '-',
+    caloric_density: n.caloric_density || n.calories_per_100g || '-',
+  };
+}
+
+function recipeCookingProfile(recipe) {
+  return recipe.cooking_profile || recipe.cooking_base || {};
+}
+
+function asArray(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+    return value.split(/[,，、;；\s]+/).map(item => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function normalizePet(pet) {
+  return {
+    ...pet,
+    allergens: asArray(pet.allergens),
+    food_restrictions: asArray(pet.food_restrictions),
+    health_tags: asArray(pet.health_tags),
+    allergy_symptoms: asArray(pet.allergy_symptoms),
+    avatar_url: pet.avatar_url || '',
+  };
+}
+
+function normalizeUser(user) {
+  return {
+    ...user,
+    display_name: user.display_name || user.primary_phone || user.id,
+    avatar_url: user.avatar_url || '',
+  };
+}
+
+function fmt(value) {
+  if (value === null || value === undefined || value === '') return '-';
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  return String(value);
+}
+
+function fmtDate(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN');
+}
+
+function DetailRow({ label, value }) {
+  return (
+    <div className="pet-detail-row">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
 
 function App() {
   // 1. 全局状态
@@ -24,6 +102,19 @@ function App() {
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [selectedMedical, setSelectedMedical] = useState(null);
   const [selectedFault, setSelectedFault] = useState(null);
+  const [selectedRecipe, setSelectedRecipe] = useState(null);
+  const [recipeForm, setRecipeForm] = useState(null);
+  const [recipes, setRecipes] = useState([]);
+  const [recipeSource, setRecipeSource] = useState('loading');
+  const [recipesLoading, setRecipesLoading] = useState(false);
+  const [recipeError, setRecipeError] = useState('');
+  const [savingRecipe, setSavingRecipe] = useState(false);
+  const [pets, setPets] = useState([]);
+  const [petSource, setPetSource] = useState('loading');
+  const [petError, setPetError] = useState('');
+  const [users, setUsers] = useState([]);
+  const [userSource, setUserSource] = useState('loading');
+  const [userError, setUserError] = useState('');
 
   // 处方药品维护列表状态
   const [medicines, setMedicines] = useState(MEDICINE_REGISTRY);
@@ -43,14 +134,12 @@ function App() {
   // 数据过滤逻辑（按当前选择的区域隔离）
   // ==========================================
   const filteredUsers = useMemo(() => {
-    return mockUsers.filter(u => u.region === activeRegion);
-  }, [activeRegion]);
+    return users.filter(u => u.region === activeRegion);
+  }, [activeRegion, users]);
 
   const filteredPets = useMemo(() => {
-    // 找出该区域用户名下的所有宠物
-    const userIds = new Set(filteredUsers.map(u => u.id));
-    return mockPets.filter(p => userIds.has(p.owner_user_id));
-  }, [filteredUsers]);
+    return petSource === 'pg' ? pets : [];
+  }, [pets, petSource]);
 
   const filteredDevices = useMemo(() => {
     return mockDevices.filter(d => d.region === activeRegion);
@@ -92,6 +181,115 @@ function App() {
       { label: '设备告警/故障', value: filteredFaults.filter(f => f.status === 'unresolved').length, note: '待处理客服单', color: '#ef4444' }
     ];
   }, [filteredUsers, filteredDevices, filteredOrders, filteredFaults, currentRegionConfig]);
+
+  const loadRecipes = async () => {
+    setRecipesLoading(true);
+    setRecipeError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/recipes`);
+      const data = await res.json();
+      if (!data?.success) throw new Error(data?.error || '加载食谱失败');
+      setRecipes(data.recipes || []);
+      setRecipeSource(data.source || 'pg');
+    } catch (error) {
+      setRecipes([]);
+      setRecipeSource('pg_error');
+      setRecipeError(error.message);
+    } finally {
+      setRecipesLoading(false);
+    }
+  };
+
+  const loadPets = async () => {
+    setPetError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/pets`);
+      const data = await res.json();
+      if (!data?.success) throw new Error(data?.error || '加载宠物档案失败');
+      setPets((data.pets || []).map(normalizePet));
+      setPetSource(data.source || 'pg');
+    } catch (error) {
+      setPets([]);
+      setPetSource('pg_error');
+      setPetError(error.message);
+    }
+  };
+
+  const loadUsers = async () => {
+    setUserError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/users`);
+      const data = await res.json();
+      if (!data?.success) throw new Error(data?.error || '加载用户失败');
+      setUsers((data.users || []).map(normalizeUser));
+      setUserSource(data.source || 'pg');
+    } catch (error) {
+      setUsers([]);
+      setUserSource('pg_error');
+      setUserError(error.message);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+    loadRecipes();
+    loadPets();
+  }, []);
+
+  const openRecipeEditor = (recipe) => {
+    const cookingProfile = recipeCookingProfile(recipe);
+    setSelectedRecipe(recipe);
+    setRecipeForm({
+      name: recipe.name || '',
+      category: recipe.category || '',
+      life_stage: recipe.life_stage || '',
+      status: recipe.status || 'active',
+      version: recipe.version || 1,
+      health_tags: Array.isArray(recipe.health_tags) ? recipe.health_tags.join(', ') : (recipe.tags || []).join(', '),
+      ingredients: prettyJson(recipe.ingredients, {}),
+      nutrition_snapshot: prettyJson(recipe.nutrition_snapshot, {}),
+      cooking_profile: prettyJson(cookingProfile, {}),
+    });
+  };
+
+  const handleRecipeFormChange = (field, value) => {
+    setRecipeForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveRecipe = async (e) => {
+    e.preventDefault();
+    if (!selectedRecipe || !recipeForm) return;
+    setSavingRecipe(true);
+    setRecipeError('');
+    try {
+      const payload = {
+        name: recipeForm.name.trim(),
+        category: recipeForm.category.trim(),
+        life_stage: recipeForm.life_stage.trim() || null,
+        status: recipeForm.status,
+        version: Number(recipeForm.version) || 1,
+        health_tags: recipeForm.health_tags.split(/[,，、;；\s]+/).map(item => item.trim()).filter(Boolean),
+        ingredients: parseJsonField('食材配比', recipeForm.ingredients),
+        nutrition_snapshot: parseJsonField('营养快照', recipeForm.nutrition_snapshot),
+        cooking_profile: parseJsonField('鲜食机控制参数', recipeForm.cooking_profile),
+      };
+      const res = await fetch(`${API_BASE}/api/admin/recipes/${selectedRecipe.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '保存失败');
+      setRecipes(prev => prev.map(recipe => recipe.id === data.recipe.id ? data.recipe : recipe));
+      setRecipeSource(data.source || 'pg');
+      setSelectedRecipe(null);
+      setRecipeForm(null);
+    } catch (error) {
+      setRecipeError(error.message);
+    } finally {
+      setSavingRecipe(false);
+    }
+  };
 
   // 处理添加药品逻辑
   const handleAddMedicine = (e) => {
@@ -139,10 +337,10 @@ function App() {
             <span>📊 运行大盘 Dashboard</span>
           </button>
           <button className={`nav-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>
-            <span>👤 用户管理 Users ({filteredUsers.length}/{mockUsers.length})</span>
+            <span>👤 用户管理 Users ({filteredUsers.length}/{users.length})</span>
           </button>
           <button className={`nav-btn ${activeTab === 'pets' ? 'active' : ''}`} onClick={() => setActiveTab('pets')}>
-            <span>🐶 宠物档案 Pets ({filteredPets.length}/{mockPets.length})</span>
+            <span>🐶 宠物档案 Pets ({filteredPets.length}/{pets.length})</span>
           </button>
           <button className={`nav-btn ${activeTab === 'devices' ? 'active' : ''}`} onClick={() => setActiveTab('devices')}>
             <span>🔌 智能设备 Devices ({filteredDevices.length}/{mockDevices.length})</span>
@@ -250,14 +448,17 @@ function App() {
           <section className="module-section">
             <div className="table-header">
               <h3>用户账户名录</h3>
-              <p>仅展示 {currentRegionConfig.name} 注册账号</p>
+              <p>
+                数据源：{userSource}
+                {userError ? ` 数据库加载失败：${userError}` : ` 仅展示 ${currentRegionConfig.name} 注册账号`}
+              </p>
             </div>
             
             <div className="grid-list">
               {filteredUsers.map(user => (
                 <article key={user.id} className="detail-card cursor-pointer" onClick={() => setSelectedUser(user)}>
                   <div className="card-header">
-                    <img className="avatar" src={user.avatar_url} alt={user.display_name} />
+                    {user.avatar_url ? <img className="avatar" src={user.avatar_url} alt={user.display_name} /> : <div className="avatar avatar-fallback">👤</div>}
                     <div>
                       <h4>{user.display_name}</h4>
                       <span className="badge-id">{user.id}</span>
@@ -286,7 +487,7 @@ function App() {
                 <div className="detail-drawer" onClick={e => e.stopPropagation()}>
                   <button className="close-btn" onClick={() => setSelectedUser(null)}>✕ 关闭</button>
                   <div className="drawer-header">
-                    <img className="drawer-avatar" src={selectedUser.avatar_url} alt={selectedUser.display_name} />
+                    {selectedUser.avatar_url ? <img className="drawer-avatar" src={selectedUser.avatar_url} alt={selectedUser.display_name} /> : <div className="drawer-avatar avatar-fallback">👤</div>}
                     <h2>{selectedUser.display_name} 的详细档案</h2>
                     <span className="badge-id">{selectedUser.id}</span>
                   </div>
@@ -296,15 +497,15 @@ function App() {
                     <div className="metric-row">
                       <div className="mini-card">
                         <span>登录频率</span>
-                        <strong>{selectedUser.login_frequency}</strong>
+                        <strong>{selectedUser.last_login_at ? '已登录' : '暂无登录记录'}</strong>
                       </div>
                       <div className="mini-card">
                         <span>认证提供商</span>
-                        <strong>{selectedUser.login_provider.toUpperCase()}</strong>
+                        <strong>{selectedUser.provider || 'phone'}</strong>
                       </div>
                       <div className="mini-card">
                         <span>最后活跃时间</span>
-                        <span>{new Date(selectedUser.last_login_at).toLocaleString()}</span>
+                        <span>{selectedUser.last_login_at ? new Date(selectedUser.last_login_at).toLocaleString() : '-'}</span>
                       </div>
                     </div>
                   </div>
@@ -333,8 +534,8 @@ function App() {
                     <h3>🛍️ 商城消费与首选项</h3>
                     <div className="purchase-preferences">
                       <p><strong>已支付交易总额:</strong> {currentRegionConfig.symbol}{(filteredOrders.filter(o => o.user_id === selectedUser.id && o.payment_status === 'success').reduce((sum, o) => sum + o.total_cents, 0) / 100).toFixed(2)}</p>
-                      <p><strong>默认收货地址:</strong> {selectedUser.addresses[0]?.detail || '未填写'}</p>
-                      <p><strong>偏好食材类型:</strong> 鸭肉南瓜鲜食包 (依据历史订单分析)</p>
+                      <p><strong>默认收货地址:</strong> 未接入正式地址表</p>
+                      <p><strong>偏好食材类型:</strong> 暂无正式偏好数据</p>
                     </div>
                   </div>
                 </div>
@@ -348,42 +549,81 @@ function App() {
           <section className="module-section">
             <div className="table-header">
               <h3>爱宠健康档案</h3>
-              <p>支持过敏原审核与医生营养备注查阅</p>
+              <p>
+                数据源：{petSource}
+                {petError ? ` 当前为离线回退，不能代表正式数据库：${petError}` : ' 支持过敏原审核与医生营养备注查阅'}
+              </p>
             </div>
 
             <div className="grid-list">
               {filteredPets.map(pet => {
-                const owner = mockUsers.find(u => u.id === pet.owner_user_id);
+                const ownerName = pet.owner_display_name || pet.owner_primary_phone || pet.owner_user_id;
                 return (
                   <article key={pet.id} className="pet-card">
                     <div className="pet-card-main">
-                      <img className="pet-avatar" src={pet.avatar_url} alt={pet.name} />
+                      {pet.avatar_url ? (
+                        <img className="pet-avatar" src={pet.avatar_url} alt={pet.name} />
+                      ) : (
+                        <div className="pet-avatar avatar-fallback">{pet.species === 'cat' ? '🐱' : '🐶'}</div>
+                      )}
                       <div className="pet-info">
                         <h4>{pet.name} <span className="species-icon">{pet.species === 'dog' ? '🐶' : '🐱'}</span></h4>
                         <p>{pet.breed} | {pet.age_months} 个月</p>
-                        <p><strong>主人:</strong> {owner ? owner.display_name : pet.owner_user_id}</p>
+                        <p><strong>主人:</strong> {ownerName}</p>
                       </div>
                     </div>
 
                     <div className="pet-health-details">
-                      <div className="body-condition">
-                        <span>BCS 评分:</span>
-                        <strong>{pet.body_condition_score}</strong>
+                      <div className="pet-detail-grid">
+                        <DetailRow label="Pet ID" value={pet.id} />
+                        <DetailRow label="Household ID" value={pet.household_id} />
+                        <DetailRow label="Owner User ID" value={pet.owner_user_id} />
+                        <DetailRow label="物种" value={fmt(pet.species)} />
+                        <DetailRow label="性别" value={fmt(pet.sex)} />
+                        <DetailRow label="已绝育" value={fmt(pet.neutered)} />
+                        <DetailRow label="出生日期" value={fmtDate(pet.birth_date)} />
+                        <DetailRow label="月龄" value={fmt(pet.age_months)} />
+                        <DetailRow label="当前体重 kg" value={fmt(pet.current_weight_kg)} />
+                        <DetailRow label="目标体重 kg" value={fmt(pet.target_weight_kg)} />
+                        <DetailRow label="BCS 评分" value={fmt(pet.body_condition_score)} />
+                        <DetailRow label="活动水平" value={fmt(pet.activity_level)} />
+                        <DetailRow label="生命阶段" value={fmt(pet.life_stage)} />
+                        <DetailRow label="喂养目标" value={fmt(pet.feeding_goal)} />
+                        <DetailRow label="体型" value={fmt(pet.body_size)} />
+                        <DetailRow label="喂养环境" value={fmt(pet.environment)} />
+                        <DetailRow label="过敏程度" value={fmt(pet.allergy_severity)} />
+                        <DetailRow label="特殊时期" value={fmt(pet.special_period)} />
+                        <DetailRow label="创建时间" value={fmtDate(pet.created_at)} />
+                        <DetailRow label="更新时间" value={fmtDate(pet.updated_at)} />
                       </div>
+
                       <div className="allergen-pill-group">
                         <span>过敏原:</span>
                         {pet.allergens.length === 0 ? <span className="pill green">无已知过敏原</span> : 
                           pet.allergens.map(a => <span key={a} className="pill red">{a}</span>)}
                       </div>
+                      <div className="allergen-pill-group">
+                        <span>食物限制:</span>
+                        {pet.food_restrictions.length === 0 ? <span className="pill green">无</span> :
+                          pet.food_restrictions.map(a => <span key={a} className="pill red">{a}</span>)}
+                      </div>
                       <div className="health-tag-group">
                         <span>调理标签:</span>
-                        {pet.health_tags.map(t => <span key={t} className="pill orange">{t}</span>)}
+                        {pet.health_tags.length === 0 ? <span className="pill green">无</span> :
+                          pet.health_tags.map(t => <span key={t} className="pill orange">{t}</span>)}
+                      </div>
+                      <div className="health-tag-group">
+                        <span>过敏表现:</span>
+                        {pet.allergy_symptoms.length === 0 ? <span className="pill green">无</span> :
+                          pet.allergy_symptoms.map(t => <span key={t} className="pill orange">{t}</span>)}
                       </div>
                     </div>
 
                     <div className="doctor-memo">
                       <h5>🩺 兽医专科调理意见</h5>
                       <p>{pet.doctor_notes || '暂无专属医生诊断笔记。'}</p>
+                      <h5>📝 用户备注</h5>
+                      <p>{pet.user_notes || '暂无用户备注。'}</p>
                     </div>
                   </article>
                 );
@@ -545,57 +785,109 @@ function App() {
         {activeTab === 'recipes' && (
           <section className="module-section">
             <div className="table-header">
-              <h3>定制食谱配方目录</h3>
-              <p>编辑营养师标准食材配比与加热搅拌控制曲线</p>
+              <div>
+                <h3>定制食谱配方目录</h3>
+                <p>
+                  正式表 recipes：{recipes.length} 个 · 数据源：{recipeSource}
+                  {recipeSource !== 'pg' && <span className="inline-warning"> 当前数据库加载失败，不能保存正式数据库</span>}
+                </p>
+                {recipeError && <p className="inline-error">{recipeError}</p>}
+              </div>
+              <button className="action-btn" onClick={loadRecipes} disabled={recipesLoading}>
+                {recipesLoading ? '加载中...' : '刷新正式食谱'}
+              </button>
             </div>
 
             <div className="recipe-grid">
-              {mockRecipes.map(recipe => (
-                <article key={recipe.id} className="recipe-card-v2">
-                  <div className="recipe-header">
-                    <h4>{recipe.name}</h4>
-                    <div className="recipe-badges">
-                      {recipe.requires_vet_approval && (
-                        <span className="badge-vet-required">🩺 处方食谱(需医生签字)</span>
-                      )}
-                      <span className="badge-category">{recipe.category}</span>
-                    </div>
-                  </div>
-
-                  <div className="recipe-body-desc">
-                    <div className="recipe-column">
-                      <h5>🥩 食材配比：</h5>
-                      <ul className="ingredient-list-v2">
-                        {Object.entries(recipe.ingredients).map(([ing, pct]) => (
-                          <li key={ing}>{ing}: <strong>{pct}</strong></li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <div className="recipe-column">
-                      <h5>🔬 营养快照：</h5>
-                      <div className="nutrition-stats-box">
-                        <p>粗蛋白: <strong>{recipe.nutrition_snapshot.protein}</strong> | 粗脂肪: <strong>{recipe.nutrition_snapshot.fat}</strong></p>
-                        <p>水分: <strong>{recipe.nutrition_snapshot.moisture}</strong> | 能量密度: <strong>{recipe.nutrition_snapshot.caloric_density}</strong></p>
+              {recipes.map(recipe => {
+                const nutrition = recipeNutrition(recipe);
+                const cookingProfile = recipeCookingProfile(recipe);
+                const stages = Array.isArray(cookingProfile.stages) ? cookingProfile.stages : [];
+                return (
+                  <article key={recipe.id} className="recipe-card-v2">
+                    <div className="recipe-header">
+                      <div>
+                        <h4>{recipe.name}</h4>
+                        <code>{recipe.id}</code>
+                      </div>
+                      <div className="recipe-badges">
+                        <span className="badge-category">{recipe.category}</span>
+                        <span className="badge-category">{recipe.status || 'active'}</span>
+                        <button className="small-action-btn" onClick={() => openRecipeEditor(recipe)}>编辑</button>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="cooking-profile-block">
-                    <h5>🔥 鲜食机控制参数：</h5>
-                    <p className="water-ratio"><strong>加水基准：</strong> {recipe.cooking_profile.water_add_ml}</p>
-                    <div className="cooking-timeline">
-                      {recipe.cooking_profile.stages.map((stage, idx) => (
-                        <div key={idx} className="timeline-node">
-                          <span className="node-title">阶段 {idx + 1}: {stage.name}</span>
-                          <span className="node-detail">温度: {stage.temp} | 时间: {stage.duration} | 转速: {stage.speed}</span>
+                    <div className="recipe-body-desc">
+                      <div className="recipe-column">
+                        <h5>🥩 食材配比：</h5>
+                        <ul className="ingredient-list-v2">
+                          {Object.entries(recipe.ingredients || {}).slice(0, 8).map(([ing, pct]) => (
+                            <li key={ing}>{ing}: <strong>{pct}</strong></li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div className="recipe-column">
+                        <h5>🔬 营养快照：</h5>
+                        <div className="nutrition-stats-box">
+                          <p>粗蛋白: <strong>{nutrition.protein}</strong> | 粗脂肪: <strong>{nutrition.fat}</strong></p>
+                          <p>水分: <strong>{nutrition.moisture}</strong> | 能量密度: <strong>{nutrition.caloric_density}</strong></p>
+                          <p>生命阶段: <strong>{recipe.life_stage || '未设置'}</strong> | 版本: <strong>{recipe.version || 1}</strong></p>
                         </div>
-                      ))}
+                      </div>
                     </div>
-                  </div>
-                </article>
-              ))}
+
+                    <div className="cooking-profile-block">
+                      <h5>🔥 鲜食机控制参数：</h5>
+                      <p className="water-ratio"><strong>模式：</strong> {cookingProfile.mode || 'diy'} · <strong>温度：</strong> {cookingProfile.temperature || '-'} · <strong>功率：</strong> {cookingProfile.power || '-'}</p>
+                      <div className="cooking-timeline">
+                        {stages.length > 0 ? stages.map((stage, idx) => (
+                          <div key={idx} className="timeline-node">
+                            <span className="node-title">阶段 {idx + 1}: {stage.name}</span>
+                            <span className="node-detail">温度: {stage.temp || stage.temperature || '-'} | 时间: {stage.duration || stage.seconds || '-'} | 转速: {stage.speed || '-'}</span>
+                          </div>
+                        )) : (
+                          <div className="timeline-node">
+                            <span className="node-detail">速度: {cookingProfile.speed || '-'} · 加水比例: {cookingProfile.water_ratio || '-'}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
+
+            {selectedRecipe && recipeForm && (
+              <div className="modal-overlay" onClick={() => setSelectedRecipe(null)}>
+                <div className="modal-content recipe-editor-modal" onClick={e => e.stopPropagation()}>
+                  <header className="modal-header">
+                    <h3>编辑正式食谱：{selectedRecipe.id}</h3>
+                    <button className="close-btn" onClick={() => setSelectedRecipe(null)}>✕</button>
+                  </header>
+                  <form className="modal-body recipe-editor-form" onSubmit={handleSaveRecipe}>
+                    <div className="recipe-form-grid">
+                      <label>名称<input value={recipeForm.name} onChange={e => handleRecipeFormChange('name', e.target.value)} required /></label>
+                      <label>分类<input value={recipeForm.category} onChange={e => handleRecipeFormChange('category', e.target.value)} required /></label>
+                      <label>生命阶段<input value={recipeForm.life_stage} onChange={e => handleRecipeFormChange('life_stage', e.target.value)} /></label>
+                      <label>状态<select value={recipeForm.status} onChange={e => handleRecipeFormChange('status', e.target.value)}><option value="active">active</option><option value="draft">draft</option><option value="archived">archived</option></select></label>
+                      <label>版本<input type="number" min="1" value={recipeForm.version} onChange={e => handleRecipeFormChange('version', e.target.value)} /></label>
+                      <label>健康标签<input value={recipeForm.health_tags} onChange={e => handleRecipeFormChange('health_tags', e.target.value)} placeholder="逗号分隔" /></label>
+                    </div>
+                    <label>食材配比 JSON<textarea value={recipeForm.ingredients} onChange={e => handleRecipeFormChange('ingredients', e.target.value)} rows={8} /></label>
+                    <label>营养快照 JSON<textarea value={recipeForm.nutrition_snapshot} onChange={e => handleRecipeFormChange('nutrition_snapshot', e.target.value)} rows={7} /></label>
+                    <label>鲜食机控制参数 JSON<textarea value={recipeForm.cooking_profile} onChange={e => handleRecipeFormChange('cooking_profile', e.target.value)} rows={7} /></label>
+                    {recipeError && <p className="inline-error">{recipeError}</p>}
+                    <div className="editor-actions">
+                      <button type="button" className="action-btn danger" onClick={() => setSelectedRecipe(null)}>取消</button>
+                      <button type="submit" className="action-btn" disabled={savingRecipe || recipeSource !== 'pg'}>
+                        {savingRecipe ? '保存中...' : '保存到正式 recipes 表'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </section>
         )}
 

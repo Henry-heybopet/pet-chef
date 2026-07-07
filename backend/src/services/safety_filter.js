@@ -1,7 +1,7 @@
 // Pet Chef Ver B1.00 — Safety Filter · 2026-06-22
 // safety_filter.js — 食材安全过滤服务（硬规则，无 AI 参与安全决策）
 
-const { ingredientsDb } = require('../data/ingredients_db');
+const { getIngredientMap } = require('./nutrition_repository');
 
 /**
  * 对用户输入的食材名称进行模糊匹配
@@ -9,7 +9,7 @@ const { ingredientsDb } = require('../data/ingredients_db');
  * @param {string} inputName - 用户输入的食材名称
  * @returns {string|null} - 匹配到的数据库中的食材名称，未匹配返回 null
  */
-function fuzzyMatchIngredient(inputName) {
+function fuzzyMatchIngredient(inputName, ingredientsDb) {
   if (!inputName || typeof inputName !== 'string') return null;
 
   const normalizedInput = inputName.trim().toLowerCase();
@@ -42,7 +42,8 @@ function fuzzyMatchIngredient(inputName) {
  * @param {string[]} ingredientNames - Raw ingredient names from user input
  * @returns {{ safe: [], caution: [], toxic: [], unknown: [] }}
  */
-function validateIngredientSafety(ingredientNames) {
+async function validateIngredientSafety(ingredientNames) {
+  const { ingredients: ingredientsDb } = await getIngredientMap();
   const result = {
     safe: [],
     caution: [],
@@ -53,7 +54,7 @@ function validateIngredientSafety(ingredientNames) {
   if (!Array.isArray(ingredientNames)) return result;
 
   for (const name of ingredientNames) {
-    const matchedName = fuzzyMatchIngredient(name);
+    const matchedName = fuzzyMatchIngredient(name, ingredientsDb);
 
     if (!matchedName) {
       result.unknown.push({ name, matched_ingredient: null });

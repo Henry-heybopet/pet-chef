@@ -121,6 +121,20 @@
 
 ### 5.1 宠物档案 (pets) 元数据定义
 
+**主数据规则：**
+* `pets` 是宠物档案唯一可信来源。页面 state、localStorage、AI 输入页对象只能作为草稿或展示缓存。
+* AI 营养分析、配餐推荐、配方比较、烹饪参数计算等正式业务流程必须优先传 `pet_id`，由后端按 `user_id + pet_id` 读取已保存宠物档案。
+* AI/推荐缓存必须绑定 `pets.updated_at`。宠物档案修改后，旧缓存必须失效并重新生成。
+* 前端 camelCase 字段进入后端时必须映射为 `pets` 表字段，例如 `birthDate -> birth_date`、`weight -> current_weight_kg`、`targetWeight -> target_weight_kg`、`feedingGoal -> feeding_goal`。
+* 中文文案只用于展示；业务判断使用 `feeding_goal`、`life_stage`、`activity_level` 等正式枚举值。
+
+### 5.2 食谱与食材库主数据
+
+**主数据规则：**
+* `recipes` 和 `ingredient_library` 是推荐、AI、烹饪参数、安全检查的正式来源。
+* 运行时业务代码应通过统一 repository/service 读取食谱和食材；`recipes_db.js`、`ingredients_db.js` 只作为 seed/mock/fallback。
+* 食谱对外兼容字段可以由 service 映射，例如 `health_tags -> tags`、`cooking_profile -> cooking_base`，但接口内部不得各自重复解析正式表字段。
+
 **基础档案：**
 * `id` (String, 主键): `pet_xxx` 格式
 * `name` (String): 宠物姓名
@@ -248,7 +262,7 @@ pet chef
   -> AI 或规则生成 cooking_params_snapshot
   -> 转换成 tuya_dp_payload
   -> 调用 tuya-sdk 下发 DP
-  -> 写 cooking_operations
+  -> 写 cooking_operations.tuya_command_snapshot
   -> DP 实时状态写短期状态缓存和 logs/tuya
   -> 完成后写 feeding_records
 ```

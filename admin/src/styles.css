@@ -786,8 +786,32 @@ a {
   font-size: 13px;
 }
 
-.body-condition {
-  margin-bottom: 10px;
+.pet-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.pet-detail-row {
+  background: var(--panel-soft);
+  border-radius: 8px;
+  padding: 8px;
+  min-width: 0;
+}
+
+.pet-detail-row span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+
+.pet-detail-row strong {
+  display: block;
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .allergen-pill-group, .health-tag-group {
@@ -1062,6 +1086,8 @@ a {
 .recipe-badges {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .badge-vet-required {
@@ -1080,6 +1106,77 @@ a {
   font-weight: 800;
   padding: 2px 6px;
   border-radius: 4px;
+}
+
+.small-action-btn {
+  border: 1px solid var(--accent);
+  background: white;
+  color: var(--accent-dark);
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.inline-warning {
+  color: #b45309;
+  font-weight: 800;
+}
+
+.inline-error {
+  color: #b91c1c;
+  font-weight: 800;
+  margin: 6px 0 0;
+}
+
+.recipe-editor-modal {
+  width: min(980px, 94vw);
+}
+
+.recipe-editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.recipe-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.recipe-editor-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.recipe-editor-form input,
+.recipe-editor-form select,
+.recipe-editor-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 10px;
+  font: inherit;
+  color: var(--ink);
+  background: white;
+}
+
+.recipe-editor-form textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .recipe-body-desc {
@@ -1625,4 +1722,3 @@ a {
   background: #fff3d7;
   color: #b7791f;
 }
-
