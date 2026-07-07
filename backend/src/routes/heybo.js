@@ -2,6 +2,8 @@ const express = require('express');
 const store = require('../services/heybo_store');
 const { createAnalyticsEvent } = require('../services/analytics_events');
 const paymentService = require('../services/payment');
+const { authMiddleware, generateToken, verifyToken } = require('../services/auth');
+const { getEnvironment } = require('../config/region_config');
 
 const router = express.Router();
 
@@ -12,34 +14,55 @@ function asyncHandler(fn) {
   });
 }
 
-function getUserIdFromRequest(req) {
-  const auth = req.get('authorization') || '';
-  if (auth.startsWith('Bearer dev_')) return auth.replace('Bearer dev_', '');
-  if (req.get('x-heybo-user-id')) return req.get('x-heybo-user-id');
-  if (req.body?.user_id) return req.body.user_id;
-  if (req.query?.user_id) return req.query.user_id;
-  return '';
-}
-
 function requireUser(req) {
-  const userId = getUserIdFromRequest(req);
+  const userId = req.user ? req.user.id : null;
+  if (!userId) throw new Error('Unauthorized');
   const user = store.getUser(userId);
   if (!user) throw new Error('Unauthorized');
   return user;
 }
 
 router.post('/auth/mock-login', asyncHandler(async (req, res) => {
-  const { login, provider, display_name } = req.body || {};
+  const { login, password, provider, display_name } = req.body || {};
   if (!login) return res.status(400).json({ success: false, error: 'login is required' });
+
+  // 硬件工厂测试账号特定密码验证
+  if (login === '13501578655') {
+    if (!password) {
+      return res.status(400).json({ success: false, error: 'password is required for this test account' });
+    }
+    if (password !== '13501578665') {
+      return res.status(401).json({ success: false, error: 'Incorrect password for test account' });
+    }
+  } else if (login === '18757129405') {
+    if (!password) {
+      return res.status(400).json({ success: false, error: 'password is required for this test account' });
+    }
+    if (password !== '18757129405') {
+      return res.status(401).json({ success: false, error: 'Incorrect password for test account' });
+    }
+  }
+
   const result = store.loginOrCreateUser({
     login,
     provider: provider || (String(login).includes('@') ? 'email' : 'phone'),
-    displayName: display_name,
+    displayName: login === '18757129405' ? '工厂测试账号2' : (login === '13501578655' ? '工厂测试账号' : display_name),
   });
-  res.json({ success: true, ...result });
+
+
+  // 签发真实 JWT Token
+  const token = generateToken(result.user.id);
+
+  res.json({
+    success: true,
+    user: result.user,
+    household: result.household,
+    tuyaMapping: result.tuyaMapping,
+    token: token,
+  });
 }));
 
-router.get('/users/me', asyncHandler(async (req, res) => {
+router.get('/users/me', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   res.json({
     success: true,
@@ -49,31 +72,31 @@ router.get('/users/me', asyncHandler(async (req, res) => {
   });
 }));
 
-router.post('/households/default', asyncHandler(async (req, res) => {
+router.post('/households/default', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   res.json({ success: true, household: store.ensureDefaultHousehold(user.id) });
 }));
 
-router.get('/pets', asyncHandler(async (req, res) => {
+router.get('/pets', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const household = store.ensureDefaultHousehold(user.id);
   res.json({ success: true, pets: store.listByHousehold('pets', user.id, household.id) });
 }));
 
-router.post('/pets', asyncHandler(async (req, res) => {
+router.post('/pets', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const pet = store.createPet(user.id, req.body || {});
   res.json({ success: true, pet });
 }));
 
-router.patch('/pets/:id', asyncHandler(async (req, res) => {
+router.patch('/pets/:id', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const pet = store.updateById('pets', req.params.id, req.body || {});
   if (!pet) return res.status(404).json({ success: false, error: 'Pet not found' });
   res.json({ success: true, pet, user: store.publicUser(user) });
 }));
 
-router.get('/devices', asyncHandler(async (req, res) => {
+router.get('/devices', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const household = store.ensureDefaultHousehold(user.id);
   res.json({
@@ -83,13 +106,13 @@ router.get('/devices', asyncHandler(async (req, res) => {
   });
 }));
 
-router.post('/devices', asyncHandler(async (req, res) => {
+router.post('/devices', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const device = store.upsertDevice(user.id, req.body || {});
   res.json({ success: true, device });
 }));
 
-router.post('/devices/:id/pets', asyncHandler(async (req, res) => {
+router.post('/devices/:id/pets', authMiddleware, asyncHandler(async (req, res) => {
   requireUser(req);
   const { pet_id, is_default } = req.body || {};
   if (!pet_id) return res.status(400).json({ success: false, error: 'pet_id is required' });
@@ -97,7 +120,7 @@ router.post('/devices/:id/pets', asyncHandler(async (req, res) => {
   res.json({ success: true });
 }));
 
-router.get('/operations/cooking', asyncHandler(async (req, res) => {
+router.get('/operations/cooking', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const household = store.ensureDefaultHousehold(user.id);
   res.json({
@@ -106,7 +129,7 @@ router.get('/operations/cooking', asyncHandler(async (req, res) => {
   });
 }));
 
-router.post('/operations/cooking', asyncHandler(async (req, res) => {
+router.post('/operations/cooking', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const operation = store.createRecord('device_operation_records', user.id, {
     operation_type: 'start_cooking',
@@ -116,19 +139,19 @@ router.post('/operations/cooking', asyncHandler(async (req, res) => {
   res.json({ success: true, operation });
 }));
 
-router.get('/feeding-records', asyncHandler(async (req, res) => {
+router.get('/feeding-records', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const household = store.ensureDefaultHousehold(user.id);
   res.json({ success: true, records: store.listByHousehold('feeding_records', user.id, household.id) });
 }));
 
-router.post('/feeding-records', asyncHandler(async (req, res) => {
+router.post('/feeding-records', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const record = store.createRecord('feeding_records', user.id, req.body || {});
   res.json({ success: true, record });
 }));
 
-router.get('/health-records', asyncHandler(async (req, res) => {
+router.get('/health-records', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const household = store.ensureDefaultHousehold(user.id);
   let records = store.listByHousehold('health_records', user.id, household.id);
@@ -136,13 +159,13 @@ router.get('/health-records', asyncHandler(async (req, res) => {
   res.json({ success: true, records });
 }));
 
-router.post('/health-records', asyncHandler(async (req, res) => {
+router.post('/health-records', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const record = store.createRecord('health_records', user.id, req.body || {});
   res.json({ success: true, record });
 }));
 
-router.get('/medical-records', asyncHandler(async (req, res) => {
+router.get('/medical-records', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const household = store.ensureDefaultHousehold(user.id);
   let records = store.listByHousehold('medical_records', user.id, household.id);
@@ -150,7 +173,7 @@ router.get('/medical-records', asyncHandler(async (req, res) => {
   res.json({ success: true, records });
 }));
 
-router.post('/medical-records', asyncHandler(async (req, res) => {
+router.post('/medical-records', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const record = store.createRecord('medical_records', user.id, req.body || {});
   res.json({ success: true, record });
@@ -171,7 +194,7 @@ router.get('/products', (req, res) => {
   res.json({ success: true, products });
 });
 
-router.get('/orders', asyncHandler(async (req, res) => {
+router.get('/orders', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const household = store.ensureDefaultHousehold(user.id);
   const orders = store.listByHousehold('orders', user.id, household.id)
@@ -179,7 +202,7 @@ router.get('/orders', asyncHandler(async (req, res) => {
   res.json({ success: true, orders });
 }));
 
-router.post('/orders', asyncHandler(async (req, res) => {
+router.post('/orders', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const result = store.createOrder(user.id, req.body || {});
   res.json({ success: true, ...result });
@@ -189,12 +212,12 @@ router.get('/payments/providers', (req, res) => {
   res.json({ success: true, providers: paymentService.listProviderReadiness() });
 });
 
-router.get('/payments', asyncHandler(async (req, res) => {
+router.get('/payments', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   res.json({ success: true, payments: store.listPaymentsForUser(user.id) });
 }));
 
-router.get('/payments/:id', asyncHandler(async (req, res) => {
+router.get('/payments/:id', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const payment = store.getPayment(req.params.id);
   if (!payment || payment.user_id !== user.id) {
@@ -203,7 +226,7 @@ router.get('/payments/:id', asyncHandler(async (req, res) => {
   res.json({ success: true, payment, order: store.getOrder(payment.order_id) });
 }));
 
-router.post('/payments', asyncHandler(async (req, res) => {
+router.post('/payments', authMiddleware, asyncHandler(async (req, res) => {
   const user = requireUser(req);
   const { order_id, provider } = req.body || {};
   if (!order_id) return res.status(400).json({ success: false, error: 'order_id is required' });
@@ -226,7 +249,22 @@ router.post('/payments/mock-callback', asyncHandler(async (req, res) => {
 }));
 
 router.post('/analytics/events', asyncHandler(async (req, res) => {
-  const userId = getUserIdFromRequest(req);
+  // 尝试解析 Authorization header 中的 JWT
+  let userId = null;
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    const env = getEnvironment();
+    if (env !== 'production' && token.startsWith('dev_')) {
+      userId = token.replace('dev_', '');
+    } else {
+      const decoded = verifyToken(token);
+      if (decoded) {
+        userId = decoded.sub;
+      }
+    }
+  }
+
   const user = userId ? store.getUser(userId) : null;
   const { event_name, payload = {} } = req.body || {};
   if (!event_name) return res.status(400).json({ success: false, error: 'event_name is required' });

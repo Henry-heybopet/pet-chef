@@ -238,7 +238,11 @@ function createUserWithIdentity({ login, provider = 'phone', displayName }) {
 
 function loginOrCreateUser({ login, provider = 'phone', displayName }) {
   let user = findUserByLogin(login, provider);
-  if (!user) user = createUserWithIdentity({ login, provider, displayName });
+  if (!user) {
+    user = createUserWithIdentity({ login, provider, displayName });
+  } else if (displayName && user.display_name !== displayName) {
+    user.display_name = displayName;
+  }
   user.last_login_at = now();
   user.updated_at = now();
   const household = ensureDefaultHousehold(user.id);
@@ -286,11 +290,28 @@ function ensureDefaultHousehold(userId) {
 
 function ensureTuyaMapping(userId) {
   let mapping = db.tuya_user_mappings.find(item => item.user_id === userId);
-  if (mapping) return mapping;
+  const user = getUser(userId);
+  const isSpecialTestAccount = user && user.primary_phone === '18757129405';
+
+  if (mapping) {
+    if (isSpecialTestAccount && mapping.tuya_uid !== '18757129405') {
+      mapping.tuya_uid = '18757129405';
+      mapping.updated_at = now();
+    }
+    const expectedTestPassword = mapping.tuya_uid;
+    if (mapping.tuya_test_password !== expectedTestPassword) {
+      mapping.tuya_test_password = expectedTestPassword;
+      mapping.updated_at = now();
+    }
+    saveDb();
+    return mapping;
+  }
+
   mapping = {
     id: id('tym'),
     user_id: userId,
-    tuya_uid: `heybo_${userId}`,
+    tuya_uid: isSpecialTestAccount ? '18757129405' : `heybo_${userId}`,
+    tuya_test_password: isSpecialTestAccount ? '18757129405' : `heybo_${userId}`,
     tuya_country_code: '86',
     tuya_region: 'CN',
     tuya_home_ids: [],
