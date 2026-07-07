@@ -47,6 +47,7 @@ public class HeyboTuyaPlugin extends Plugin {
     private boolean initialized = false;
     private Long currentHomeId = null;
     private IThingActivator currentActivator = null;
+    private final Map<String, IThingDevice> activeDevices = new HashMap<>();
 
     @PluginMethod
     public void status(PluginCall call) {
@@ -87,14 +88,24 @@ public class HeyboTuyaPlugin extends Plugin {
     public void loginOrRegisterWithHeyboUid(PluginCall call) {
         if (!ensureInitialized(call)) return;
 
-        String heyboUid = call.getString("heyboUid");
-        if (TextUtils.isEmpty(heyboUid)) {
-            call.reject("heyboUid is required.");
+        String tuyaUid = call.getString("tuyaUid");
+        String password = call.getString("password");
+
+        if (TextUtils.isEmpty(tuyaUid)) {
+            String heyboUid = call.getString("heyboUid");
+            if (TextUtils.isEmpty(heyboUid)) {
+                call.reject("tuyaUid or heyboUid is required.");
+                return;
+            }
+            tuyaUid = "heybo_" + heyboUid;
+        }
+
+        if (TextUtils.isEmpty(password)) {
+            call.reject("password is required.");
             return;
         }
 
-        String tuyaUid = "heybo_" + heyboUid;
-        String password = call.getString("password", tuyaUid);
+        final String finalTuyaUid = tuyaUid;
         ThingHomeSdk.getUserInstance().loginOrRegisterWithUid(
             COUNTRY_CODE_CHINA,
             tuyaUid,
@@ -104,7 +115,7 @@ public class HeyboTuyaPlugin extends Plugin {
                 public void onSuccess(User user) {
                     JSObject result = new JSObject();
                     result.put("success", true);
-                    result.put("tuyaUid", tuyaUid);
+                    result.put("tuyaUid", finalTuyaUid);
                     call.resolve(result);
                 }
 
@@ -361,6 +372,238 @@ public class HeyboTuyaPlugin extends Plugin {
         sendCookCommand(call, "reset");
     }
 
+    @PluginMethod
+    public void unbindDevice(PluginCall call) {
+        if (!ensureInitialized(call)) return;
+
+        String devId = call.getString("devId");
+        if (TextUtils.isEmpty(devId)) {
+            call.reject("devId is required.");
+            return;
+        }
+
+        IThingDevice device = ThingHomeSdk.newDeviceInstance(devId);
+        device.removeDevice(new IResultCallback() {
+            @Override
+            public void onSuccess() {
+                JSObject result = new JSObject();
+                result.put("success", true);
+                result.put("devId", devId);
+                call.resolve(result);
+                device.onDestroy();
+            }
+
+            @Override
+            public void onError(String code, String error) {
+                call.reject("Unbind device failed: " + code + " " + error);
+                device.onDestroy();
+            }
+        });
+    }
+
+    @PluginMethod
+    public void startBleScan(PluginCall call) {
+        if (!ensureInitialized(call)) return;
+
+        try {
+            com.thingclips.smart.android.ble.api.LeScanSetting setting = new com.thingclips.smart.android.ble.api.LeScanSetting.Builder()
+                .setTimeout(60000) // 60 seconds
+                .addScanType(com.thingclips.smart.android.ble.api.ScanType.SINGLE)
+                .build();
+
+            ThingHomeSdk.getBleOperator().startLeScan(
+                setting,
+                new com.thingclips.smart.android.ble.api.BleScanResponse() {
+                    @Override
+                    public void onResult(com.thingclips.smart.android.ble.api.ScanDeviceBean scanDeviceBean) {
+                        if (scanDeviceBean == null) return;
+
+                        JSObject device = new JSObject();
+                        device.put("name", scanDeviceBean.getName());
+                        device.put("address", scanDeviceBean.getAddress());
+                        device.put("uuid", scanDeviceBean.getUuid());
+                        device.put("productId", scanDeviceBean.getProductId());
+                        device.put("isNearby", true);
+
+                        notifyListeners("bleDeviceFound", device);
+                    }
+                }
+            );
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Start BLE scan failed: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void stopBleScan(PluginCall call) {
+        try {
+            ThingHomeSdk.getBleOperator().stopLeScan();
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Stop BLE scan failed: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void connectBleDevice(PluginCall call) {
+        if (!ensureInitialized(call)) return;
+
+        Long homeId = getHomeId(call);
+        if (homeId == null) return;
+
+        String uuid = call.getString("uuid");
+        String address = call.getString("address");
+        String productId = call.getString("productId");
+        String ssid = call.getString("ssid");
+        String password = call.getString("password", "");
+
+        if (TextUtils.isEmpty(uuid) || TextUtils.isEmpty(address) || TextUtils.isEmpty(productId)) {
+            call.reject("uuid, address, and productId are required.");
+            return;
+        }
+
+        ThingHomeSdk.getActivatorInstance().getActivatorToken(homeId, new IThingActivatorGetToken() {
+            @Override
+            public void onSuccess(String token) {
+                com.thingclips.smart.sdk.bean.MultiModeActivatorBean bean = new com.thingclips.smart.sdk.bean.MultiModeActivatorBean();
+                bean.homeId = homeId;
+                bean.uuid = uuid;
+                bean.address = address;
+                bean.productId = productId;
+                bean.ssid = ssid;
+                bean.pwd = password;
+                bean.token = token;
+                bean.timeout = 120000; // 120 seconds
+
+                ThingHomeSdk.getActivator().newMultiModeActivator().startActivator(bean, new com.thingclips.smart.sdk.api.IMultiModeActivatorListener() {
+                    @Override
+                    public void onSuccess(DeviceBean deviceBean) {
+                        JSObject result = new JSObject();
+                        result.put("success", true);
+                        result.put("device", deviceToJson(deviceBean));
+                        call.resolve(result);
+                    }
+
+                    @Override
+                    public void onFailure(int code, String error, Object handle) {
+                        call.reject("BLE activation failed: " + code + " " + error);
+                    }
+                });
+            }
+
+            @Override
+            public void onFailure(String code, String error) {
+                call.reject("Get activator token failed: " + code + " " + error);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void subscribeDevice(PluginCall call) {
+        if (!ensureInitialized(call)) return;
+
+        String devId = call.getString("devId");
+        if (TextUtils.isEmpty(devId)) {
+            call.reject("devId is required.");
+            return;
+        }
+
+        synchronized (activeDevices) {
+            if (activeDevices.containsKey(devId)) {
+                IThingDevice oldDev = activeDevices.remove(devId);
+                if (oldDev != null) {
+                    oldDev.unRegisterDevListener();
+                    oldDev.onDestroy();
+                }
+            }
+
+            try {
+                IThingDevice device = ThingHomeSdk.newDeviceInstance(devId);
+                device.registerDevListener(new com.thingclips.smart.sdk.api.IDevListener() {
+                    @Override
+                    public void onDpUpdate(String devId, String dpStr) {
+                        JSObject data = new JSObject();
+                        data.put("devId", devId);
+                        data.put("dps", dpStr);
+                        notifyListeners("dpUpdate", data);
+                    }
+
+                    @Override
+                    public void onRemoved(String devId) {
+                        JSObject data = new JSObject();
+                        data.put("devId", devId);
+                        notifyListeners("deviceRemoved", data);
+                    }
+
+                    @Override
+                    public void onStatusChanged(String devId, boolean online) {
+                        JSObject data = new JSObject();
+                        data.put("devId", devId);
+                        data.put("online", online);
+                        notifyListeners("deviceStatusChanged", data);
+                    }
+
+                    @Override
+                    public void onNetworkStatusChanged(String devId, boolean status) {
+                    }
+
+                    @Override
+                    public void onDevInfoUpdate(String devId) {
+                    }
+                });
+
+                activeDevices.put(devId, device);
+                JSObject result = new JSObject();
+                result.put("success", true);
+                result.put("devId", devId);
+                call.resolve(result);
+            } catch (Exception e) {
+                call.reject("Subscribe device failed: " + e.getMessage(), e);
+            }
+        }
+    }
+
+    @PluginMethod
+    public void unsubscribeDevice(PluginCall call) {
+        String devId = call.getString("devId");
+        if (TextUtils.isEmpty(devId)) {
+            call.reject("devId is required.");
+            return;
+        }
+
+        synchronized (activeDevices) {
+            if (activeDevices.containsKey(devId)) {
+                IThingDevice device = activeDevices.remove(devId);
+                if (device != null) {
+                    device.unRegisterDevListener();
+                    device.onDestroy();
+                }
+            }
+        }
+
+        JSObject result = new JSObject();
+        result.put("success", true);
+        result.put("devId", devId);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void openBluetoothSettings(PluginCall call) {
+        try {
+            android.content.Intent intent = new android.content.Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS);
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            getActivity().startActivity(intent);
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Open Bluetooth settings failed: " + e.getMessage(), e);
+        }
+    }
+
     private boolean hasTuyaCredentials() {
         return !TextUtils.isEmpty(BuildConfig.TUYA_ANDROID_APP_KEY)
             && !TextUtils.isEmpty(BuildConfig.TUYA_ANDROID_APP_SECRET);
@@ -420,9 +663,9 @@ public class HeyboTuyaPlugin extends Plugin {
 
     private JSObject homeListResult(List<HomeBean> homeBeans) {
         JSObject result = new JSObject();
-        ArrayList<JSObject> homes = new ArrayList<>();
+        com.getcapacitor.JSArray homes = new com.getcapacitor.JSArray();
         if (homeBeans != null) {
-            for (HomeBean homeBean : homeBeans) homes.add(homeToJson(homeBean));
+            for (HomeBean homeBean : homeBeans) homes.put(homeToJson(homeBean));
             if (!homeBeans.isEmpty()) currentHomeId = homeBeans.get(0).getHomeId();
         }
         result.put("success", true);
@@ -447,10 +690,10 @@ public class HeyboTuyaPlugin extends Plugin {
         return result;
     }
 
-    private ArrayList<JSObject> deviceListToJson(List<DeviceBean> deviceBeans) {
-        ArrayList<JSObject> devices = new ArrayList<>();
+    private com.getcapacitor.JSArray deviceListToJson(List<DeviceBean> deviceBeans) {
+        com.getcapacitor.JSArray devices = new com.getcapacitor.JSArray();
         if (deviceBeans == null) return devices;
-        for (DeviceBean deviceBean : deviceBeans) devices.add(deviceToJson(deviceBean));
+        for (DeviceBean deviceBean : deviceBeans) devices.put(deviceToJson(deviceBean));
         return devices;
     }
 

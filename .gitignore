@@ -7,3 +7,6 @@ backend/.data/
 
 # Office/WPS temporary lock files
 ~$*
+
+frontend/public/*.docx
+frontend/public/*.xlsx
