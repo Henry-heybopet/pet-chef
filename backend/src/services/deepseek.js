@@ -68,4 +68,72 @@ async function evaluatePetBCS({ breedName, ageMonths, weight }) {
   }
 }
 
-module.exports = { evaluatePetBCS };
+async function analyzeFreshMatch({ pet, ingredients, safety_check, nutrition_gap }) {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
+  const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+
+  if (!apiKey) {
+    throw new Error('DEEPSEEK_API_KEY is not configured');
+  }
+
+  const systemPrompt = `你是 Heybo AI 宠物营养助手。请根据犬类宠物档案和用户输入的家中现有食材，生成安全、保守、结构化的鲜食配方建议。你必须遵守：
+1. 绝不使用犬类禁食食材。
+2. 绝不使用宠物档案中过敏食材。
+3. 每个配方优先使用单一动物蛋白。
+4. 不要求用完用户输入的所有食材。
+5. 蔬果和碳水可以选择多种组合：蔬菜选2-3个，优先南瓜、胡萝卜、西葫芦、西兰花；粗纤维和叶子菜比例可以略高。
+6. 水果最多选1个，优先蓝莓、苹果、香蕉，水果总量必须低于5%。
+7. 碳水最多选2个，优先红薯、藜麦、土豆、燕麦、糙米；尽量不要使用小米和玉米，除非没有其它安全碳水。
+8. 如缺少碳水，请明确提示这是临时低碳餐，不建议长期作为主食。
+9. 配方最大总克重不得超过 1000g。
+10. 返回结果必须是 JSON，不要返回 Markdown。
+11. 不要给出医疗诊断，不要替代兽医建议。`;
+
+  const userPrompt = JSON.stringify({
+    pet: {
+      id: pet.id,
+      name: pet.name,
+      breed: pet.breed,
+      age_months: pet.age_months,
+      weight_kg: pet.current_weight_kg,
+      allergens: pet.allergens || [],
+      health_conditions: pet.health_tags || [],
+      special_status: pet.special_period || pet.life_stage || null,
+    },
+    ingredients,
+    safety_check,
+    nutrition_gap,
+    required_shape: {
+      recipes: [{
+        id: 'recipe_1',
+        name: '轻盈鸡肉餐',
+        total_weight_g: 420,
+        reason: '1-2句适合原因',
+        ingredients: [{ name: '鸡肉', weight_g: 260, ratio: '61.9%', category: 'protein' }],
+        nutrition_note: '简要营养说明',
+      }],
+    },
+  });
+
+  const response = await axios.post(`${baseUrl}/chat/completions`, {
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    temperature: 0.2,
+    response_format: { type: 'json_object' },
+  }, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    timeout: 18000,
+  });
+
+  const content = response.data.choices?.[0]?.message?.content || '{}';
+  return JSON.parse(String(content).replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
+}
+
+module.exports = { evaluatePetBCS, analyzeFreshMatch };

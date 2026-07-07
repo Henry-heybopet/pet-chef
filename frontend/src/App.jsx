@@ -14,10 +14,13 @@ import RecipeList from './components/RecipeList';
 import RecipeMake from './components/RecipeMake';
 import CookingScreen from './components/CookingScreen';
 import TuyaDeviceFlow from './components/TuyaDeviceFlow';
+import { FreshMatchResultScreen, FreshMatchScreen } from './components/FreshMatchScreen';
 import BottomTabBar from './components/BottomTabBar';
 import RecipeCategoryCatalog from './components/RecipeCategoryCatalog';
 import PetProfileDetails from './components/PetProfileDetails';
 import { dogBreeds } from './data/breeds';
+
+const SESSION_MS = 15 * 24 * 60 * 60 * 1000;
 
 // ——— Language Selector (top-right globe button) ———
 function LangSelector() {
@@ -61,63 +64,175 @@ function LangSelector() {
   );
 }
 
-function AuthWidget({ user, token, authPrompt, onLogin, onLogout }) {
-  const [phone, setPhone] = useState('');
+function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLogout }) {
+  const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [mode, setMode] = useState('login');
+  const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
+  const [signupPhone, setSignupPhone] = useState('');
+  const [maskedPhone, setMaskedPhone] = useState('');
+  const [username, setUsername] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (authPrompt) setMessage('请先注册/登录');
-  }, [authPrompt]);
+    if (!authPrompt) return;
+    setMode('login');
+    setOpen(true);
+    setMessage(authPromptMessage || '请先登录以激活 Heybo AI 功能');
+  }, [authPrompt, authPromptMessage]);
+
+  const resetModal = () => {
+    setOpen(false);
+    setMode('login');
+    setMessage('');
+    setPassword('');
+    setUsername('');
+  };
+
+  const finishLogin = (result) => {
+    onLogin(result);
+    resetModal();
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    const loginValue = login.trim();
+    if (!loginValue) {
+      setMessage('请输入用户名或手机号');
+      return;
+    }
+    if (!/^\d{6}$/.test(password)) {
+      setMessage('密码必须为6位数字');
+      return;
+    }
     setBusy(true);
     setMessage('');
     try {
-      const result = await api.phoneLogin({ phone, password });
+      const result = await api.phoneLogin({ login: loginValue, password });
       if (!result?.success) throw new Error(result?.error || '注册/登录失败');
-      onLogin(result);
-      setPassword('');
-      setMessage('登录成功');
+      if (result.needsUsername) {
+        setSignupPhone(result.phone);
+        setMaskedPhone(result.maskedPhone);
+        setMode('signup');
+        return;
+      }
+      finishLogin(result);
     } catch (error) {
-      setMessage(error?.message || '注册/登录失败');
+      setMessage(error?.message || '账号或密码错误，请重新输入');
     } finally {
       setBusy(false);
     }
   };
 
+  const handleSignup = async (event) => {
+    event.preventDefault();
+    const name = username.trim();
+    if (!name) {
+      setMessage('用户名不能为空');
+      return;
+    }
+    if (name.length > 18) {
+      setMessage('用户名最多18位');
+      return;
+    }
+    if (!/^[\u4e00-\u9fa5A-Za-z0-9]{1,18}$/.test(name)) {
+      setMessage('用户名仅支持中文、英文和数字');
+      return;
+    }
+    if (/^\d+$/.test(name)) {
+      setMessage('用户名不能为纯数字');
+      return;
+    }
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await api.phoneSignup({ phone: signupPhone, password, username: name });
+      if (!result?.success) throw new Error(result?.error || '完成登录失败');
+      finishLogin(result);
+    } catch (error) {
+      setMessage(error?.message || '该用户名已被使用，请换一个');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const displayName = user?.display_name || user?.username || '当前用户';
+
   return (
-    <div className="home-auth-widget">
-      <div className="home-auth-title">{token ? '已登录' : '注册/登录'}</div>
-      {token ? (
-        <div className="home-auth-session">
-          <span>{user?.primary_phone || user?.display_name || '当前用户'}</span>
-          <button type="button" onClick={onLogout}>退出</button>
+    <>
+      <div className="home-auth-entry">
+        <button
+          type="button"
+          className="home-auth-pill"
+          onClick={() => token ? setMenuOpen(value => !value) : setOpen(true)}
+        >
+          {token ? displayName : '登录'}
+        </button>
+        {token && menuOpen && (
+          <div className="home-auth-menu">
+            <div className="home-auth-account">当前账号：{displayName}</div>
+            <button type="button" onClick={() => { setMenuOpen(false); onLogout(); }}>退出登录</button>
+          </div>
+        )}
+      </div>
+
+      {open && !token && (
+        <div className="auth-modal-backdrop" onClick={resetModal}>
+          <div className="auth-modal" role="dialog" aria-modal="true" onClick={event => event.stopPropagation()}>
+            {mode === 'login' ? (
+              <form onSubmit={handleSubmit} className="auth-modal-form">
+                <div>
+                  <h2>登录 Heybo AI</h2>
+                  <p>登录后可使用 AI 食谱、宠物档案与一键烹饪功能</p>
+                </div>
+                {message && (
+                  <div className="auth-modal-message">
+                    <strong>{message}</strong>
+                    {message.includes('激活') && <span>登录后即可使用宠物档案、AI 食谱和一键烹饪</span>}
+                  </div>
+                )}
+                <input
+                  value={login}
+                  onChange={event => setLogin(event.target.value)}
+                  placeholder="用户名 / 手机号"
+                  autoComplete="username"
+                />
+                <input
+                  value={password}
+                  onChange={event => setPassword(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  type="password"
+                  placeholder="6位数字密码"
+                  autoComplete="current-password"
+                />
+                <button type="submit" disabled={busy}>{busy ? '登录中' : (message.includes('激活') ? '立即登录' : '登录')}</button>
+              </form>
+            ) : (
+              <form onSubmit={handleSignup} className="auth-modal-form">
+                <div>
+                  <h2>设置用户名</h2>
+                  <p>检测到该手机号首次使用，请设置一个用户名</p>
+                </div>
+                <div className="auth-modal-phone">手机号：{maskedPhone}</div>
+                {message && <div className="auth-modal-message"><strong>{message}</strong></div>}
+                <input
+                  value={username}
+                  onChange={event => setUsername(event.target.value.trim())}
+                  placeholder="用户名（18位以内中英文数字）"
+                  maxLength={18}
+                  autoComplete="nickname"
+                />
+                <button type="submit" disabled={busy}>{busy ? '处理中' : '完成登录'}</button>
+              </form>
+            )}
+            <button type="button" className="auth-modal-close" onClick={resetModal}>×</button>
+          </div>
         </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="home-auth-form">
-          <input
-            value={phone}
-            onChange={event => setPhone(event.target.value)}
-            inputMode="tel"
-            placeholder="手机号"
-            autoComplete="tel"
-          />
-          <input
-            value={password}
-            onChange={event => setPassword(event.target.value.replace(/\D/g, '').slice(0, 6))}
-            inputMode="numeric"
-            type="password"
-            placeholder="6位数字密码"
-            autoComplete="current-password"
-          />
-          <button type="submit" disabled={busy}>{busy ? '处理中' : '注册/登录'}</button>
-        </form>
       )}
-      {message && <div className="home-auth-message">{message}</div>}
-    </div>
+    </>
   );
 }
 
@@ -194,13 +309,13 @@ function AiWaitingModal() {
 }
 
 // ——— HomeScreen ———
-function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken, authPrompt, onLogin, onLogout }) {
+function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken, authPrompt, authPromptMessage, onLogin, onLogout }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
 
   return (
     <div className="animate-fade home-screen">
-      <AuthWidget user={authUser} token={authToken} authPrompt={authPrompt} onLogin={onLogin} onLogout={onLogout} />
+      <AuthWidget user={authUser} token={authToken} authPrompt={authPrompt} authPromptMessage={authPromptMessage} onLogin={onLogin} onLogout={onLogout} />
       <LangSelector />
       <div className="home-hero">
         <div className="home-logo-wrap">
@@ -222,7 +337,7 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken,
         </div>
       </div>
       <div className="home-actions">
-        <button onClick={onDogEntry} className="home-action-button home-action-dog">
+        <button onClick={onDogEntry} className={`home-action-button home-action-dog ${authToken ? '' : 'is-locked'}`}>
           <div className="home-action-icon">🐕</div>
           <div>
             <div className="home-action-title" style={{ color: 'var(--primary)' }}>{t('myDog')}</div>
@@ -230,7 +345,7 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken,
           </div>
           <div style={{ marginLeft: 'auto', color: 'var(--primary)', fontSize: 20 }}>→</div>
         </button>
-        <button onClick={onAIEntry} className="home-action-button home-action-ai">
+        <button onClick={onAIEntry} className={`home-action-button home-action-ai ${authToken ? '' : 'is-locked'}`}>
           <div className="home-action-icon">🤖</div>
           <div>
             <div className="home-action-title" style={{ color: 'var(--secondary)' }}>{t('aiRecipe')}</div>
@@ -238,7 +353,7 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken,
           </div>
           <div style={{ marginLeft: 'auto', color: 'var(--secondary)', fontSize: 20 }}>→</div>
         </button>
-        <button onClick={onDeviceEntry} className="home-action-button home-action-device">
+        <button onClick={onDeviceEntry} className={`home-action-button home-action-device ${authToken ? '' : 'is-locked'}`}>
           <div className="home-action-icon">⚙</div>
           <div>
             <div className="home-action-title" style={{ color: '#7CFFB2' }}>{t('deviceControl')}</div>
@@ -261,12 +376,15 @@ function AppInner() {
   const [aiProfile, setAiProfile] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
+  const [freshMatchResult, setFreshMatchResult] = useState(null);
   const [cookingData, setCookingData] = useState(null);
   const [entrySource, setEntrySource] = useState(null);
   const [editingPet, setEditingPet] = useState(null);
   const [authToken, setAuthToken] = useState('');
   const [authUser, setAuthUser] = useState(null);
   const [authPrompt, setAuthPrompt] = useState(0);
+  const [authPromptMessage, setAuthPromptMessage] = useState('');
+  const [pendingAuthAction, setPendingAuthAction] = useState(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const swipeStartRef = useRef(null);
 
@@ -278,6 +396,8 @@ function AppInner() {
       case 'recipe_catalog':
       case 'recipe_list':
       case 'recipe_make':
+      case 'fresh_match':
+      case 'fresh_match_result':
         return 'recipes';
       case 'pet_management':
       case 'dog_setup':
@@ -297,32 +417,66 @@ function AppInner() {
   useEffect(() => {
     const onboardingDone = localStorage.getItem('petchef_onboarding_completed') === 'true';
     const hasCooked = localStorage.getItem('petchef_has_cooked') === 'true';
-    const savedToken = localStorage.getItem('petchef_auth_token') || '';
-    const savedUser = localStorage.getItem('petchef_auth_user');
+    const savedToken = localStorage.getItem('authToken') || localStorage.getItem('petchef_auth_token') || '';
+    const expiresAt = Number(localStorage.getItem('sessionExpiresAt') || 0);
     setHasCompletedOnboarding(onboardingDone);
     setHasCookedBefore(hasCooked);
-    setAuthToken(savedToken);
-    if (savedUser) {
-      try { setAuthUser(JSON.parse(savedUser)); } catch {}
+    if (savedToken && expiresAt > Date.now()) {
+      setAuthToken(savedToken);
+      setAuthUser({
+        id: localStorage.getItem('userId') || '',
+        display_name: localStorage.getItem('username') || '当前用户',
+      });
+      api.heyboMe(savedToken)
+        .then(result => {
+          if (!result?.success) throw new Error(result?.error || '登录已过期');
+          saveAuthSession(result);
+        })
+        .catch(() => clearAuthSession());
+    } else {
+      clearAuthSession();
     }
     if (onboardingDone) {
       setScreen('home');
     }
   }, []);
 
+  const saveAuthSession = (result) => {
+    const user = result.user || null;
+    const token = result.token || '';
+    const expiresAt = String(Date.now() + SESSION_MS);
+    setAuthToken(token);
+    setAuthUser(user);
+    localStorage.setItem('authToken', token);
+    localStorage.setItem('userId', user?.id || '');
+    localStorage.setItem('username', user?.display_name || '');
+    localStorage.setItem('sessionExpiresAt', expiresAt);
+    localStorage.removeItem('petchef_auth_token');
+    localStorage.removeItem('petchef_auth_user');
+  };
+
+  const clearAuthSession = () => {
+    setAuthToken('');
+    setAuthUser(null);
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userId');
+    localStorage.removeItem('username');
+    localStorage.removeItem('sessionExpiresAt');
+    localStorage.removeItem('petchef_auth_token');
+    localStorage.removeItem('petchef_auth_user');
+  };
+
   const handleAuthLogin = (result) => {
-    setAuthToken(result.token);
-    setAuthUser(result.user);
-    localStorage.setItem('petchef_auth_token', result.token);
-    localStorage.setItem('petchef_auth_user', JSON.stringify(result.user || null));
+    saveAuthSession(result);
+    if (pendingAuthAction) {
+      pendingAuthAction();
+      setPendingAuthAction(null);
+    }
   };
 
   const handleAuthLogout = () => {
-    setAuthToken('');
-    setAuthUser(null);
+    clearAuthSession();
     replaceProfiles([]);
-    localStorage.removeItem('petchef_auth_token');
-    localStorage.removeItem('petchef_auth_user');
     setScreen('home');
   };
 
@@ -331,6 +485,8 @@ function AppInner() {
       next();
       return;
     }
+    setPendingAuthAction(() => next);
+    setAuthPromptMessage('请先登录以激活 Heybo AI 功能');
     setAuthPrompt(value => value + 1);
     setScreen('home');
   };
@@ -354,19 +510,17 @@ function AppInner() {
         setScreen('home');
         break;
       case 'recipes':
-        setSelectedCategory(null);
-        setEntrySource('catalog');
-        setScreen('recipe_catalog');
+        requireAuth(() => {
+          setSelectedCategory(null);
+          setEntrySource('catalog');
+          setScreen('recipe_catalog');
+        });
         break;
       case 'pet':
-        setScreen('pet_management');
+        requireAuth(() => setScreen('pet_management'));
         break;
       case 'cook':
-        if (cookingData) {
-          setScreen('cooking');
-        } else {
-          setScreen('device_flow');
-        }
+        requireAuth(() => setScreen(cookingData ? 'cooking' : 'device_flow'));
         break;
       case 'mall':
         setScreen('mall_placeholder');
@@ -548,8 +702,7 @@ function AppInner() {
   };
 
   const handleAIEntry = () => requireAuth(() => {
-    if (profile?.id) handleAIShortcut(profile);
-    else setScreen('pet_management');
+    setScreen('fresh_match');
   });
   const handleDeviceEntry = () => requireAuth(() => setScreen('device_flow'));
 
@@ -638,6 +791,8 @@ function AppInner() {
     if (screen === 'dog_setup') setScreen('pet_management');
     if (screen === 'pet_management' || screen === 'device_flow' || screen === 'mall_placeholder') setScreen('home');
     if (screen === 'ai_analysis') setScreen('pet_management');
+    if (screen === 'fresh_match') setScreen('home');
+    if (screen === 'fresh_match_result') setScreen('fresh_match');
     if (screen === 'recipe_catalog') setScreen('home');
     if (screen === 'recipe_list') {
       if (entrySource === 'catalog') setScreen('recipe_catalog');
@@ -682,6 +837,7 @@ function AppInner() {
           authUser={authUser}
           authToken={authToken}
           authPrompt={authPrompt}
+          authPromptMessage={authPromptMessage}
           onLogin={handleAuthLogin}
           onLogout={handleAuthLogout}
         />
@@ -699,6 +855,7 @@ function AppInner() {
           onAddPet={handleAddPet}
           onEditPet={handleEditPet}
           onSelectPet={handleSelectPet}
+          onBack={goHome}
           lang={lang}
         />
       )}
@@ -711,6 +868,16 @@ function AppInner() {
           lang={lang}
         />
       )}
+      {screen === 'fresh_match' && (
+        <FreshMatchScreen
+          profiles={profiles}
+          authToken={authToken}
+          onBack={goHome}
+          onAddPet={handleAddPet}
+          onResult={(result) => { setFreshMatchResult(result); setScreen('fresh_match_result'); }}
+        />
+      )}
+      {screen === 'fresh_match_result' && <FreshMatchResultScreen result={freshMatchResult} onBack={() => setScreen('fresh_match')} />}
       {screen === 'dog_setup' && <DogSetup onBack={goHome} profile={editingPet} onSave={handleProfileSave} onSelectCategory={handleSelectCategory} onShowAnalysis={handleShowAnalysis} lang={lang} />}
       {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} onSelectRecipe={handleSelectRecipe} lang={lang} authToken={authToken} />}
       {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={profile} onSelectRecipe={handleSelectRecipe} lang={lang} />}

@@ -70,6 +70,7 @@ async function createPayment(body, token, idempotencyKey) {
 export const api = {
   heyboMockLogin: (body) => post('/api/auth/mock-login', body),
   phoneLogin: (body) => post('/api/auth/phone-login', body),
+  phoneSignup: (body) => post('/api/auth/phone-signup', body),
   heyboMe: (token) => authedGet('/api/users/me', token),
   uploadAvatar: (dataUrl, token) => authedPost('/api/uploads/avatar', { data_url: dataUrl }, token),
   createPet: (body, token) => authedPost('/api/pets', body, token),
@@ -103,6 +104,7 @@ export const api = {
   compareSelection: (body, token) => authedPost('/api/recommend/compare', body, token),
   aiAnalysis: (petId, lang, token) => authedPost('/api/ai-analysis', { pet_id: petId, lang }, token),
   aiAnalysisByPet: (petId, lang, token) => authedPost('/api/ai-analysis', { pet_id: petId, lang }, token),
+  freshMatchAnalyze: (body, token) => authedPost('/api/fresh-match/analyze', body, token),
   aiRecipe: async (body) => {
     return post('/api/ai-recipe', body);
   },

@@ -7,9 +7,10 @@ const { createAnalyticsEvent } = require('../services/analytics_events');
 const paymentService = require('../services/payment');
 const { authMiddleware, generateToken, verifyToken } = require('../services/auth');
 const { getEnvironment } = require('../config/region_config');
-const { phoneLogin } = require('../services/phone_auth');
+const { accountLogin, completePhoneSignup } = require('../services/phone_auth');
 const { getUserById, getDefaultHouseholdForUser, publicUser } = require('../services/user_repository');
 const petRepository = require('../services/pet_repository');
+const { buildFreshMatchAnalysis } = require('../services/fresh_match');
 
 const router = express.Router();
 const avatarDir = path.resolve(__dirname, '../../public/uploads/avatars');
@@ -77,11 +78,28 @@ router.post('/auth/mock-login', asyncHandler(async (req, res) => {
 }));
 
 router.post('/auth/phone-login', asyncHandler(async (req, res) => {
-  const result = await phoneLogin(req.body || {});
+  const result = await accountLogin(req.body || {});
+  if (result.needsUsername) {
+    return res.json({
+      success: true,
+      needsUsername: true,
+      phone: result.phone,
+      maskedPhone: result.maskedPhone,
+    });
+  }
   res.json({
     success: true,
     user: result.user,
     household: result.household,
+    token: generateToken(result.user.id),
+  });
+}));
+
+router.post('/auth/phone-signup', asyncHandler(async (req, res) => {
+  const result = await completePhoneSignup(req.body || {});
+  res.json({
+    success: true,
+    user: result.user,
     token: generateToken(result.user.id),
   });
 }));
@@ -94,6 +112,7 @@ router.get('/users/me', authMiddleware, asyncHandler(async (req, res) => {
     user: publicUser(user),
     household: household || store.ensureDefaultHousehold(user.id),
     tuyaMapping: store.ensureTuyaMapping(user.id),
+    token: generateToken(user.id),
   });
 }));
 
@@ -132,6 +151,15 @@ router.get('/pets/:id', authMiddleware, asyncHandler(async (req, res) => {
   const pet = await petRepository.getPetForUser(user.id, req.params.id);
   if (!pet) return res.status(404).json({ success: false, error: 'Pet not found' });
   res.json({ success: true, pet, source: 'pg' });
+}));
+
+router.post('/fresh-match/analyze', authMiddleware, asyncHandler(async (req, res) => {
+  const user = await requireUser(req);
+  const pet = await petRepository.getPetForUser(user.id, req.body?.pet_id);
+  if (!pet) return res.status(404).json({ success: false, error: 'Pet not found' });
+  if (pet.species && pet.species !== 'dog') return res.status(400).json({ success: false, error: 'Fresh Match 仅支持犬类宠物档案' });
+  const result = await buildFreshMatchAnalysis({ pet, ingredients: req.body?.ingredients || {} });
+  res.json({ success: true, ...result });
 }));
 
 router.post('/pets', authMiddleware, asyncHandler(async (req, res) => {

@@ -3,12 +3,12 @@ import { useTranslation } from '../i18n/translations';
 import { tData } from '../i18n/dataTranslations';
 import TopBar from './TopBar';
 
-export default function PetManagementScreen({ profiles = [], onAddPet, onEditPet, onSelectPet, lang }) {
+export default function PetManagementScreen({ profiles = [], onAddPet, onEditPet, onSelectPet, onBack, lang }) {
   const t = useTranslation(lang);
 
   return (
     <div className="animate-fade flex-col" style={{ flex: 1, padding: '0 24px 32px' }}>
-      <TopBar onBack={() => window.history.back()} title={lang === 'zh' ? '宠物管理主页' : 'Pet Management'} hideBackButton={true} />
+      <TopBar onBack={onBack} title={lang === 'zh' ? '宠物管理主页' : 'Pet Management'} />
       
       {/* A Segment: Add Pet Entry */}
       <div 
