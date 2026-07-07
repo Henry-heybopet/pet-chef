@@ -7,6 +7,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(HeyboTuyaPlugin.class);
+        registerPlugin(HeyboPaymentsPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

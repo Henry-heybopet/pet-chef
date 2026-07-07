@@ -4,5 +4,10 @@
 TUYA_ANDROID_APP_KEY=j9rx9e5txvcrft9gs3p4
 TUYA_ANDROID_APP_SECRET=
 
+# WeChat Open Platform mobile app id, e.g. wx1234567890abcdef.
+# This is not a merchant secret; it is used by the native shell to validate
+# whether WeChat Pay is configured before the real OpenSDK wiring is enabled.
+WECHAT_OPEN_APP_ID=
+
 # Current debug keystore SHA256 registered in Tuya Developer Platform:
 # 2D:D3:16:F0:FD:7B:E9:AD:FE:D0:EE:1C:C9:10:FA:17:92:3A:6C:00:54:84:52:A9:03:73:F8:11:86:DB:12:97

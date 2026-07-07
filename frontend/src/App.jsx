@@ -13,6 +13,7 @@ import RecipeList from './components/RecipeList';
 import RecipeMake from './components/RecipeMake';
 import CookingScreen from './components/CookingScreen';
 import TuyaDeviceFlow from './components/TuyaDeviceFlow';
+import WechatPaymentFlow from './components/WechatPaymentFlow';
 
 // ——— Language Selector (top-right globe button) ———
 function LangSelector() {
@@ -115,7 +116,7 @@ function TuyaSdkPanel() {
 }
 
 // ——— HomeScreen ———
-function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry }) {
+function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, onPaymentEntry }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
   return (
@@ -165,6 +166,14 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry }) {
           </div>
           <div style={{ marginLeft: 'auto', color: '#7CFFB2', fontSize: 20 }}>→</div>
         </button>
+        <button onClick={onPaymentEntry} className="home-action-button">
+          <div className="home-action-icon">💳</div>
+          <div>
+            <div className="home-action-title" style={{ color: '#FFD37C' }}>微信支付测试</div>
+            <div className="home-action-desc">创建订单 · 调起微信 · 后端确认 paid</div>
+          </div>
+          <div style={{ marginLeft: 'auto', color: '#FFD37C', fontSize: 20 }}>→</div>
+        </button>
       </div>
     </div>
   );
@@ -196,6 +205,7 @@ function AppInner() {
 
   const handleAIEntry = () => setScreen('ai_input');
   const handleDeviceEntry = () => setScreen('device_flow');
+  const handlePaymentEntry = () => setScreen('wechat_payment');
 
   const handleAIShortcut = async (p) => {
     setActiveProfile(p); setEntrySource('ai');
@@ -219,7 +229,7 @@ function AppInner() {
   const handleStartCooking = (data) => { setCookingData(data); setScreen('cooking'); };
   const goBack = () => {
     if (screen === 'home') return false;
-    if (screen === 'dog_setup' || screen === 'ai_input' || screen === 'device_flow') setScreen('home');
+    if (screen === 'dog_setup' || screen === 'ai_input' || screen === 'device_flow' || screen === 'wechat_payment') setScreen('home');
     if (screen === 'ai_analysis') setScreen(entrySource === 'ai' ? 'ai_input' : 'dog_setup');
     if (screen === 'recipe_list') setScreen(entrySource === 'ai' ? 'ai_analysis' : 'dog_setup');
     if (screen === 'recipe_make') setScreen('recipe_list');
@@ -251,7 +261,7 @@ function AppInner() {
 
   return (
     <div id="app-container" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-      {screen === 'home' && <HomeScreen onDogEntry={handleDogEntry} onAIEntry={handleAIEntry} onDeviceEntry={handleDeviceEntry} />}
+      {screen === 'home' && <HomeScreen onDogEntry={handleDogEntry} onAIEntry={handleAIEntry} onDeviceEntry={handleDeviceEntry} onPaymentEntry={handlePaymentEntry} />}
       {screen === 'dog_setup' && <DogSetup onBack={goHome} profile={hasProfile ? profile : null} onSave={handleProfileSave} onSelectCategory={handleSelectCategory} lang={lang} />}
       {screen === 'ai_input' && <AIInputScreen onBack={goHome} onAnalyze={handleAIAnalyzed} lang={lang} />}
       {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} lang={lang} />}
@@ -259,6 +269,7 @@ function AppInner() {
       {screen === 'recipe_make' && <RecipeMake onBack={goBack} recipe={selectedRecipe} profile={activeProfile} onStartCooking={handleStartCooking} lang={lang} />}
       {screen === 'cooking' && <CookingScreen onBack={goHome} cookingData={cookingData} lang={lang} />}
       {screen === 'device_flow' && <TuyaDeviceFlow onBack={goHome} />}
+      {screen === 'wechat_payment' && <WechatPaymentFlow onBack={goHome} />}
     </div>
   );
 }

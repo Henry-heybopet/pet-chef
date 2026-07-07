@@ -209,7 +209,7 @@ router.post('/payments', asyncHandler(async (req, res) => {
   if (!order_id) return res.status(400).json({ success: false, error: 'order_id is required' });
   if (!provider) return res.status(400).json({ success: false, error: 'provider is required' });
 
-  const result = paymentService.createPayment({
+  const result = await paymentService.createPayment({
     userId: user.id,
     orderId: order_id,
     provider,
@@ -224,6 +224,15 @@ router.post('/payments/mock-callback', asyncHandler(async (req, res) => {
   const result = paymentService.applyDevelopmentCallback(req);
   res.json({ success: true, ...result });
 }));
+
+router.post('/payments/wechat/notify', (req, res) => {
+  try {
+    paymentService.applyWechatNotification(req);
+    res.json({ code: 'SUCCESS', message: '成功' });
+  } catch (error) {
+    res.status(400).json({ code: 'FAIL', message: error.message });
+  }
+});
 
 router.post('/analytics/events', asyncHandler(async (req, res) => {
   const userId = getUserIdFromRequest(req);

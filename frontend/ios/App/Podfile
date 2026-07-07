@@ -1,0 +1,10 @@
+platform :ios, '15.0'
+use_frameworks!
+
+target 'App' do
+  project 'App.xcodeproj'
+
+  # WeChat OpenSDK is required for real iOS WeChat Pay launch and callback.
+  # After installing CocoaPods dependencies, open App.xcworkspace for native builds.
+  pod 'WechatOpenSDK'
+end

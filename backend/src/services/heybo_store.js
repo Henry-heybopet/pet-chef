@@ -487,7 +487,7 @@ function createPayment({ userId, order, provider, idempotencyKey, status = 'pend
     const existing = db.payments.find(payment =>
       payment.user_id === userId && payment.idempotency_key === normalizedKey
     );
-    if (existing) return existing;
+    if (existing) return normalizePayment(existing);
   }
 
   const activePayment = db.payments.find(payment =>
@@ -495,13 +495,15 @@ function createPayment({ userId, order, provider, idempotencyKey, status = 'pend
     payment.provider === provider &&
     ['configuration_pending', 'pending', 'authorized'].includes(payment.status)
   );
-  if (activePayment) return activePayment;
+  if (activePayment) return normalizePayment(activePayment);
 
   const payment = {
     id: id('pay'),
     order_id: order.id,
     user_id: userId,
     provider,
+    out_trade_no: '',
+    provider_prepay_id: '',
     provider_payment_id: '',
     amount_cents: order.total_cents,
     currency: order.currency,
@@ -509,6 +511,7 @@ function createPayment({ userId, order, provider, idempotencyKey, status = 'pend
     idempotency_key: normalizedKey,
     paid_at: '',
     failure_reason: '',
+    raw_payload: null,
     created_at: now(),
     updated_at: now(),
   };
@@ -517,17 +520,57 @@ function createPayment({ userId, order, provider, idempotencyKey, status = 'pend
   return payment;
 }
 
+function normalizePayment(payment) {
+  if (!payment) return null;
+  if (payment.out_trade_no === undefined) payment.out_trade_no = '';
+  if (payment.provider_prepay_id === undefined) payment.provider_prepay_id = '';
+  if (payment.provider_payment_id === undefined) payment.provider_payment_id = '';
+  if (payment.raw_payload === undefined) payment.raw_payload = null;
+  return payment;
+}
+
 function getPayment(paymentId) {
-  return db.payments.find(payment => payment.id === paymentId) || null;
+  return normalizePayment(db.payments.find(payment => payment.id === paymentId) || null);
+}
+
+function getPaymentByOutTradeNo(outTradeNo) {
+  if (!outTradeNo) return null;
+  return normalizePayment(db.payments.find(payment => payment.out_trade_no === outTradeNo) || null);
 }
 
 function listPaymentsForUser(userId) {
-  return db.payments.filter(payment => payment.user_id === userId);
+  return db.payments.filter(payment => payment.user_id === userId).map(normalizePayment);
+}
+
+function updatePaymentProviderData(paymentId, {
+  outTradeNo,
+  providerPrepayId,
+  providerPaymentId,
+  status,
+  rawPayload,
+  failureReason,
+} = {}) {
+  const payment = getPayment(paymentId);
+  if (!payment) throw new Error('Payment not found');
+
+  if (outTradeNo !== undefined) payment.out_trade_no = outTradeNo;
+  if (providerPrepayId !== undefined) payment.provider_prepay_id = providerPrepayId;
+  if (providerPaymentId !== undefined) payment.provider_payment_id = providerPaymentId;
+  if (status !== undefined) payment.status = status;
+  if (rawPayload !== undefined) payment.raw_payload = rawPayload;
+  if (failureReason !== undefined) payment.failure_reason = failureReason;
+  payment.updated_at = now();
+  saveDb();
+  return payment;
 }
 
 function updatePaymentStatus(paymentId, status, { providerPaymentId = '', failureReason = '' } = {}) {
   const payment = getPayment(paymentId);
   if (!payment) throw new Error('Payment not found');
+
+  if (payment.status === 'paid') {
+    return { payment, order: getOrder(payment.order_id), idempotent: true };
+  }
 
   payment.status = status;
   payment.provider_payment_id = providerPaymentId || payment.provider_payment_id;
@@ -584,7 +627,9 @@ module.exports = {
   getOrder,
   createPayment,
   getPayment,
+  getPaymentByOutTradeNo,
   listPaymentsForUser,
+  updatePaymentProviderData,
   updatePaymentStatus,
   appendAnalyticsEvent,
   resetForTests,

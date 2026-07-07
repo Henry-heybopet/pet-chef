@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const store = require('./heybo_store');
+const wechatPay = require('./wechat_pay');
 
 const PROVIDERS = Object.freeze({
   wechat_pay: {
@@ -10,6 +11,7 @@ const PROVIDERS = Object.freeze({
       'WECHAT_PAY_API_V3_KEY',
       'WECHAT_PAY_PRIVATE_KEY_PATH',
       'WECHAT_PAY_CERT_SERIAL_NO',
+      'WECHAT_PAY_PLATFORM_CERT_PATH',
       'WECHAT_PAY_NOTIFY_URL',
     ],
   },
@@ -46,7 +48,7 @@ function assertOrderPayable(order, userId) {
   if (['cancelled', 'refunded'].includes(order.status)) throw new Error('Order is not payable');
 }
 
-function createPayment({ userId, orderId, provider, idempotencyKey }) {
+async function createPayment({ userId, orderId, provider, idempotencyKey }) {
   const readiness = providerReadiness(provider);
   const order = store.getOrder(orderId);
   assertOrderPayable(order, userId);
@@ -68,8 +70,24 @@ function createPayment({ userId, orderId, provider, idempotencyKey }) {
     };
   }
 
-  // Provider SDK calls are intentionally isolated here. Once merchant accounts
-  // are approved, replace this placeholder with WeChat App Pay / Alipay APP SDK.
+  if (provider === 'wechat_pay') {
+    const appPayment = await wechatPay.createAppPayment({ order, payment });
+    const updatedPayment = store.updatePaymentProviderData(payment.id, {
+      outTradeNo: appPayment.outTradeNo,
+      providerPrepayId: appPayment.prepayId,
+      status: 'pending',
+      rawPayload: appPayment.rawPayload,
+      failureReason: '',
+    });
+
+    return {
+      payment: updatedPayment,
+      readiness,
+      client_payload: appPayment.clientPayload,
+      message: `${readiness.label}App下单参数已生成`,
+    };
+  }
+
   return {
     payment,
     readiness,
@@ -95,10 +113,67 @@ function applyDevelopmentCallback(req) {
   return store.updatePaymentStatus(paymentId, status, { providerPaymentId });
 }
 
+function mapWechatTradeState(tradeState) {
+  if (tradeState === 'SUCCESS') return 'paid';
+  if (['CLOSED', 'REVOKED'].includes(tradeState)) return 'cancelled';
+  if (tradeState === 'PAYERROR') return 'failed';
+  return 'pending';
+}
+
+function applyWechatNotification(req) {
+  const config = wechatPay.loadNotificationConfig();
+  const { transaction } = wechatPay.parseWechatNotification(req, config);
+  const payment = store.getPaymentByOutTradeNo(transaction.out_trade_no);
+  if (!payment) throw new Error('Payment not found for WeChat out_trade_no');
+  if (payment.provider !== 'wechat_pay') throw new Error('Payment provider mismatch');
+
+  const order = store.getOrder(payment.order_id);
+  if (!order) throw new Error('Order not found for payment');
+  if (transaction.appid !== config.appId) throw new Error('Invalid WeChat appid');
+  if (transaction.mchid !== config.mchId) throw new Error('Invalid WeChat mchid');
+  if (Number(transaction.amount?.total) !== Number(payment.amount_cents)) {
+    throw new Error('Invalid WeChat payment amount');
+  }
+  if ((transaction.amount?.currency || payment.currency) !== payment.currency) {
+    throw new Error('Invalid WeChat payment currency');
+  }
+
+  const status = mapWechatTradeState(transaction.trade_state);
+  const result = store.updatePaymentStatus(payment.id, status, {
+    providerPaymentId: transaction.transaction_id || '',
+    failureReason: status === 'failed' ? (transaction.trade_state_desc || 'WeChat payment failed') : '',
+  });
+
+  store.updatePaymentProviderData(payment.id, {
+    providerPaymentId: transaction.transaction_id || result.payment.provider_payment_id,
+    rawPayload: {
+      ...(result.payment.raw_payload || {}),
+      notify: {
+        appid: transaction.appid,
+        mchid: transaction.mchid,
+        out_trade_no: transaction.out_trade_no,
+        transaction_id: transaction.transaction_id || '',
+        trade_state: transaction.trade_state,
+        trade_state_desc: transaction.trade_state_desc || '',
+        amount: transaction.amount || null,
+        success_time: transaction.success_time || '',
+      },
+    },
+  });
+
+  return {
+    payment: store.getPayment(payment.id),
+    order,
+    transaction,
+    status,
+  };
+}
+
 module.exports = {
   PROVIDERS,
   providerReadiness,
   listProviderReadiness,
   createPayment,
   applyDevelopmentCallback,
+  applyWechatNotification,
 };

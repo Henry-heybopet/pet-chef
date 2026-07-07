@@ -7,3 +7,15 @@ backend/.data/
 
 # Office/WPS temporary lock files
 ~$*
+
+frontend/public/*.docx
+frontend/public/*.xlsx
+/108108.png
+/2828.png
+/主页.png
+/烹饪.jpg
+/菜谱.png
+/菜谱2.jpg
+/菜谱3.png
+/菜谱4.png
+/营养分析.jpg
