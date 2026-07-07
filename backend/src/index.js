@@ -321,6 +321,12 @@ function safeCacheId(value) {
   return String(value || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
+function normalizeCacheTimestamp(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();
+}
+
 async function resolveDogProfileFromRequest(req) {
   const body = req.body || {};
   const petId = body.pet_id || body.petId;
@@ -357,7 +363,7 @@ app.post('/api/v1/recommend/compare', async (req, res) => {
       const cacheAgeMs = Date.now() - (cacheData.timestamp || 0);
       const isExpired = cacheAgeMs > 30 * 24 * 60 * 60 * 1000;
       const isDirty = dogProfile.pet_updated_at
-        ? cacheData.pet_updated_at !== dogProfile.pet_updated_at
+        ? normalizeCacheTimestamp(cacheData.pet_updated_at) !== normalizeCacheTimestamp(dogProfile.pet_updated_at)
         : !isProfileEqual(cacheData.dogProfile, dogProfile);
 
       if (!isExpired && !isDirty) {
@@ -440,6 +446,43 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
   const breed = breedsDb.find(b => b.id === breedId);
   const intake = calcDailyIntake(breed, weight, age);
 
+  const petCacheId = safeCacheId(dogProfile.pet_id || id || name || 'default');
+  const cacheFilePath = path.resolve(__dirname, `data/compare_cache_${petCacheId}.json`);
+  let comparisons = null;
+  let cacheValid = false;
+  let cacheNeedsWrite = false;
+
+  if (fs.existsSync(cacheFilePath)) {
+    try {
+      const cacheData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
+      const cacheAgeMs = Date.now() - (cacheData.timestamp || 0);
+      const isExpired = cacheAgeMs > 30 * 24 * 60 * 60 * 1000;
+      const isDirty = dogProfile.pet_updated_at
+        ? normalizeCacheTimestamp(cacheData.pet_updated_at) !== normalizeCacheTimestamp(dogProfile.pet_updated_at)
+        : !isProfileEqual(cacheData.dogProfile, dogProfile);
+
+      if (!isExpired && !isDirty) {
+        comparisons = cacheData.comparisons || null;
+        cacheValid = true;
+        if (cacheData.analysis && comparisons) {
+          console.log(`[AI Analysis Cache Hit File] Served valid cache for pet ${petCacheId}`);
+          return res.json({
+            success: true,
+            analysis: { ...cacheData.analysis, ...intake },
+            comparisons,
+            cache_hit: true
+          });
+        }
+        cacheNeedsWrite = true;
+        console.log(`[AI Analysis Cache Partial Hit] Reusing comparisons only for pet ${petCacheId}`);
+      } else {
+        console.log(`[Cache Invalidated] isExpired: ${isExpired}, isDirty: ${isDirty} for pet ${petCacheId}`);
+      }
+    } catch (err) {
+      console.error('[Cache Parsing Error]', err.message);
+    }
+  }
+
   let analysis = null;
   try {
     analysis = await analyzeBreedNutrition(
@@ -457,7 +500,6 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
   }
 
   if (!analysis) {
-    // 规则引擎降级
     let lifeStage = '成年犬', nutritionNeeds = [];
     if (age < 1) { lifeStage = '幼犬'; nutritionNeeds = ['高蛋白促进生长', 'DHA脑部发育', '适量钙质骨骼健康']; }
     else if (age >= 8) { lifeStage = '老年犬'; nutritionNeeds = ['易消化低脂', '关节保护', '抗氧化护心']; }
@@ -483,35 +525,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
 
   const mergedAnalysis = { ...analysis, ...intake };
 
-  // === 物理缓存生成/读取逻辑 ===
-  const petCacheId = safeCacheId(dogProfile.pet_id || id || name || 'default');
-  const cacheFilePath = path.resolve(__dirname, `data/compare_cache_${petCacheId}.json`);
-  let comparisons = null;
-  let cacheValid = false;
-
-  if (fs.existsSync(cacheFilePath)) {
-    try {
-      const cacheData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
-      const cacheAgeMs = Date.now() - (cacheData.timestamp || 0);
-      const isExpired = cacheAgeMs > 30 * 24 * 60 * 60 * 1000; // 30天过期
-      const isDirty = dogProfile.pet_updated_at
-        ? cacheData.pet_updated_at !== dogProfile.pet_updated_at
-        : !isProfileEqual(cacheData.dogProfile, dogProfile);
-
-      if (!isExpired && !isDirty) {
-        comparisons = cacheData.comparisons;
-        cacheValid = true;
-        console.log(`[Cache Hit File] Loaded valid compare cache for pet ${petCacheId}`);
-      } else {
-        console.log(`[Cache Invalidated] isExpired: ${isExpired}, isDirty: ${isDirty} for pet ${petCacheId}`);
-      }
-    } catch (err) {
-      console.error('[Cache Parsing Error]', err.message);
-    }
-  }
-
   if (!cacheValid) {
-    // 缓存无效/不存在，进行批量对比和计算
     const lifeStage = mergedAnalysis.life_stage || '成年犬';
     let targetCat = '成犬通用';
     if (lifeStage === '幼犬') {
@@ -524,7 +538,6 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
     const categoryRecipes = recipes.filter(r => r.category === targetCat);
     const baselineRecipe = categoryRecipes[0] || recipes[0];
 
-    // B包推荐
     let recommendedBName = '成犬维护营养包B';
     if (lifeStage === '幼犬') {
       recommendedBName = weight >= 25 ? '大型幼犬稳骨控钙营养包B' : '幼犬成长营养包B';
@@ -537,7 +550,6 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       else if (goalsList.includes('低敏')) recommendedBName = '低敏单一蛋白营养包B';
     }
 
-    // C包推荐
     const recommendedCList = [];
     if (lifeStage === '幼犬') {
       recommendedCList.push('脑发育支持功能包C');
@@ -573,37 +585,42 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
     }));
 
     const scoringDogProfile = {
-        ...dogProfile,
-        recipeIndexByName: buildRecipeIndexByName(recipes),
-      };
+      ...dogProfile,
+      recipeIndexByName: buildRecipeIndexByName(recipes),
+    };
 
     try {
       const result = await compareRecipeSelectionBatch(scoringDogProfile, currentSelection, proposedSelections);
       comparisons = result.comparisons;
-      // 写入物理缓存文件
-      fs.writeFileSync(cacheFilePath, JSON.stringify({
-        timestamp: Date.now(),
-        pet_id: dogProfile.pet_id || dogProfile.id,
-        pet_updated_at: dogProfile.pet_updated_at,
-        dogProfile: dogProfile,
-        comparisons: comparisons
-      }, null, 2), 'utf8');
-      console.log(`[Cache Written File] Saved compare cache for pet ${petCacheId}`);
+      cacheNeedsWrite = true;
     } catch (err) {
       console.error('Failed to pre-compute comparisons:', err.message);
-      // 兜底本地比对数据
       comparisons = {};
       const { getLocalComparisonWarning } = require('./services/gemini');
       proposedSelections.forEach(p => {
         comparisons[p.a_recipe_name] = getLocalComparisonWarning(scoringDogProfile, currentSelection, p);
       });
+      cacheNeedsWrite = true;
     }
+  }
+
+  if (cacheNeedsWrite) {
+    fs.writeFileSync(cacheFilePath, JSON.stringify({
+      timestamp: Date.now(),
+      pet_id: dogProfile.pet_id || dogProfile.id,
+      pet_updated_at: normalizeCacheTimestamp(dogProfile.pet_updated_at),
+      dogProfile: dogProfile,
+      analysis: mergedAnalysis,
+      comparisons: comparisons
+    }, null, 2), 'utf8');
+    console.log(`[Cache Written File] Saved analysis cache for pet ${petCacheId}`);
   }
 
   res.json({
     success: true,
     analysis: mergedAnalysis,
-    comparisons: comparisons
+    comparisons: comparisons,
+    cache_hit: false
   });
 });
 

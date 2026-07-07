@@ -179,6 +179,20 @@ function TuyaSdkPanel() {
   );
 }
 
+function AiWaitingModal() {
+  return (
+    <div className="ai-waiting-overlay" role="status" aria-live="polite">
+      <div className="ai-waiting-modal">
+        <div className="ai-waiting-title">宠物档案已更新，正在重新推演，请稍候。。。</div>
+        <div className="ai-waiting-visual" aria-hidden="true">
+          <img src="/heybo-ai-thinking.png" alt="" />
+        </div>
+        <div className="ai-waiting-powered">Power by Heybo AI</div>
+      </div>
+    </div>
+  );
+}
+
 // ——— HomeScreen ———
 function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken, authPrompt, onLogin, onLogout }) {
   const { lang } = useLanguage();
@@ -253,6 +267,7 @@ function AppInner() {
   const [authToken, setAuthToken] = useState('');
   const [authUser, setAuthUser] = useState(null);
   const [authPrompt, setAuthPrompt] = useState(0);
+  const [isAiLoading, setIsAiLoading] = useState(false);
   const swipeStartRef = useRef(null);
 
   // Derived active tab based on current screen
@@ -473,12 +488,16 @@ function AppInner() {
   };
 
   const analyzePetProfile = async (pet) => {
-    if (pet?.id) {
+    if (!pet?.id) throw new Error('请先保存宠物档案后再进行 AI 分析');
+    let loadingTimer = setTimeout(() => setIsAiLoading(true), 300);
+    try {
       const byPetId = await api.aiAnalysisByPet(pet.id, lang, authToken);
       if (byPetId?.success) return byPetId;
       throw new Error(byPetId?.error || 'AI 分析失败');
+    } finally {
+      clearTimeout(loadingTimer);
+      setIsAiLoading(false);
     }
-    throw new Error('请先保存宠物档案后再进行 AI 分析');
   };
 
   const handleSelectPet = async (pet) => {
@@ -706,6 +725,8 @@ function AppInner() {
           <button className="btn btn-secondary" style={{ marginTop: '24px', padding: '8px 24px' }} onClick={goHome}>返回首页</button>
         </div>
       )}
+
+      {isAiLoading && <AiWaitingModal />}
 
       {/* 引导完成后显示底部标签栏 */}
       {hasCompletedOnboarding && (

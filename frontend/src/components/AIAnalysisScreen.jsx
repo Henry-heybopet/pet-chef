@@ -91,10 +91,24 @@ function tFallbackAnalysis(text, breedName, age, weight, analysis, lang) {
   return text;
 }
 
+function getRecipeScore(recipe, comparisons) {
+  const score = Number(comparisons?.[recipe.name]?.a_comparison?.proposed_score);
+  return Number.isFinite(score) ? score : null;
+}
+
+function getBestScoredRecipeId(recipes, comparisons) {
+  const best = recipes.reduce((current, recipe) => {
+    const score = getRecipeScore(recipe, comparisons);
+    if (score === null) return current;
+    if (!current || score > current.score) return { id: recipe.id, score };
+    return current;
+  }, null);
+  return best?.id || recipes[0]?.id || '';
+}
+
 export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang, authToken }) {
   const t = useTranslation(lang);
   const { analysis, breedName, age, weight } = profile;
-  const goals = profile.goals || [];
 
   const lifeStageLabel = { '幼犬': '🐾 Puppy', '成年犬': '🐕 Adult', '老年犬': '🦴 Senior' }[analysis?.life_stage] || '🐕 Adult';
   const activityLabel = { low: lang === 'zh' ? '低活跃' : 'Low', medium: lang === 'zh' ? '中等活跃' : 'Medium', high: lang === 'zh' ? '高活跃' : 'High', very_high: lang === 'zh' ? '极高活跃' : 'Very High' }[analysis?.activity_level] || 'Medium';
@@ -133,57 +147,46 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     return categoryRecipes.slice(0, 3);
   }, [categoryRecipes]);
 
+  const defaultSelectedAId = React.useMemo(() => {
+    return getBestScoredRecipeId(categoryRecipes, profile?.comparisons);
+  }, [categoryRecipes, profile?.comparisons]);
+
   // 2. 状态管理
   // 当前选中的 A 包食谱 ID (必选, 单选)
-  const [selectedAId, setSelectedAId] = React.useState(() => {
-    return defaultRecommendedA[0]?.id || '';
-  });
+  const [selectedAId, setSelectedAId] = React.useState(defaultSelectedAId);
 
-  // 获取匹配/推荐的 B 包名称
-  const recommendedBName = React.useMemo(() => {
+  React.useEffect(() => {
+    setSelectedAId(defaultSelectedAId);
+  }, [defaultSelectedAId]);
+
+  const isLargePuppy = profile?.bodySize === 'large' || profile?.bodySize === 'giant' || weight >= 25;
+
+  const getAllowedBPackNames = React.useCallback(() => {
     if (analysis?.life_stage === '幼犬') {
-      return weight >= 25 ? '大型幼犬稳骨控钙营养包B' : '幼犬成长营养包B';
-    } else if (analysis?.life_stage === '老年犬') {
-      return '老年犬轻负担营养包B';
-    } else {
-      if (goals.includes('美毛')) return '成犬/美毛基础营养包B';
-      if (goals.includes('护肝')) return '成犬/护肝基础营养包B';
-      if (goals.includes('低敏')) return '低敏单一蛋白营养包B';
-      return '成犬维护营养包B';
+      return [isLargePuppy ? '大型幼犬稳骨控钙营养包B' : '幼犬成长营养包B'];
     }
-  }, [analysis, weight, goals]);
+    if (analysis?.life_stage === '老年犬') {
+      return ['老年犬轻负担营养包B'];
+    }
+    return ['成犬维护营养包B', '成犬/美毛基础营养包B', '成犬/护肝基础营养包B', '低敏单一蛋白营养包B'];
+  }, [analysis?.life_stage, isLargePuppy]);
+
+  const recommendedBName = React.useMemo(() => {
+    return getAllowedBPackNames()[0];
+  }, [getAllowedBPackNames]);
 
   // 当前选中的 B 包
   const [selectedBName, setSelectedBName] = React.useState(recommendedBName);
 
-  // 获取推荐的 C 包列表
-  const recommendedCList = React.useMemo(() => {
-    const list = [];
-    if (analysis?.life_stage === '幼犬') {
-      list.push('脑发育支持功能包C');
+  React.useEffect(() => {
+    const allowed = getAllowedBPackNames();
+    if (!allowed.includes(selectedBName)) {
+      setSelectedBName(allowed[0]);
     }
-    if (goals.includes('美毛') || goals.includes('皮毛')) {
-      list.push('美毛护肤支持功能包C');
-    }
-    if (goals.includes('护肝')) {
-      list.push('护肝支持功能包C');
-    }
-    if (goals.includes('低敏') || goals.includes('肠胃') || goals.includes('消化')) {
-      list.push('肠胃健康支持功能包C');
-    }
-    if (analysis?.life_stage === '老年犬' || goals.includes('关节') || goals.includes('护关节')) {
-      list.push('关节支持功能包C');
-    }
-    if (analysis?.life_stage === '老年犬' || goals.includes('抗炎') || goals.includes('免疫')) {
-      list.push('抗炎免疫支持功能包C');
-    }
-    return [...new Set(list)].slice(0, 2); // 限推荐 2 个
-  }, [analysis, goals]);
+  }, [getAllowedBPackNames, selectedBName]);
 
   // 当前选中的 C 包列表（限制单选或不选，最多一个）
-  const [selectedCList, setSelectedCList] = React.useState(() => {
-    return recommendedCList.slice(0, 1);
-  });
+  const [selectedCList, setSelectedCList] = React.useState([]);
 
   // 弹窗与控制状态
   const [showBSelector, setShowBSelector] = React.useState(false);
@@ -192,6 +195,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
   const [aComparisonData, setAComparisonData] = React.useState(null);
   const [hoveredCard, setHoveredCard] = React.useState(null);
   const [isComparing, setIsComparing] = React.useState(false);
+  const [showLowScoreRecipes, setShowLowScoreRecipes] = React.useState(false);
 
   // B包定义
   const bPacks = [
@@ -206,13 +210,13 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
 
   // C包定义
   const cPacks = [
-    { name: '脑发育支持功能包C', desc: 'DHA藻油 / 胆碱 / 牛磺酸，支持幼犬神经传导。' },
-    { name: '美毛护肤支持功能包C', desc: '天然卵磷脂 / 有机锌 / 生物素，强化皮脂屏障。' },
-    { name: '护肝支持功能包C', desc: '天然水飞蓟素 / 胆碱 / 姜黄素，抗氧化护肝。' },
-    { name: '肠胃健康支持功能包C', desc: '果寡糖益生元 / 酵母后生元，调理胃肠微生态。' },
-    { name: '关节支持功能包C', desc: '高浓度葡萄糖胺 / 软骨素 / MSM，关节润滑保护。' },
-    { name: '心脏健康支持功能包C', desc: '天然辅酶Q10 / L-肉碱 / 纯牛磺酸，强健心肌。' },
-    { name: '抗炎免疫支持功能包C', desc: '酵母β-葡聚糖 / 蓝莓花青素，清除自由基抗衰。' }
+    { name: '脑发育支持功能包C', desc: 'DHA藻油 / 胆碱 / 牛磺酸，支持幼犬神经传导。', ingredients: ['DHA藻油', '胆碱', '牛磺酸'] },
+    { name: '美毛护肤支持功能包C', desc: '天然卵磷脂 / 有机锌 / 生物素，强化皮脂屏障。', ingredients: ['天然卵磷脂', '有机锌', '生物素'] },
+    { name: '护肝支持功能包C', desc: '天然水飞蓟素 / 胆碱 / 姜黄素，抗氧化护肝。', ingredients: ['天然水飞蓟素', '胆碱', '姜黄素'] },
+    { name: '肠胃健康支持功能包C', desc: '果寡糖益生元 / 酵母后生元，调理胃肠微生态。', ingredients: ['果寡糖益生元', '酵母后生元'] },
+    { name: '关节支持功能包C', desc: '高浓度葡萄糖胺 / 软骨素 / MSM，关节润滑保护。', ingredients: ['葡萄糖胺', '软骨素', 'MSM'] },
+    { name: '心脏健康支持功能包C', desc: '天然辅酶Q10 / L-肉碱 / 纯牛磺酸，强健心肌。', ingredients: ['辅酶Q10', 'L-肉碱', '牛磺酸'] },
+    { name: '抗炎免疫支持功能包C', desc: '酵母β-葡聚糖 / 蓝莓花青素，清除自由基抗衰。', ingredients: ['酵母β-葡聚糖', '蓝莓花青素'] }
   ];
 
   // 缓存与预取比对数据状态
@@ -226,10 +230,8 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     }
   }, [profile]);
 
-  // 检测食谱是否包含宠物的过敏原
-  const checkRecipeAllergen = React.useCallback((recipe) => {
+  const findMatchedAllergen = React.useCallback((ingredients = []) => {
     if (!profile || !profile.allergens || profile.allergens.length === 0) return null;
-    const ingredients = Object.keys(recipe.ingredients || {});
 
     // 支持历史未拆分的长字符串动态分拆
     const splitAllergens = [];
@@ -247,9 +249,15 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
       '燕麦': ['燕麦', '麦', '麸质', '谷物', '燕麦片', '全熟燕麦片'],
       '鸡肉': ['鸡', '鸡肉', '鸡小胸', '鸡胸'],
       '牛肉': ['牛', '牛肉', '牛腩', '牛腱'],
-      '鱼': ['鱼', '海鲜', '海鱼', '金枪鱼', '三文鱼', '鳕鱼'],
+      '鱼': ['鱼', '鱼肉', '海鲜', '海鱼', '金枪鱼', '三文鱼', '鳕鱼'],
+      '鱼肉': ['鱼', '鱼肉', '海鲜', '海鱼', '金枪鱼', '三文鱼', '鳕鱼'],
       '鸭肉': ['鸭', '鸭肉'],
-      '兔肉': ['兔', '兔肉', '兔脊肉']
+      '兔肉': ['兔', '兔肉', '兔脊肉'],
+      '大豆': ['大豆', '黄豆', '豆'],
+      '鸡蛋': ['蛋', '鸡蛋', '卵磷脂'],
+      '蛋': ['蛋', '鸡蛋', '卵磷脂'],
+      '贝壳': ['贝壳', '贝类', '甲壳', '虾', '蟹'],
+      '贝类': ['贝壳', '贝类', '甲壳', '虾', '蟹']
     };
 
     for (const allergen of splitAllergens) {
@@ -277,11 +285,33 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     return null;
   }, [profile]);
 
+  // 检测食谱是否包含宠物的过敏原
+  const checkRecipeAllergen = React.useCallback((recipe) => {
+    return findMatchedAllergen(Object.keys(recipe.ingredients || {}));
+  }, [findMatchedAllergen]);
+
+  const checkCPackAllergen = React.useCallback((pack) => {
+    const riskByPack = {
+      '脑发育支持功能包C': ['鱼肉'],
+      '美毛护肤支持功能包C': ['大豆', '鸡蛋'],
+      '关节支持功能包C': ['鸡肉', '牛肉', '鱼肉', '贝壳'],
+      '心脏健康支持功能包C': ['鱼肉']
+    };
+    return findMatchedAllergen(riskByPack[pack?.name] || []);
+  }, [findMatchedAllergen]);
+
+  React.useEffect(() => {
+    setSelectedCList(list => list.filter(name => {
+      const pack = cPacks.find(c => c.name === name);
+      return !checkCPackAllergen(pack);
+    }));
+  }, [checkCPackAllergen]);
+
   // 封装调用对比接口的流程
   const handleApplySelection = async (type, value) => {
     const nextAId = type === 'A' ? value : selectedAId;
-    const nextB = type === 'B' ? value : selectedBName;
-    const nextC = type === 'C' ? value : selectedCList;
+    const nextB = selectedBName;
+    const nextC = selectedCList;
 
     if (!nextAId) {
       alert('请选择一个A鲜食基础包！');
@@ -355,16 +385,9 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     }
   };
 
-  const handleSelectA = async (id) => {
+  const continueSelectA = async (id) => {
     const proposedRecipe = demoRecipes.find(r => r.id === id);
     if (!proposedRecipe) return;
-
-    // 过敏原拦截阻断
-    const matchedAllergen = checkRecipeAllergen(proposedRecipe);
-    if (matchedAllergen) {
-      const proceed = window.confirm(`注意！您选择的“${proposedRecipe.name}”含有“${matchedAllergen}”，与您的爱犬的过敏原高度匹配，建议不要选择！是否确定要更换？`);
-      if (!proceed) return;
-    }
 
     const proposedName = proposedRecipe.name;
     const cached = comparisonsCache[proposedName];
@@ -374,8 +397,8 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
       setAComparisonData({
         currentName: currentRecipe?.name || '',
         proposedName: proposedName,
-        currentScore: cached.a_comparison.current_score,
-        proposedScore: cached.a_comparison.proposed_score,
+        currentScore: getRecipeScore(currentRecipe, comparisonsCache) ?? cached.a_comparison.current_score,
+        proposedScore: getRecipeScore(proposedRecipe, comparisonsCache) ?? cached.a_comparison.proposed_score,
         details: cached.a_comparison.comparison_details,
         reason: cached.a_comparison.score_reason,
         onConfirm: () => {
@@ -390,14 +413,84 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
         }
       });
     } else {
-      // 降级使用普通对比流程
       handleApplySelection('A', id);
     }
   };
 
+  const handleSelectA = async (id) => {
+    const proposedRecipe = demoRecipes.find(r => r.id === id);
+    if (!proposedRecipe) return;
+
+    const matchedAllergen = checkRecipeAllergen(proposedRecipe);
+    if (matchedAllergen) {
+      setWarningData({
+        text: `注意！您选择的“${proposedRecipe.name}”含有“${matchedAllergen}”，与您的爱犬的过敏原高度匹配，建议不要选择！是否确定要更换？`,
+        pendingAction: () => continueSelectA(id)
+      });
+      return;
+    }
+
+    continueSelectA(id);
+  };
+
   const handleToggleC = (name) => {
+    const pack = cPacks.find(c => c.name === name);
+    if (checkCPackAllergen(pack)) return;
     const next = selectedCList.includes(name) ? [] : [name];
-    handleApplySelection('C', next);
+    setSelectedCList(next);
+  };
+
+  const scoredCategoryRecipes = React.useMemo(() => {
+    return categoryRecipes
+      .map((recipe, index) => ({ recipe, index, score: getRecipeScore(recipe, comparisonsCache) }))
+      .sort((a, b) => {
+        const scoreA = a.score ?? -1;
+        const scoreB = b.score ?? -1;
+        if (scoreB !== scoreA) return scoreB - scoreA;
+        return a.index - b.index;
+      });
+  }, [categoryRecipes, comparisonsCache]);
+
+  const recommendedARecipes = React.useMemo(() => {
+    return scoredCategoryRecipes.filter(item => item.score === null || item.score >= 50);
+  }, [scoredCategoryRecipes]);
+
+  const lowScoreARecipes = React.useMemo(() => {
+    return scoredCategoryRecipes.filter(item => item.score !== null && item.score < 50);
+  }, [scoredCategoryRecipes]);
+
+  const renderARecipeCard = (r) => {
+    const isSelected = selectedAId === r.id;
+    const matchedAllergen = checkRecipeAllergen(r);
+    const cachedScore = comparisonsCache[r.name]?.a_comparison?.proposed_score;
+    return (
+      <div key={r.id} className={`card ${isSelected ? 'glass-active' : 'glass'}`} style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 12, border: matchedAllergen ? '1px dashed #ef4444' : (isSelected ? '1px solid var(--primary)' : '1px solid var(--border)'), background: matchedAllergen ? 'rgba(239,68,68,0.03)' : '', cursor: 'pointer' }} onClick={() => handleSelectA(r.id)}>
+        <div style={{ width: 20, height: 20, borderRadius: '50%', border: matchedAllergen ? '2px solid #ef4444' : '2px solid var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isSelected ? (matchedAllergen ? '#ef4444' : 'var(--primary)') : 'transparent' }}>
+          {isSelected && <span style={{ color: '#000', fontSize: 12, fontWeight: 'bold' }}>✓</span>}
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{r.name}</span>
+            {cachedScore !== undefined && cachedScore !== null && (
+              <span style={{ fontSize: 11, color: matchedAllergen ? '#f87171' : 'var(--primary)', fontWeight: 800 }}>({cachedScore}% 适配)</span>
+            )}
+            {matchedAllergen ? (
+              <span style={{ fontSize: 9, background: 'rgba(239,68,68,0.15)', color: '#f87171', padding: '1px 5px', borderRadius: 4, border: '1px solid rgba(239,68,68,0.3)', fontWeight: 700 }}>⚠️ 含有过敏原: {matchedAllergen}</span>
+            ) : (
+              defaultRecommendedA.map(x => x.id).includes(r.id) && (
+                <span style={{ fontSize: 9, background: 'rgba(0,230,255,0.15)', color: 'var(--primary)', padding: '1px 5px', borderRadius: 4 }}>推荐</span>
+              )
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
+            {Object.keys(r.ingredients).slice(0, 4).join('/')}...
+          </div>
+        </div>
+        <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 11, height: 'fit-content' }} onClick={(e) => { e.stopPropagation(); setShowDetailRecipe(r); }}>
+          {t('viewDetail')}
+        </button>
+      </div>
+    );
   };
 
   const activeRecipeObj = React.useMemo(() => {
@@ -478,44 +571,20 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
                 <span style={{ fontSize: 11, color: 'var(--gray)' }}>勾选加入配方计划，点击查看详情</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {categoryRecipes.map(r => {
-                  const isSelected = selectedAId === r.id;
-                  const matchedAllergen = checkRecipeAllergen(r);
-                  const cachedScore = comparisonsCache[r.name]?.a_comparison?.proposed_score;
-                  return (
-                    <div key={r.id} className={`card ${isSelected ? 'glass-active' : 'glass'}`} style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 12, border: matchedAllergen ? '1px dashed #ef4444' : (isSelected ? '1px solid var(--primary)' : '1px solid var(--border)'), background: matchedAllergen ? 'rgba(239,68,68,0.03)' : '', cursor: 'pointer' }} onClick={() => handleSelectA(r.id)}>
-                      {/* Checkbox (Radio style) */}
-                      <div style={{ width: 20, height: 20, borderRadius: '50%', border: matchedAllergen ? '2px solid #ef4444' : '2px solid var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isSelected ? (matchedAllergen ? '#ef4444' : 'var(--primary)') : 'transparent' }}>
-                        {isSelected && <span style={{ color: '#000', fontSize: 12, fontWeight: 'bold' }}>✓</span>}
-                      </div>
-                      
-                      {/* Text details */}
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{r.name}</span>
-                          {cachedScore && (
-                            <span style={{ fontSize: 11, color: matchedAllergen ? '#f87171' : 'var(--primary)', fontWeight: 800 }}>({cachedScore}% 适配)</span>
-                          )}
-                          {matchedAllergen ? (
-                            <span style={{ fontSize: 9, background: 'rgba(239,68,68,0.15)', color: '#f87171', padding: '1px 5px', borderRadius: 4, border: '1px solid rgba(239,68,68,0.3)', fontWeight: 700 }}>⚠️ 含有过敏原: {matchedAllergen}</span>
-                          ) : (
-                            defaultRecommendedA.map(x => x.id).includes(r.id) && (
-                              <span style={{ fontSize: 9, background: 'rgba(0,230,255,0.15)', color: 'var(--primary)', padding: '1px 5px', borderRadius: 4 }}>推荐</span>
-                            )
-                          )}
-                        </div>
-                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
-                          {Object.keys(r.ingredients).slice(0, 4).join('/')}...
-                        </div>
-                      </div>
-
-                      {/* View Details Button */}
-                      <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 11, height: 'fit-content' }} onClick={(e) => { e.stopPropagation(); setShowDetailRecipe(r); }}>
-                        {t('viewDetail')}
-                      </button>
-                    </div>
-                  );
-                })}
+                {recommendedARecipes.map(item => renderARecipeCard(item.recipe))}
+                {lowScoreARecipes.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ width: '100%', justifyContent: 'center', borderStyle: 'dashed', color: '#f87171' }}
+                      onClick={() => setShowLowScoreRecipes(value => !value)}
+                    >
+                      {showLowScoreRecipes ? '收起低分食谱' : `展开低分食谱（${lowScoreARecipes.length}个低于50%）`}
+                    </button>
+                    {showLowScoreRecipes && lowScoreARecipes.map(item => renderARecipeCard(item.recipe))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -526,9 +595,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>
                     {selectedBName}
-                    {selectedBName === recommendedBName && (
-                      <span style={{ fontSize: 9, background: 'rgba(255,0,163,0.15)', color: 'var(--secondary)', padding: '1px 5px', borderRadius: 4 }}>最佳匹配</span>
-                    )}
+                    <span style={{ fontSize: 9, background: 'rgba(255,0,163,0.15)', color: 'var(--secondary)', padding: '1px 5px', borderRadius: 4 }}>当前选择</span>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 6, lineHeight: 1.4, maxWidth: '80%' }}>
                     {bPacks.find(b => b.name === selectedBName)?.desc}
@@ -546,20 +613,41 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
                 <span style={{ fontSize: 13, fontWeight: 600, color: '#00FFA3' }}>{t('packC')}</span>
                 <span style={{ fontSize: 11, color: 'var(--gray)' }}>可选（至多勾选1种以提供靶向支持）</span>
               </div>
+              <div style={{ fontSize: 11, color: 'var(--gray)', lineHeight: 1.5, marginBottom: 10 }}>
+                根据自己狗的实际需要选择；含宠物过敏食材的功能包不可选。
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {recommendedCList.map(name => {
+                {cPacks.map(packDetail => {
+                  const name = packDetail.name;
                   const isChecked = selectedCList.includes(name);
-                  const packDetail = cPacks.find(c => c.name === name);
+                  const matchedAllergen = checkCPackAllergen(packDetail);
+                  const disabled = Boolean(matchedAllergen);
                   return (
-                    <div key={name} className="card glass" style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 12, cursor: 'pointer', border: isChecked ? '1px solid #00FFA3' : '1px solid var(--border)' }} onClick={() => handleToggleC(name)}>
+                    <div
+                      key={name}
+                      className="card glass"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '12px 16px',
+                        gap: 12,
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        border: disabled ? '1px solid rgba(255,80,80,0.35)' : isChecked ? '1px solid #00FFA3' : '1px solid var(--border)',
+                        opacity: disabled ? 0.48 : 1
+                      }}
+                      onClick={() => handleToggleC(name)}
+                    >
                       {/* Checkbox */}
-                      <div style={{ width: 18, height: 18, border: '2px solid #00FFA3', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isChecked ? '#00FFA3' : 'transparent' }}>
+                      <div style={{ width: 18, height: 18, border: disabled ? '2px solid rgba(255,80,80,0.8)' : '2px solid #00FFA3', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isChecked ? '#00FFA3' : 'transparent' }}>
                         {isChecked && <span style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>✓</span>}
                       </div>
 
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{name}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: disabled ? '#ff7a7a' : '#fff' }}>{name}</div>
                         <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>{packDetail?.desc}</div>
+                        {disabled && (
+                          <div style={{ fontSize: 10, color: '#ff7a7a', marginTop: 4 }}>有过敏风险，请遵循医嘱后选择</div>
+                        )}
                       </div>
                     </div>
                   );
@@ -589,29 +677,36 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div className="card glass animate-fade" style={{ width: '100%', maxWidth: 440, maxHeight: '85vh', overflowY: 'auto', padding: 24, border: '1px solid var(--border)' }}>
             <h3 style={{ color: 'var(--secondary)', margin: '0 0 16px 0', fontSize: 16, fontWeight: 700 }}>更换全价营养包 B</h3>
+            <p style={{ color: 'var(--gray)', fontSize: 12, lineHeight: 1.5, margin: '0 0 16px 0' }}>
+              幼犬和成犬的全价营养要求不同，建议根据宠物实际生长阶段和身体情况选择。
+            </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
               {bPacks.map(b => {
-                const isRec = b.name === recommendedBName;
                 const isSelected = selectedBName === b.name;
+                const isAllowed = getAllowedBPackNames().includes(b.name);
                 return (
                   <div key={b.name} style={{
                     padding: '12px 16px',
                     borderRadius: 10,
-                    background: isSelected ? 'rgba(255,0,163,0.08)' : 'rgba(255,255,255,0.02)',
-                    border: isSelected ? '1px solid var(--secondary)' : isRec ? '1px solid rgba(0,230,255,0.3)' : '1px solid rgba(255,255,255,0.08)',
-                    cursor: 'pointer',
-                    opacity: isRec || isSelected ? 1 : 0.6,
+                    background: isSelected ? 'rgba(255,0,163,0.08)' : isAllowed ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.015)',
+                    border: isSelected ? '1px solid var(--secondary)' : isAllowed ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,255,255,0.04)',
+                    cursor: isAllowed ? 'pointer' : 'not-allowed',
+                    opacity: isAllowed ? 1 : 0.38,
                     transition: 'all 0.2s'
                   }} onClick={() => {
+                    if (!isAllowed) return;
                     setShowBSelector(false);
-                    handleApplySelection('B', b.name);
+                    setSelectedBName(b.name);
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? 'var(--secondary)' : isRec ? 'var(--primary)' : '#fff' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? 'var(--secondary)' : '#fff' }}>
                         {b.name}
                       </span>
-                      {isRec && (
-                        <span style={{ fontSize: 9, background: 'rgba(0,230,255,0.15)', color: 'var(--primary)', padding: '2px 6px', borderRadius: 4 }}>推荐匹配</span>
+                      {isSelected && (
+                        <span style={{ fontSize: 9, background: 'rgba(255,0,163,0.15)', color: 'var(--secondary)', padding: '2px 6px', borderRadius: 4 }}>当前选择</span>
+                      )}
+                      {!isAllowed && (
+                        <span style={{ fontSize: 9, background: 'rgba(255,255,255,0.06)', color: 'var(--gray)', padding: '2px 6px', borderRadius: 4 }}>不适用</span>
                       )}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 6, lineHeight: 1.4 }}>
@@ -672,14 +767,28 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
             
             {/* B包及C包建议 */}
             <div style={{ marginBottom: 20, padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px dashed var(--border)' }}>
-              <h4 style={{ color: '#fff', fontSize: 13, margin: '0 0 8px 0', fontWeight: 600 }}>合规建议配比</h4>
+              <h4 style={{ color: '#fff', fontSize: 13, margin: '0 0 8px 0', fontWeight: 600 }}>全价营养配比</h4>
               <div style={{ fontSize: 11, color: 'var(--gray)', lineHeight: 1.5 }}>
                 <div style={{ marginBottom: 4 }}><strong style={{ color: 'var(--secondary)' }}>推荐B包:</strong> {showDetailRecipe.b_pack}</div>
                 <div><strong style={{ color: '#00FFA3' }}>推荐C包:</strong> {showDetailRecipe.c_pack}</div>
               </div>
             </div>
             
-            <button className="btn" style={{ width: '100%' }} onClick={() => setShowDetailRecipe(null)}>关闭</button>
+            <button
+              className="btn"
+              style={{
+                width: '100%',
+                borderRadius: 999,
+                border: '1px solid rgba(0, 230, 255, 0.35)',
+                background: 'rgba(0, 230, 255, 0.12)',
+                color: 'var(--primary)',
+                fontWeight: 700,
+                boxShadow: '0 0 18px rgba(0, 230, 255, 0.12)'
+              }}
+              onClick={() => setShowDetailRecipe(null)}
+            >
+              确认
+            </button>
           </div>
         </div>
       )}
