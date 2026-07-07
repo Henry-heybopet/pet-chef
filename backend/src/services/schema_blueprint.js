@@ -296,7 +296,7 @@ const schemaBlueprint = {
     relatedTables: ['order_items'],
   },
   payments: {
-    description: '支付流水。未来接入微信支付、支付宝或 Stripe 时作为幂等和对账基础。',
+    description: '支付流水。中国区第一阶段接微信支付，海外第一阶段接 Stripe Card Payment；长期规划银行卡、支付宝、Apple Pay、Google Pay 和 PayPal。',
     ownerService: 'payment_service',
     primaryKey: 'id',
     fields: {

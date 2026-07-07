@@ -1,26 +1,37 @@
-# Heybo Pet 微信支付与支付宝接入方案
+# Heybo Pet 支付接入方案
 
 ## 已确认范围
 
-- 第一版面向中国大陆用户。
-- App 同时提供微信支付和支付宝。
-- 当前尚未开通微信支付商户号和支付宝开放平台应用。
-- 现阶段先完成订单、支付流水、状态查询和回调边界；商户审核通过后再接正式 SDK。
+- 中国区长期规划：银行卡、微信支付、支付宝。
+- 中国区第一阶段：只接入微信支付。
+- 海外长期规划：信用卡、Apple Pay、Google Pay、PayPal。
+- 海外第一阶段：只接入信用卡支付（Stripe Card Payment）。
+- 当前尚未开通微信支付商户号、支付宝开放平台应用、Stripe 账号等正式商户能力。
+- 现阶段先完成订单、支付流水、状态查询、微信 App Pay 下单和回调边界；商户审核通过后再接正式生产参数。
 
 ## 支付架构
 
 ```text
 App 选择支付方式
   -> Heybo 后端创建支付流水
-  -> Heybo 后端调用微信支付/支付宝下单
+  -> Heybo 后端按区域调用当前阶段启用的支付通道
   -> App 使用服务端返回的签名参数调起官方支付 App
-  -> 微信支付/支付宝异步通知 Heybo 后端
+  -> 支付平台异步通知 Heybo 后端
   -> 后端验签、幂等更新 payment 和 order
   -> App 查询最终支付状态
 ```
 
 App 返回结果只用于界面提示，订单是否支付成功必须以后端验签后的异步通知或主动查单结果为准。
 后端入口已保留原始 HTTP 请求体，供正式接入时按支付平台规范完成回调验签。
+
+## 区域与阶段规划
+
+| 区域 | 长期规划 | 第一阶段启用 |
+| --- | --- | --- |
+| 中国区 | 银行卡 / 微信支付 / 支付宝 | 微信支付 |
+| 海外 | 信用卡 / Apple Pay / Google Pay / PayPal | 信用卡支付（Stripe Card Payment） |
+
+后端 `region_config` 中，`payment.providers` 只放第一阶段已经启用的通道；`payment.planned_providers` 记录长期规划通道。这样前端和 App 不会提前展示尚未接入的支付方式。
 
 ## 需要办理的账号
 
@@ -33,7 +44,14 @@ App 返回结果只用于界面提示，订单是否支付成功必须以后端�
 5. 开通 `App 支付` 产品。
 6. 生成 API v3 Key、商户 API 证书/私钥，并配置 HTTPS 通知地址。
 
-### 支付宝
+### Stripe Card Payment
+
+1. 注册 Stripe 账号并完成主体认证。
+2. 配置信用卡支付能力、结算账户和 Webhook。
+3. 在后端保存 Secret Key、Webhook Secret；移动端只使用 Publishable Key。
+4. 第一阶段只启用信用卡支付，不启用 Apple Pay、Google Pay、PayPal。
+
+### 支付宝（长期规划，第一阶段不接入）
 
 1. 以同一经营主体注册并认证支付宝开放平台账号。
 2. 创建移动应用并申请 `APP 支付` 能力。
@@ -47,18 +65,21 @@ App 返回结果只用于界面提示，订单是否支付成功必须以后端�
 
 当前接口：
 
-- `GET /api/payments/providers`：查看两种支付方式的配置就绪状态。
+- `GET /api/payments/providers`：查看当前区域第一阶段支付方式的配置就绪状态。
 - `POST /api/payments`：为订单创建支付流水，支持 `Idempotency-Key`。
 - `GET /api/payments`：查询当前用户支付流水。
 - `GET /api/payments/:id`：查询支付及关联订单状态。
+- `POST /api/payments/wechat/notify`：微信支付异步通知入口。
 - `POST /api/payments/mock-callback`：仅本地开发模拟；生产环境必须关闭。
 
 在商户参数未配置时，创建支付接口返回 HTTP `503` 和 `configuration_pending`，避免前端把未真实支付的订单误判为成功。
 
 ## 上线前必须补齐
 
-- 微信支付 App 下单适配器和通知验签。
-- 支付宝 App 下单适配器和通知验签。
+- 微信支付正式商户参数、AppID、包名签名、HTTPS 通知域名。
+- Stripe Card Payment 正式商户参数、Webhook 验签和支付成功状态同步。
+- 支付宝 App 下单适配器和通知验签（长期规划，第一阶段不阻塞）。
+- Apple Pay、Google Pay、PayPal（海外长期规划，第一阶段不阻塞）。
 - 支付回调公网 HTTPS 域名。
 - 订单超时关闭、重复通知幂等和主动查单。
 - 退款申请、退款回调和退款流水。

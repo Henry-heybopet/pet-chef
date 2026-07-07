@@ -238,7 +238,11 @@ function createUserWithIdentity({ login, provider = 'phone', displayName }) {
 
 function loginOrCreateUser({ login, provider = 'phone', displayName }) {
   let user = findUserByLogin(login, provider);
-  if (!user) user = createUserWithIdentity({ login, provider, displayName });
+  if (!user) {
+    user = createUserWithIdentity({ login, provider, displayName });
+  } else if (displayName && user.display_name !== displayName) {
+    user.display_name = displayName;
+  }
   user.last_login_at = now();
   user.updated_at = now();
   const household = ensureDefaultHousehold(user.id);
@@ -286,11 +290,28 @@ function ensureDefaultHousehold(userId) {
 
 function ensureTuyaMapping(userId) {
   let mapping = db.tuya_user_mappings.find(item => item.user_id === userId);
-  if (mapping) return mapping;
+  const user = getUser(userId);
+  const isSpecialTestAccount = user && user.primary_phone === '18757129405';
+
+  if (mapping) {
+    if (isSpecialTestAccount && mapping.tuya_uid !== '18757129405') {
+      mapping.tuya_uid = '18757129405';
+      mapping.updated_at = now();
+    }
+    const expectedTestPassword = mapping.tuya_uid;
+    if (mapping.tuya_test_password !== expectedTestPassword) {
+      mapping.tuya_test_password = expectedTestPassword;
+      mapping.updated_at = now();
+    }
+    saveDb();
+    return mapping;
+  }
+
   mapping = {
     id: id('tym'),
     user_id: userId,
-    tuya_uid: `heybo_${userId}`,
+    tuya_uid: isSpecialTestAccount ? '18757129405' : `heybo_${userId}`,
+    tuya_test_password: isSpecialTestAccount ? '18757129405' : `heybo_${userId}`,
     tuya_country_code: '86',
     tuya_region: 'CN',
     tuya_home_ids: [],
@@ -502,6 +523,8 @@ function createPayment({ userId, order, provider, idempotencyKey, status = 'pend
     order_id: order.id,
     user_id: userId,
     provider,
+    out_trade_no: '',
+    provider_prepay_id: '',
     provider_payment_id: '',
     amount_cents: order.total_cents,
     currency: order.currency,
@@ -509,6 +532,7 @@ function createPayment({ userId, order, provider, idempotencyKey, status = 'pend
     idempotency_key: normalizedKey,
     paid_at: '',
     failure_reason: '',
+    raw_payload: null,
     created_at: now(),
     updated_at: now(),
   };
@@ -517,17 +541,57 @@ function createPayment({ userId, order, provider, idempotencyKey, status = 'pend
   return payment;
 }
 
+function normalizePayment(payment) {
+  if (!payment) return null;
+  if (payment.out_trade_no === undefined) payment.out_trade_no = '';
+  if (payment.provider_prepay_id === undefined) payment.provider_prepay_id = '';
+  if (payment.provider_payment_id === undefined) payment.provider_payment_id = '';
+  if (payment.raw_payload === undefined) payment.raw_payload = null;
+  return payment;
+}
+
 function getPayment(paymentId) {
-  return db.payments.find(payment => payment.id === paymentId) || null;
+  return normalizePayment(db.payments.find(payment => payment.id === paymentId) || null);
+}
+
+function getPaymentByOutTradeNo(outTradeNo) {
+  if (!outTradeNo) return null;
+  return normalizePayment(db.payments.find(payment => payment.out_trade_no === outTradeNo) || null);
 }
 
 function listPaymentsForUser(userId) {
-  return db.payments.filter(payment => payment.user_id === userId);
+  return db.payments.filter(payment => payment.user_id === userId).map(normalizePayment);
+}
+
+function updatePaymentProviderData(paymentId, {
+  outTradeNo,
+  providerPrepayId,
+  providerPaymentId,
+  status,
+  rawPayload,
+  failureReason,
+} = {}) {
+  const payment = getPayment(paymentId);
+  if (!payment) throw new Error('Payment not found');
+
+  if (outTradeNo !== undefined) payment.out_trade_no = outTradeNo;
+  if (providerPrepayId !== undefined) payment.provider_prepay_id = providerPrepayId;
+  if (providerPaymentId !== undefined) payment.provider_payment_id = providerPaymentId;
+  if (status !== undefined) payment.status = status;
+  if (rawPayload !== undefined) payment.raw_payload = rawPayload;
+  if (failureReason !== undefined) payment.failure_reason = failureReason;
+  payment.updated_at = now();
+  saveDb();
+  return payment;
 }
 
 function updatePaymentStatus(paymentId, status, { providerPaymentId = '', failureReason = '' } = {}) {
   const payment = getPayment(paymentId);
   if (!payment) throw new Error('Payment not found');
+
+  if (payment.status === 'paid') {
+    return { payment, order: getOrder(payment.order_id), idempotent: true };
+  }
 
   payment.status = status;
   payment.provider_payment_id = providerPaymentId || payment.provider_payment_id;
@@ -584,7 +648,9 @@ module.exports = {
   getOrder,
   createPayment,
   getPayment,
+  getPaymentByOutTradeNo,
   listPaymentsForUser,
+  updatePaymentProviderData,
   updatePaymentStatus,
   appendAnalyticsEvent,
   resetForTests,

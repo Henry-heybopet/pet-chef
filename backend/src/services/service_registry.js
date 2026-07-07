@@ -81,7 +81,7 @@ const serviceRegistry = {
     owns: ['payments'],
     dependsOn: ['account_service', 'order_service'],
     currentMvpEntrypoints: ['GET /api/payments/providers', 'POST /api/payments', 'GET /api/payments/:id'],
-    futureResponsibilities: ['微信 App 支付下单', '支付宝 App 支付下单', '生产回调验签', '退款流水', '日终对账'],
+    futureResponsibilities: ['中国区微信 App 支付下单', '海外 Stripe Card Payment', '支付宝/Apple Pay/Google Pay/PayPal 长期规划', '生产回调验签', '退款流水', '日终对账'],
   },
   admin_service: {
     description: '运营后台账号、角色和审核动作。',
