@@ -1,12 +1,16 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "1.0.0",
+  "version": "B1.00",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
+    "build:factory": "vite build --mode factory-debug",
     "app:build": "npm run build && npx cap sync",
+    "app:factory": "npm run build:factory && npx cap sync",
+    "app:factory:ios": "npm run build:factory && npx cap sync ios",
+    "app:factory:android": "npm run build:factory && npx cap sync android",
     "cap:sync": "npx cap sync",
     "cap:ios": "npx cap open ios",
     "cap:android": "npx cap open android"

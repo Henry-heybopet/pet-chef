@@ -1,4 +1,4 @@
-import { registerPlugin } from '@capacitor/core';
+import { registerPlugin, WebPlugin } from '@capacitor/core';
 
 const DEMO_DEVICE = {
   devId: 'demo_pet_chef_001',
@@ -7,81 +7,243 @@ const DEMO_DEVICE = {
   isOnline: true,
   isPetChef: true,
   dps: {
-    1: false,
+    1: true,
     3: 'diy',
     5: 'standby',
-    9: 25,
+    7: 1200,
+    8: 1200,
+    9: 85,
+    10: 25,
+    102: 8,
+    107: 'reset',
+    108: '1',
   },
 };
 
-export const HeyboTuya = registerPlugin('HeyboTuya', {
-  web: () => ({
-    async status() {
-      return {
-        platform: 'web',
-        nativeAvailable: false,
-        configured: true,
-        initialized: true,
-        pid: 'ak2kofibhuvdtqip',
-        homeId: 10001,
-      };
-    },
-    async init() {
-      return { initialized: true, appKey: 'web-demo' };
-    },
-    async loginOrRegisterWithHeyboUid({ heyboUid }) {
-      return { success: true, tuyaUid: `heybo_${heyboUid || 'demo'}` };
-    },
-    async getHomeList() {
-      return {
-        success: true,
-        homeId: 10001,
-        homes: [{ homeId: 10001, name: 'Heybo Pet Demo', geoName: 'China', deviceCount: 1 }],
-      };
-    },
-    async ensureDefaultHome() {
-      return { success: true, homeId: 10001, name: 'Heybo Pet Demo', geoName: 'China', deviceCount: 1 };
-    },
-    async getDeviceList() {
-      return { success: true, homeId: 10001, devices: [DEMO_DEVICE] };
-    },
-    async getActivatorToken() {
-      return { success: true, homeId: 10001, token: 'web-demo-token' };
-    },
-    async startWifiPairing({ ssid }) {
-      return {
-        success: true,
-        homeId: 10001,
-        mode: 'EZ',
-        token: 'web-demo-token',
-        device: { ...DEMO_DEVICE, name: ssid ? `Pet Chef (${ssid})` : DEMO_DEVICE.name },
-      };
-    },
-    async stopPairing() {
-      return { success: true };
-    },
-    async publishDps({ devId, dps }) {
-      return { success: true, devId, dps: JSON.stringify(dps || {}) };
-    },
-    async startDiyCooking({ devId, temperature = 85, cookTime = 1200, power = 8, speed = '1' }) {
-      return {
-        success: true,
+const MOCK_BLE_DEVICE = {
+  name: 'Pet Chef BLE-ak2ko',
+  address: 'AA:BB:CC:DD:EE:FF',
+  uuid: 'ble_uuid_petchef_99',
+  productId: 'ak2kofibhuvdtqip',
+  isNearby: true,
+};
+
+class HeyboTuyaWeb extends WebPlugin {
+  constructor() {
+    super({ name: 'HeyboTuya' });
+    this.devices = [DEMO_DEVICE];
+    this.activeBleTimeout = null;
+    this.dpIntervals = {};
+    this.currentHomeId = 10001;
+  }
+
+  async status() {
+    return {
+      platform: 'web',
+      nativeAvailable: false,
+      configured: true,
+      initialized: true,
+      pid: 'ak2kofibhuvdtqip',
+      homeId: this.currentHomeId,
+    };
+  }
+
+  async init() {
+    return { initialized: true, appKey: 'web-demo' };
+  }
+
+  async loginOrRegisterWithHeyboUid({ heyboUid, tuyaUid, password }) {
+    const finalTuyaUid = tuyaUid || `heybo_${heyboUid || 'demo'}`;
+    return { success: true, tuyaUid: finalTuyaUid };
+  }
+
+  async getHomeList() {
+    return {
+      success: true,
+      homeId: this.currentHomeId,
+      homes: [{ homeId: this.currentHomeId, name: 'Heybo Pet Demo', geoName: 'China', deviceCount: this.devices.length }],
+    };
+  }
+
+  async ensureDefaultHome() {
+    return { success: true, homeId: this.currentHomeId, name: 'Heybo Pet Demo', geoName: 'China', deviceCount: this.devices.length };
+  }
+
+  async getDeviceList() {
+    return { success: true, homeId: this.currentHomeId, devices: this.devices };
+  }
+
+  async getActivatorToken() {
+    return { success: true, homeId: this.currentHomeId, token: 'web-demo-token' };
+  }
+
+  async startWifiPairing({ ssid }) {
+    const newDev = {
+      ...DEMO_DEVICE,
+      devId: `web_wifi_${Date.now()}`,
+      name: ssid ? `Pet Chef (${ssid})` : 'Pet Chef WiFi',
+      dps: { ...DEMO_DEVICE.dps },
+    };
+    this.devices.push(newDev);
+    return {
+      success: true,
+      homeId: this.currentHomeId,
+      mode: 'EZ',
+      token: 'web-demo-token',
+      device: newDev,
+    };
+  }
+
+  async stopPairing() {
+    return { success: true };
+  }
+
+  async unbindDevice({ devId }) {
+    this.devices = this.devices.filter(d => d.devId !== devId);
+    this.unsubscribeDevice({ devId });
+    return { success: true, devId };
+  }
+
+  async startBleScan() {
+    if (this.activeBleTimeout) clearTimeout(this.activeBleTimeout);
+
+    // Simulate finding a BLE device after 1.5 seconds
+    this.activeBleTimeout = setTimeout(() => {
+      this.notifyListeners('bleDeviceFound', MOCK_BLE_DEVICE);
+    }, 1500);
+
+    return { success: true };
+  }
+
+  async stopBleScan() {
+    if (this.activeBleTimeout) {
+      clearTimeout(this.activeBleTimeout);
+      this.activeBleTimeout = null;
+    }
+    return { success: true };
+  }
+
+  async connectBleDevice({ uuid, address, productId, ssid, password }) {
+    const newDev = {
+      ...DEMO_DEVICE,
+      devId: `web_ble_${Date.now()}`,
+      name: 'Pet Chef Dual-Mode',
+      productId: productId || 'ak2kofibhuvdtqip',
+      dps: { ...DEMO_DEVICE.dps },
+    };
+    this.devices.push(newDev);
+    return {
+      success: true,
+      device: newDev,
+    };
+  }
+
+  async subscribeDevice({ devId }) {
+    const device = this.devices.find(d => d.devId === devId);
+    if (!device) return { success: false, error: 'Device not found' };
+
+    if (this.dpIntervals[devId]) clearInterval(this.dpIntervals[devId]);
+
+    let currentTemp = device.dps[10] || 25;
+    let targetTemp = device.dps[9] || 85;
+
+    // Simulate real-time temperature fluctuations and state sync
+    this.dpIntervals[devId] = setInterval(() => {
+      const activeDev = this.devices.find(d => d.devId === devId);
+      if (!activeDev) return;
+
+      const isCooking = activeDev.dps[107] === 'start';
+      if (isCooking) {
+        targetTemp = activeDev.dps[9] || 85;
+        if (currentTemp < targetTemp) {
+          currentTemp += Math.floor(Math.random() * 3) + 1; // heat up
+          if (currentTemp > targetTemp) currentTemp = targetTemp;
+        } else {
+          // slight fluctuation at target temp
+          currentTemp = targetTemp + (Math.random() > 0.5 ? 1 : -1);
+        }
+        activeDev.dps[10] = currentTemp;
+        activeDev.dps[5] = 'cooking';
+      } else {
+        // cool down to room temp
+        if (currentTemp > 25) {
+          currentTemp -= 1;
+        }
+        activeDev.dps[10] = currentTemp;
+        activeDev.dps[5] = activeDev.dps[107] === 'pause' ? 'pause' : 'standby';
+      }
+
+      // Notify listeners of the updated DPs
+      this.notifyListeners('dpUpdate', {
         devId,
-        dps: JSON.stringify(buildPetChefDiyDps({ temperature, cookTime, power, speed })),
-      };
-    },
-    async pauseCooking({ devId }) {
-      return { success: true, devId, dps: JSON.stringify({ 107: 'pause' }) };
-    },
-    async resetCooking({ devId }) {
-      return { success: true, devId, dps: JSON.stringify({ 107: 'reset' }) };
-    },
-  }),
+        dps: JSON.stringify({
+          10: currentTemp,
+          5: activeDev.dps[5],
+        }),
+      });
+    }, 2000);
+
+    return { success: true, devId };
+  }
+
+  async unsubscribeDevice({ devId }) {
+    if (this.dpIntervals[devId]) {
+      clearInterval(this.dpIntervals[devId]);
+      delete this.dpIntervals[devId];
+    }
+    return { success: true, devId };
+  }
+
+  async openBluetoothSettings() {
+    console.log('[Web Mock] Opening system Bluetooth settings...');
+    return { success: true };
+  }
+
+  async publishDps({ devId, dps }) {
+    const device = this.devices.find(d => d.devId === devId);
+    if (device) {
+      device.dps = { ...device.dps, ...dps };
+      // Echo back immediately
+      setTimeout(() => {
+        this.notifyListeners('dpUpdate', {
+          devId,
+          dps: JSON.stringify(dps),
+        });
+      }, 50);
+    }
+    return { success: true, devId, dps: JSON.stringify(dps || {}) };
+  }
+
+  async startDiyCooking({ devId, temperature = 85, cookTime = 1200, power = 8, speed = '1' }) {
+    const dps = buildPetChefDiyDps({ temperature, cookTime, power, speed });
+    await this.publishDps({ devId, dps });
+    return {
+      success: true,
+      devId,
+      dps: JSON.stringify(dps),
+    };
+  }
+
+  async pauseCooking({ devId }) {
+    const dps = { 107: 'pause' };
+    await this.publishDps({ devId, dps });
+    return { success: true, devId, dps: JSON.stringify(dps) };
+  }
+
+  async resetCooking({ devId }) {
+    const dps = { 107: 'reset' };
+    await this.publishDps({ devId, dps });
+    return { success: true, devId, dps: JSON.stringify(dps) };
+  }
+}
+
+export const HeyboTuya = registerPlugin('HeyboTuya', {
+  web: () => new HeyboTuyaWeb(),
 });
 
-export async function prepareTuyaForHeyboUser(heyboUid) {
+export async function prepareTuyaForHeyboUser(heyboUid, tuyaUid, password) {
   await HeyboTuya.init();
-  await HeyboTuya.loginOrRegisterWithHeyboUid({ heyboUid });
+  await HeyboTuya.loginOrRegisterWithHeyboUid({ heyboUid, tuyaUid, password });
   return HeyboTuya.ensureDefaultHome();
 }
 
