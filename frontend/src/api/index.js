@@ -116,10 +116,14 @@ function fallbackAIAnalysis(body = {}) {
   };
 }
 
-async function post(path, body) {
+async function post(path, body, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.region ? { 'X-Heybo-Region': options.region } : {}),
+      ...(options.token ? authHeaders(options.token) : {}),
+    },
     body: JSON.stringify(body),
   });
   return res.json();
@@ -162,6 +166,21 @@ async function createPayment(body, token, idempotencyKey) {
 }
 
 export const api = {
+  sendPhoneCode: (body, region = 'CN') => post('/api/auth/phone/send-code', body, { region }),
+  loginWithPhoneCode: (body, region = 'CN') => post('/api/auth/phone/login', body, { region }),
+  sendEmailCode: (body, region = 'US') => post('/api/auth/email/send-code', body, { region }),
+  loginWithEmailCode: (body, region = 'US') => post('/api/auth/email/login', body, { region }),
+  refreshAuthSession: (refreshToken) => post('/api/auth/refresh', { refresh_token: refreshToken }),
+  logout: (refreshToken) => post('/api/auth/logout', { refresh_token: refreshToken }),
+  logoutAll: (token) => post('/api/auth/logout-all', {}, { token }),
+  wechatLogin: (body) => post('/api/auth/wechat/login', body, { region: 'CN' }),
+  bindWechatPhone: (body) => post('/api/auth/wechat/bind-phone', body, { region: 'CN' }),
+  googleLogin: (body, region = 'US') => post('/api/auth/google/login', body, { region }),
+  appleLogin: (body, region = 'US') => post('/api/auth/apple/login', body, { region }),
+  bindGoogleEmail: (body, region = 'US') => post('/api/auth/google/bind-email', body, { region }),
+  bindAppleEmail: (body, region = 'US') => post('/api/auth/apple/bind-email', body, { region }),
+  listAuthIdentities: (token) => authedGet('/api/auth/identities', token),
+  unbindAuthIdentity: (identityId, token) => post(`/api/auth/identities/${identityId}/unbind`, {}, { token }),
   heyboMockLogin: (body) => post('/api/auth/mock-login', body),
   heyboMe: (token) => authedGet('/api/users/me', token),
   createPet: (body, token) => authedPost('/api/pets', body, token),

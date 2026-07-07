@@ -524,6 +524,7 @@ backend/.data/heybo-db.json
 当前已实现 API：
 
 - `POST /api/auth/mock-login`：测试版 Heybo 登录，支持手机号或 Email。
+- `POST /api/v1/auth/mock-login`：同上，兼容 B2.0 的 `/api/v1` 路径。
 - `GET /api/users/me`：读取当前用户、默认家庭、Tuya 映射。
 - `POST /api/households/default`：创建或读取默认家庭。
 - `GET /api/pets`：宠物列表。
@@ -554,6 +555,7 @@ backend/.data/heybo-db.json
 下一步需要替换：
 
 - `mock-login` 替换为真实手机号验证码登录。
+- 工厂测试白名单账号只用于硬件联调，正式用户测试前需要关闭或改为后端配置。
 - 本地 JSON 存储替换为数据库。
 - `dev_` 测试 token 替换为正式 JWT/session。
 - Tuya UID 登录凭证由后端安全签发。

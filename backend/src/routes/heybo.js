@@ -2,12 +2,15 @@ const express = require('express');
 const store = require('../services/heybo_store');
 const { createAnalyticsEvent } = require('../services/analytics_events');
 const paymentService = require('../services/payment');
+const accountAuth = require('../services/account_auth');
+const auth = require('../services/auth');
+const { getRegionFromRequest } = require('../config/account_policy');
 
 const router = express.Router();
 
 function asyncHandler(fn) {
   return (req, res) => Promise.resolve(fn(req, res)).catch(error => {
-    const status = error.message === 'Unauthorized' ? 401 : 400;
+    const status = error.status || (error.message === 'Unauthorized' ? 401 : 400);
     res.status(status).json({ success: false, error: error.message });
   });
 }
@@ -15,6 +18,10 @@ function asyncHandler(fn) {
 function getUserIdFromRequest(req) {
   const auth = req.get('authorization') || '';
   if (auth.startsWith('Bearer dev_')) return auth.replace('Bearer dev_', '');
+  if (auth.startsWith('Bearer ')) {
+    const payload = require('../services/auth').verifyToken(auth.replace('Bearer ', ''));
+    if (payload?.sub && payload.type === 'access') return payload.sub;
+  }
   if (req.get('x-heybo-user-id')) return req.get('x-heybo-user-id');
   if (req.body?.user_id) return req.body.user_id;
   if (req.query?.user_id) return req.query.user_id;
@@ -28,15 +35,180 @@ function requireUser(req) {
   return user;
 }
 
+const factoryTestAccounts = {
+  '13501578655': { password: '13501578665', displayName: '工厂测试账号' },
+  '18757129405': { password: '18757129405', displayName: '工厂测试账号2' },
+};
+
+function resolveFactoryTestAccount(login, password) {
+  const account = factoryTestAccounts[String(login || '')];
+  if (!account) return null;
+  if (!password) {
+    const error = new Error('password is required for this test account');
+    error.status = 400;
+    throw error;
+  }
+  if (password !== account.password) {
+    const error = new Error('Incorrect password for test account');
+    error.status = 401;
+    throw error;
+  }
+  return account;
+}
+
+router.post('/auth/phone/send-code', asyncHandler(async (req, res) => {
+  const region = getRegionFromRequest(req);
+  const result = accountAuth.sendSmsCode({
+    region,
+    countryCode: req.body?.country_code || '86',
+    phone: req.body?.phone,
+    scene: req.body?.scene || 'login',
+    req,
+  });
+  res.json(result);
+}));
+
+router.post('/auth/phone/login', asyncHandler(async (req, res) => {
+  const region = getRegionFromRequest(req);
+  const result = accountAuth.loginWithPhone({
+    region,
+    countryCode: req.body?.country_code || '86',
+    phone: req.body?.phone,
+    code: req.body?.code,
+    req,
+  });
+  res.json(result);
+}));
+
+router.post('/auth/email/send-code', asyncHandler(async (req, res) => {
+  const region = getRegionFromRequest(req);
+  const result = accountAuth.sendEmailCode({
+    region,
+    email: req.body?.email,
+    scene: req.body?.scene || 'login',
+    req,
+  });
+  res.json(result);
+}));
+
+router.post('/auth/email/login', asyncHandler(async (req, res) => {
+  const region = getRegionFromRequest(req);
+  const result = accountAuth.loginWithEmail({
+    region,
+    email: req.body?.email,
+    code: req.body?.code,
+    req,
+  });
+  res.json(result);
+}));
+
+router.post('/auth/refresh', asyncHandler(async (req, res) => {
+  const result = auth.refreshSession(req.body?.refresh_token);
+  res.json({ success: true, access_token: result.accessToken, token: result.accessToken, user: result.user });
+}));
+
+router.post('/auth/logout', asyncHandler(async (req, res) => {
+  auth.revokeSession(req.body?.refresh_token);
+  res.json({ success: true });
+}));
+
+router.post('/auth/logout-all', asyncHandler(async (req, res) => {
+  const user = requireUser(req);
+  auth.revokeUserSessions(user.id);
+  res.json({ success: true });
+}));
+
+router.post('/auth/wechat/login', asyncHandler(async (req, res) => {
+  const result = accountAuth.auxiliaryLogin({
+    region: 'CN',
+    provider: 'wechat',
+    credential: req.body?.code,
+    req,
+  });
+  res.json(result);
+}));
+
+router.post('/auth/wechat/bind-phone', asyncHandler(async (req, res) => {
+  const result = accountAuth.bindAuxiliaryWithPhone({
+    bindToken: req.body?.bind_token,
+    countryCode: req.body?.country_code || '86',
+    phone: req.body?.phone,
+    code: req.body?.sms_code || req.body?.code,
+    req,
+  });
+  res.json(result);
+}));
+
+router.post('/auth/google/login', asyncHandler(async (req, res) => {
+  const region = getRegionFromRequest(req);
+  const result = accountAuth.auxiliaryLogin({
+    region,
+    provider: 'google',
+    credential: req.body?.id_token || req.body?.code,
+    req,
+  });
+  res.json(result);
+}));
+
+router.post('/auth/apple/login', asyncHandler(async (req, res) => {
+  const region = getRegionFromRequest(req);
+  const result = accountAuth.auxiliaryLogin({
+    region,
+    provider: 'apple',
+    credential: req.body?.identity_token || req.body?.code,
+    req,
+  });
+  res.json(result);
+}));
+
+router.post('/auth/google/bind-email', asyncHandler(async (req, res) => {
+  const result = accountAuth.bindAuxiliaryWithEmail({
+    bindToken: req.body?.bind_token,
+    email: req.body?.email,
+    code: req.body?.email_code || req.body?.code,
+    req,
+  });
+  res.json(result);
+}));
+
+router.post('/auth/apple/bind-email', asyncHandler(async (req, res) => {
+  const result = accountAuth.bindAuxiliaryWithEmail({
+    bindToken: req.body?.bind_token,
+    email: req.body?.email,
+    code: req.body?.email_code || req.body?.code,
+    req,
+  });
+  res.json(result);
+}));
+
+router.get('/auth/identities', asyncHandler(async (req, res) => {
+  const user = requireUser(req);
+  res.json({ success: true, identities: store.getUserIdentities(user.id) });
+}));
+
+router.post('/auth/identities/:id/unbind', asyncHandler(async (req, res) => {
+  const user = requireUser(req);
+  const identity = accountAuth.unbindIdentity({ userId: user.id, identityId: req.params.id });
+  res.json({ success: true, identity });
+}));
+
 router.post('/auth/mock-login', asyncHandler(async (req, res) => {
-  const { login, provider, display_name } = req.body || {};
+  const { login, password, provider, display_name } = req.body || {};
   if (!login) return res.status(400).json({ success: false, error: 'login is required' });
+  const factoryAccount = resolveFactoryTestAccount(login, password);
   const result = store.loginOrCreateUser({
     login,
     provider: provider || (String(login).includes('@') ? 'email' : 'phone'),
-    displayName: display_name,
+    displayName: factoryAccount?.displayName || display_name,
   });
-  res.json({ success: true, ...result });
+  const session = auth.createSession({ userId: result.user.id, region: result.user.region || 'CN', provider: provider || 'mock', req });
+  res.json({
+    success: true,
+    ...result,
+    access_token: session.accessToken,
+    refresh_token: session.refreshToken,
+    token: session.accessToken,
+  });
 }));
 
 router.get('/users/me', asyncHandler(async (req, res) => {

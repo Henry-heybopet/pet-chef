@@ -120,6 +120,11 @@ const initialDb = {
   seed_version: 3,
   users: [],
   user_identities: [],
+  sms_verification_codes: [],
+  email_verification_codes: [],
+  verification_failures: [],
+  auth_sessions: [],
+  account_merge_logs: [],
   households: [],
   household_members: [],
   tuya_user_mappings: [],
@@ -181,35 +186,57 @@ function saveDb() {
   }
 }
 
+function ensureCollection(name) {
+  if (!Array.isArray(db[name])) db[name] = [];
+  return db[name];
+}
+
 function publicUser(user) {
   if (!user) return null;
   const { deleted_at, ...safeUser } = user;
   return safeUser;
 }
 
-function findUserByLogin(login, provider = 'phone') {
+function findIdentityByLogin(login, provider = 'phone', region = '') {
   const normalized = normalizeLogin(login);
   const loginHash = hash(normalized);
-  const identity = db.user_identities.find(item =>
+  return db.user_identities.find(item =>
     item.provider === provider &&
+    (!region || item.region === region || !item.region) &&
     (item.login_hash === loginHash || item.provider_user_id === normalized)
   );
+}
+
+function findIdentity(provider, providerUserId, region = '') {
+  const normalized = normalizeLogin(providerUserId);
+  return db.user_identities.find(item =>
+    item.provider === provider &&
+    (!region || item.region === region || !item.region) &&
+    item.provider_user_id === normalized &&
+    !item.unbound_at
+  );
+}
+
+function findUserByLogin(login, provider = 'phone', region = '') {
+  const identity = findIdentityByLogin(login, provider, region);
   if (!identity) return null;
   return db.users.find(user => user.id === identity.user_id) || null;
 }
 
-function createUserWithIdentity({ login, provider = 'phone', displayName }) {
+function createUserWithIdentity({ login, provider = 'phone', displayName, region = 'CN', countryCode = '86' }) {
   const normalized = normalizeLogin(login);
+  const isPhone = provider === 'phone';
+  const isEmail = provider === 'email';
   const user = {
     id: id('usr'),
-    display_name: displayName || (provider === 'phone' ? `用户${normalized.slice(-4)}` : normalized),
+    display_name: displayName || (isPhone ? `用户${normalized.slice(-4)}` : normalized),
     avatar_url: '',
-    primary_phone: provider === 'phone' ? normalized : '',
-    primary_email: provider === 'email' ? normalized : '',
-    country_code: '86',
-    region: 'CN',
-    language: 'zh',
-    timezone: 'Asia/Shanghai',
+    primary_phone: isPhone ? normalized : '',
+    primary_email: isEmail ? normalized : '',
+    country_code: countryCode,
+    region,
+    language: region === 'CN' ? 'zh' : 'en',
+    timezone: region === 'CN' ? 'Asia/Shanghai' : (region === 'EU' ? 'Europe/Berlin' : 'America/Los_Angeles'),
     status: 'active',
     created_at: now(),
     updated_at: now(),
@@ -219,13 +246,18 @@ function createUserWithIdentity({ login, provider = 'phone', displayName }) {
   const identity = {
     id: id('idt'),
     user_id: user.id,
+    region,
     provider,
     provider_user_id: normalized,
+    provider_union_id: '',
     login_hash: hash(normalized),
-    phone_country_code: provider === 'phone' ? '86' : '',
+    phone_country_code: isPhone ? countryCode : '',
     is_primary: true,
     verified_at: now(),
     created_at: now(),
+    updated_at: now(),
+    unbound_at: '',
+    provider_payload: {},
   };
 
   db.users.push(user);
@@ -236,9 +268,9 @@ function createUserWithIdentity({ login, provider = 'phone', displayName }) {
   return user;
 }
 
-function loginOrCreateUser({ login, provider = 'phone', displayName }) {
-  let user = findUserByLogin(login, provider);
-  if (!user) user = createUserWithIdentity({ login, provider, displayName });
+function loginOrCreateUser({ login, provider = 'phone', displayName, region = 'CN', countryCode = '86' }) {
+  let user = findUserByLogin(login, provider, region);
+  if (!user) user = createUserWithIdentity({ login, provider, displayName, region, countryCode });
   user.last_login_at = now();
   user.updated_at = now();
   const household = ensureDefaultHousehold(user.id);
@@ -250,6 +282,67 @@ function loginOrCreateUser({ login, provider = 'phone', displayName }) {
     tuyaMapping,
     token: `dev_${user.id}`,
   };
+}
+
+function addIdentity(userId, {
+  provider,
+  providerUserId,
+  providerUnionId = '',
+  loginHashValue,
+  region = 'CN',
+  phoneCountryCode = '',
+  isPrimary = false,
+  providerPayload = {},
+}) {
+  const normalizedProviderUserId = normalizeLogin(providerUserId);
+  const existing = findIdentity(provider, normalizedProviderUserId, region);
+  if (existing && existing.user_id !== userId) throw new Error(`${provider} identity already bound`);
+  if (existing) return existing;
+
+  const identity = {
+    id: id('idt'),
+    user_id: userId,
+    region,
+    provider,
+    provider_user_id: normalizedProviderUserId,
+    provider_union_id: providerUnionId || '',
+    login_hash: loginHashValue || hash(normalizedProviderUserId),
+    phone_country_code: phoneCountryCode || '',
+    is_primary: Boolean(isPrimary),
+    verified_at: now(),
+    created_at: now(),
+    updated_at: now(),
+    unbound_at: '',
+    provider_payload: providerPayload || {},
+  };
+  db.user_identities.push(identity);
+  saveDb();
+  return identity;
+}
+
+function getUserIdentities(userId) {
+  return db.user_identities.filter(identity => identity.user_id === userId && !identity.unbound_at);
+}
+
+function unbindIdentity(identityId, userId) {
+  const identity = db.user_identities.find(item => item.id === identityId && item.user_id === userId && !item.unbound_at);
+  if (!identity) return null;
+  if (identity.is_primary) throw new Error('Primary identity cannot be unbound');
+  identity.unbound_at = now();
+  identity.updated_at = now();
+  saveDb();
+  return identity;
+}
+
+function appendAccountMergeLog(payload) {
+  const record = {
+    id: id('aml'),
+    created_at: now(),
+    ...payload,
+  };
+  ensureCollection('account_merge_logs').push(record);
+  saveDb();
+  return record;
 }
 
 function getUser(userId) {
@@ -287,10 +380,12 @@ function ensureDefaultHousehold(userId) {
 function ensureTuyaMapping(userId) {
   let mapping = db.tuya_user_mappings.find(item => item.user_id === userId);
   if (mapping) return mapping;
+  const user = db.users.find(item => item.id === userId);
+  const tuyaUid = user?.primary_phone === '18757129405' ? '18757129405' : `heybo_${userId}`;
   mapping = {
     id: id('tym'),
     user_id: userId,
-    tuya_uid: `heybo_${userId}`,
+    tuya_uid: tuyaUid,
     tuya_country_code: '86',
     tuya_region: 'CN',
     tuya_home_ids: [],
@@ -561,7 +656,9 @@ function appendAnalyticsEvent(event) {
 }
 
 function resetForTests() {
-  db = structuredClone(initialDb);
+  const fresh = structuredClone(initialDb);
+  Object.keys(db).forEach(key => delete db[key]);
+  Object.assign(db, fresh);
   saveDb();
 }
 
@@ -569,7 +666,19 @@ module.exports = {
   db,
   id,
   now,
+  hash,
+  normalizeLogin,
+  saveDb,
+  ensureCollection,
   loginOrCreateUser,
+  createUserWithIdentity,
+  findIdentity,
+  findIdentityByLogin,
+  findUserByLogin,
+  addIdentity,
+  getUserIdentities,
+  unbindIdentity,
+  appendAccountMergeLog,
   getUser,
   publicUser,
   ensureDefaultHousehold,

@@ -18,6 +18,7 @@ app.use(express.json({
     req.rawBody = Buffer.from(buffer);
   },
 }));
+app.use('/api/v1', heyboRoutes);
 app.use('/api', heyboRoutes);
 
 // ============================================================
