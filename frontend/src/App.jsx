@@ -13,7 +13,7 @@ import AIAnalysisScreen from './components/AIAnalysisScreen';
 import RecipeList from './components/RecipeList';
 import RecipeMake from './components/RecipeMake';
 import CookingScreen from './components/CookingScreen';
-import TuyaDeviceFlow from './components/TuyaDeviceFlow';
+import CookingCenterPage from './components/CookingCenterPage';
 import { FreshMatchResultScreen, FreshMatchScreen } from './components/FreshMatchScreen';
 import BottomTabBar from './components/BottomTabBar';
 import RecipeCategoryCatalog from './components/RecipeCategoryCatalog';
@@ -354,10 +354,10 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken,
           <div style={{ marginLeft: 'auto', color: 'var(--secondary)', fontSize: 20 }}>→</div>
         </button>
         <button onClick={onDeviceEntry} className={`home-action-button home-action-device ${authToken ? '' : 'is-locked'}`}>
-          <div className="home-action-icon">⚙</div>
+          <div className="home-action-icon">🍲</div>
           <div>
-            <div className="home-action-title" style={{ color: '#7CFFB2' }}>{t('deviceControl')}</div>
-            <div className="home-action-desc">{t('deviceControlDesc')}</div>
+            <div className="home-action-title" style={{ color: '#7CFFB2' }}>烹饪</div>
+            <div className="home-action-desc">鲜食机 · 绑定 · 记录 · 状态</div>
           </div>
           <div style={{ marginLeft: 'auto', color: '#7CFFB2', fontSize: 20 }}>→</div>
         </button>
@@ -883,7 +883,7 @@ function AppInner() {
       {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={profile} onSelectRecipe={handleSelectRecipe} lang={lang} />}
       {screen === 'recipe_make' && <RecipeMake onBack={goBack} recipe={selectedRecipe} profile={profile} onStartCooking={handleStartCooking} lang={lang} />}
       {screen === 'cooking' && <CookingScreen onBack={goHome} cookingData={cookingData} lang={lang} />}
-      {screen === 'device_flow' && <TuyaDeviceFlow onBack={goHome} />}
+      {screen === 'device_flow' && <CookingCenterPage onBack={goHome} authToken={authToken} authUser={authUser} />}
       {screen === 'mall_placeholder' && (
         <div className="animate-fade flex-col" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: '40px 20px', color: 'var(--gray)', textAlign: 'center', background: 'var(--dark)' }}>
           <span style={{ fontSize: '48px', marginBottom: '16px' }}>🛒</span>

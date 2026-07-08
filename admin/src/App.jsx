@@ -2,7 +2,6 @@ import React, { useEffect, useState, useMemo } from 'react';
 import {
   REGIONS,
   MEDICINE_REGISTRY,
-  mockDevices,
   mockRecipes,
   mockProducts,
   mockOrders,
@@ -115,6 +114,9 @@ function App() {
   const [users, setUsers] = useState([]);
   const [userSource, setUserSource] = useState('loading');
   const [userError, setUserError] = useState('');
+  const [devices, setDevices] = useState([]);
+  const [deviceSource, setDeviceSource] = useState('loading');
+  const [deviceError, setDeviceError] = useState('');
 
   // 处方药品维护列表状态
   const [medicines, setMedicines] = useState(MEDICINE_REGISTRY);
@@ -142,8 +144,8 @@ function App() {
   }, [pets, petSource]);
 
   const filteredDevices = useMemo(() => {
-    return mockDevices.filter(d => d.region === activeRegion);
-  }, [activeRegion]);
+    return deviceSource === 'heybo_store' ? devices.filter(d => (d.region || 'CN') === activeRegion) : [];
+  }, [activeRegion, devices, deviceSource]);
 
   const filteredProducts = useMemo(() => {
     // 料包做区域隔离，配件全局显示
@@ -230,10 +232,26 @@ function App() {
     }
   };
 
+  const loadDevices = async () => {
+    setDeviceError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/devices`);
+      const data = await res.json();
+      if (!data?.success) throw new Error(data?.error || '加载设备失败');
+      setDevices(data.devices || []);
+      setDeviceSource(data.source || 'heybo_store');
+    } catch (error) {
+      setDevices([]);
+      setDeviceSource('store_error');
+      setDeviceError(error.message);
+    }
+  };
+
   useEffect(() => {
     loadUsers();
     loadRecipes();
     loadPets();
+    loadDevices();
   }, []);
 
   const openRecipeEditor = (recipe) => {
@@ -343,7 +361,7 @@ function App() {
             <span>🐶 宠物档案 Pets ({filteredPets.length}/{pets.length})</span>
           </button>
           <button className={`nav-btn ${activeTab === 'devices' ? 'active' : ''}`} onClick={() => setActiveTab('devices')}>
-            <span>🔌 智能设备 Devices ({filteredDevices.length}/{mockDevices.length})</span>
+            <span>🔌 智能设备 Devices ({filteredDevices.length})</span>
           </button>
           <button className={`nav-btn ${activeTab === 'recipes' ? 'active' : ''}`} onClick={() => setActiveTab('recipes')}>
             <span>🍲 食谱配方 Recipes</span>
@@ -637,11 +655,14 @@ function App() {
           <section className="module-section">
             <div className="table-header">
               <h3>绑定设备一览与遥测监控</h3>
-              <p>支持 <strong>鲜食机、猫砂盆、喂食器、喂水器、定位器</strong> 5 大智能硬件</p>
+              <p>
+                数据源：{deviceSource}
+                {deviceError ? ` 设备加载失败：${deviceError}` : ' 读取真实账号绑定设备'}
+              </p>
             </div>
 
             <div className="grid-list">
-              {filteredDevices.map(dev => (
+              {filteredDevices.length === 0 ? <p className="muted-text">暂无真实绑定设备。</p> : filteredDevices.map(dev => (
                 <article key={dev.id} className="device-card cursor-pointer" onClick={() => setSelectedDevice(dev)}>
                   <div className="dev-header">
                     <div>

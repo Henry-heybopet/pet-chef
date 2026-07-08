@@ -243,9 +243,29 @@ export default function TuyaDeviceFlow({ onBack }) {
         device_name: device.name,
         status: device.isOnline ? 'online' : 'offline',
       }, token);
+      await api.syncDeviceDp(device.devId, {
+        tuya_device_id: device.devId,
+        online: device.isOnline,
+        dps: parseDps(device.dps),
+        reported_at: new Date().toISOString(),
+      }, token);
       addLog(`设备 ${device.name || device.devId} 元数据已同步到 Heybo 后端`);
     } catch (error) {
       addLog(`同步设备到后端失败: ${error.message}`);
+    }
+  };
+
+  const syncDpToBackend = async (devId, dps, online = isOnline, token = heyboToken) => {
+    if (!devId || !token || (!dps && online === undefined)) return;
+    try {
+      await api.syncDeviceDp(devId, {
+        tuya_device_id: devId,
+        online,
+        dps: dps || {},
+        reported_at: new Date().toISOString(),
+      }, token);
+    } catch (error) {
+      addLog(`同步 DP 到后端失败: ${error.message}`);
     }
   };
 
@@ -571,6 +591,7 @@ export default function TuyaDeviceFlow({ onBack }) {
         
         // Update local DPs state
         setDeviceDps(prev => ({ ...prev, ...updatedDps }));
+        syncDpToBackend(selectedDevId, updatedDps, isOnline);
         
         // Trigger card flash animation for each updated DP
         const newFlash = {};
@@ -593,6 +614,7 @@ export default function TuyaDeviceFlow({ onBack }) {
       const statusListener = await HeyboTuya.addListener('deviceStatusChanged', (data) => {
         if (data.devId !== selectedDevId) return;
         setIsOnline(data.online);
+        syncDpToBackend(selectedDevId, {}, data.online);
         addLog(`📡 [设备状态] 设备 ${data.online ? '上线' : '下线'}`);
       });
 

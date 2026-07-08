@@ -14,6 +14,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
+      - JWT_SECRET=${JWT_SECRET:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - TUYA_ACCESS_ID=${TUYA_ACCESS_ID:-}
       - TUYA_SECRET=${TUYA_SECRET:-}
@@ -24,6 +25,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - ./.data:/app/.data
+      - ./uploads:/app/public/uploads
     networks:
       - petchef-net
     # Security hardening

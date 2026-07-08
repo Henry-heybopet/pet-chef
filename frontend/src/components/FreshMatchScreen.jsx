@@ -146,6 +146,13 @@ export function FreshMatchResultScreen({ result, onBack }) {
       </ResultCard>
 
       <ResultCard title="营养缺口检查">
+        {result.feeding_plan && (
+          <div className="fresh-gap-grid">
+            <Gap label="每日总量" value={`${result.feeding_plan.daily_grams}g`} />
+            <Gap label="每日餐次" value={String(result.feeding_plan.meals_per_day)} />
+            <Gap label="每餐份量" value={`${result.feeding_plan.per_meal_grams}g`} />
+          </div>
+        )}
         <div className="fresh-gap-grid">
           <Gap label="蛋白质" value={result.nutrition_gap?.protein} />
           <Gap label="果蔬" value={result.nutrition_gap?.vegetables_fruits} />
@@ -210,6 +217,9 @@ function RiskList({ title, items = [], empty }) {
 }
 
 function Gap({ label, value }) {
+  if (value !== 'sufficient' && value !== 'missing') {
+    return <div className="gap-ok"><strong>{label}</strong><span>{value}</span></div>;
+  }
   const ok = value === 'sufficient';
   return <div className={ok ? 'gap-ok' : 'gap-missing'}><strong>{label}</strong><span>{ok ? '充足' : '缺少'}</span></div>;
 }

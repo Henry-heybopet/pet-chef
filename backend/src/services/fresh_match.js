@@ -62,6 +62,17 @@ function isLowPriorityCarb(item) {
   return LOW_PRIORITY_CARBS.some(name => includesIngredient(item, name));
 }
 
+function isFishProtein(item) {
+  return ['鱼', '鱼肉', '三文鱼', '金枪鱼', '鳕鱼'].some(name => includesIngredient(item, name));
+}
+
+function mealCountFor(pet) {
+  const months = Number(pet.age_months || 0);
+  if (months && months < 6) return 4;
+  if (months && months < 12) return 3;
+  return 2;
+}
+
 function allergenTerms(allergen) {
   const value = String(allergen || '').trim();
   const matchedKey = Object.keys(ALLERGEN_ALIASES).find(key => includesIngredient(value, key) || ALLERGEN_ALIASES[key].some(alias => includesIngredient(value, alias)));
@@ -193,7 +204,7 @@ function calciumFor(ingredients) {
 function localRecipes(pet, safeIngredients) {
   if (!safeIngredients.proteins.length) return [];
   const total = Math.min(1000, Math.max(180, Math.round((Number(pet.current_weight_kg || 10) || 10) * 25)));
-  const proteins = safeIngredients.proteins;
+  const proteins = [...safeIngredients.proteins].sort((a, b) => Number(isFishProtein(b)) - Number(isFishProtein(a)));
   const plants = selectPlantFoods(safeIngredients);
   return [0, 1, 2].map(index => {
     const protein = proteins[index % proteins.length];
@@ -203,9 +214,12 @@ function localRecipes(pet, safeIngredients) {
     const fruitNames = plants.fruit;
     const ingredients = grams(total, protein, carbNames, vegetableNames, fruitNames);
     const plantNames = [...carbNames, ...vegetableNames, ...fruitNames].join('、') || '现有安全食材';
+    const thirdName = isFishProtein(protein)
+      ? `${protein}亮毛餐`
+      : `${fruitNames[0] || vegetableNames[0] || protein}均衡餐`;
     return {
       id: `recipe_${index + 1}`,
-      name: [`轻盈${protein}餐`, `${carbNames[0] || protein}活力餐`, `${fruitNames[0] || vegetableNames[0] || protein}亮毛餐`][index],
+      name: [`轻盈${protein}餐`, `${carbNames[0] || protein}活力餐`, thirdName][index],
       total_weight_g: total,
       reason: `单一${protein}蛋白，搭配${plantNames}，适合按当前档案保守试做。`,
       ingredients,
@@ -231,9 +245,11 @@ function sanitizeRecipes(recipes, safeIngredients, pet) {
       .filter(item => item.weight_g > 0);
     if (!ingredients.length) return fallbackRecipes[index];
     const total = Math.min(1000, ingredients.reduce((sum, item) => sum + item.weight_g, 0));
+    const hasFish = ingredients.some(item => isFishProtein(item.name));
+    const cleanName = String(recipe.name).replace(/羹|泥/g, '餐');
     return {
       id: recipe.id || `recipe_${index + 1}`,
-      name: String(recipe.name).replace(/羹|泥/g, '餐'),
+      name: !hasFish && cleanName.includes('亮毛') ? cleanName.replace(/亮毛/g, '均衡') : cleanName,
       total_weight_g: total,
       reason: recipe.reason || '基于当前宠物档案和安全食材生成。',
       ingredients: ingredients.map(item => ({ ...item, ratio: `${((item.weight_g / total) * 100).toFixed(1)}%` })),
@@ -260,8 +276,11 @@ async function buildFreshMatchAnalysis({ pet, ingredients }) {
   const machine_limit_notice = recipes.some(recipe => recipe.total_weight_g >= 1000)
     ? '受制于鲜食机处理能力，食谱的最大克重不能超过1000克。'
     : '';
+  const daily = recipes[0]?.total_weight_g || 0;
+  const meals = mealCountFor(pet);
   return {
     pet: petDTO(pet),
+    feeding_plan: daily ? { daily_grams: daily, meals_per_day: meals, per_meal_grams: Math.round(daily / meals) } : null,
     safety_check: safety,
     nutrition_gap: gap,
     recipes,

@@ -647,16 +647,20 @@ ${enrichedProposed.map((p, idx) => `
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed && parsed.comparisons) {
-        Object.keys(parsed.comparisons).forEach(key => {
-          const comp = parsed.comparisons[key];
-          if (comp && comp.a_comparison) {
-            const matchedProposed = enrichedProposed.find(p => p.a_recipe_name === key);
-            if (matchedProposed) {
-              comp.a_comparison.current_score = currentScore;
-              comp.a_comparison.proposed_score = matchedProposed.computed_score;
-            }
-          }
+        const comparisons = {};
+        enrichedProposed.forEach(proposed => {
+          const comp = parsed.comparisons[proposed.a_recipe_name] || getLocalComparisonWarning(dogProfile, currentSelection, proposed);
+          comparisons[proposed.a_recipe_name] = {
+            ...comp,
+            a_comparison: {
+              ...(comp.a_comparison || {}),
+              show_dialog: true,
+              current_score: currentScore,
+              proposed_score: proposed.computed_score,
+            },
+          };
         });
+        return { comparisons };
       }
       return parsed;
     }

@@ -15,6 +15,7 @@ const { buildFreshMatchAnalysis } = require('../services/fresh_match');
 const router = express.Router();
 const avatarDir = path.resolve(__dirname, '../../public/uploads/avatars');
 const imageTypes = { png: 'png', jpeg: 'jpg', jpg: 'jpg', webp: 'webp' };
+const maxAvatarBytes = 5 * 1024 * 1024;
 
 function asyncHandler(fn) {
   return (req, res) => Promise.resolve(fn(req, res)).catch(error => {
@@ -123,7 +124,7 @@ router.post('/uploads/avatar', authMiddleware, asyncHandler(async (req, res) => 
   if (!match) return res.status(400).json({ success: false, error: 'Invalid avatar image' });
 
   const buffer = Buffer.from(match[2], 'base64');
-  if (buffer.length > 2 * 1024 * 1024) {
+  if (buffer.length > maxAvatarBytes) {
     return res.status(413).json({ success: false, error: 'Avatar image is too large' });
   }
 
@@ -188,6 +189,12 @@ router.get('/devices', authMiddleware, asyncHandler(async (req, res) => {
 router.post('/devices', authMiddleware, asyncHandler(async (req, res) => {
   const user = await requireUser(req);
   const device = store.upsertDevice(user.id, req.body || {});
+  res.json({ success: true, device });
+}));
+
+router.post('/devices/:id/dp-sync', authMiddleware, asyncHandler(async (req, res) => {
+  const user = await requireUser(req);
+  const device = store.syncDeviceDp(user.id, req.params.id, req.body || {});
   res.json({ success: true, device });
 }));
 

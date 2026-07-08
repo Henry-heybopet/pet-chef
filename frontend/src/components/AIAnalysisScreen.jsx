@@ -92,6 +92,7 @@ function tFallbackAnalysis(text, breedName, age, weight, analysis, lang) {
 }
 
 function getRecipeScore(recipe, comparisons) {
+  if (!recipe || !comparisons) return null;
   const score = Number(comparisons?.[recipe.name]?.a_comparison?.proposed_score);
   return Number.isFinite(score) ? score : null;
 }
@@ -287,7 +288,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
 
   // 检测食谱是否包含宠物的过敏原
   const checkRecipeAllergen = React.useCallback((recipe) => {
-    return findMatchedAllergen(Object.keys(recipe.ingredients || {}));
+    return findMatchedAllergen(Object.keys(recipe?.ingredients || {}));
   }, [findMatchedAllergen]);
 
   const checkCPackAllergen = React.useCallback((pack) => {
@@ -483,7 +484,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
             )}
           </div>
           <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
-            {Object.keys(r.ingredients).slice(0, 4).join('/')}...
+            {Object.keys(r.ingredients || {}).slice(0, 4).join('/')}...
           </div>
         </div>
         <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 11, height: 'fit-content' }} onClick={(e) => { e.stopPropagation(); setShowDetailRecipe(r); }}>
@@ -738,7 +739,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
             <div style={{ marginBottom: 16 }}>
               <h4 style={{ color: '#fff', fontSize: 13, margin: '0 0 8px 0', fontWeight: 600 }}>配方食材组成 (A鲜食基础包)</h4>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {Object.entries(showDetailRecipe.ingredients).map(([ing, pct]) => {
+                {Object.entries(showDetailRecipe.ingredients || {}).map(([ing, pct]) => {
                   const perMealGrams = analysis?.per_meal_grams || 100;
                   const grams = Math.round((pct / 100) * perMealGrams);
                   return (

@@ -79,6 +79,7 @@ export const api = {
   updatePet: (petId, body, token) => authedPatch(`/api/pets/${petId}`, body, token),
   registerDevice: (body, token) => authedPost('/api/devices', body, token),
   listDevices: (token) => authedGet('/api/devices', token),
+  syncDeviceDp: (deviceId, body, token) => authedPost(`/api/devices/${encodeURIComponent(deviceId)}/dp-sync`, body, token),
   recordCookingOperation: (body, token) => authedPost('/api/operations/cooking', body, token),
   listCookingOperations: (token) => authedGet('/api/operations/cooking', token),
   createFeedingRecord: (body, token) => authedPost('/api/feeding-records', body, token),
@@ -120,7 +121,7 @@ export const api = {
   tuyaStop: async () => {
     return post('/api/tuya/stop', {});
   },
-  tuyaStatus: async () => {
-    return get('/api/tuya/status');
+  tuyaStatus: async (devId) => {
+    return get(`/api/tuya/status${devId ? `?devId=${encodeURIComponent(devId)}` : ''}`);
   },
 };
