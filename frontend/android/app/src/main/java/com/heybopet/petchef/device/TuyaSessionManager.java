@@ -7,7 +7,9 @@ import com.thingclips.smart.home.sdk.ThingHomeSdk;
 import com.thingclips.smart.home.sdk.bean.HomeBean;
 import com.thingclips.smart.home.sdk.callback.IThingGetHomeListCallback;
 import com.thingclips.smart.home.sdk.callback.IThingHomeResultCallback;
+import com.thingclips.smart.android.user.api.ILoginCallback;
 import com.thingclips.smart.android.user.bean.User;
+import com.heybopet.petchef.auth.NativeAuthStore;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -82,12 +84,22 @@ public class TuyaSessionManager {
     }
 
     private void ensureLoggedIn(TuyaDeviceResult.Callback<SessionState> callback) {
+        Activity activity = activityRef.get();
+        if (activity == null) {
+            finish(callback, SessionState.error(TuyaDeviceError.UNKNOWN, "Activity is not available."));
+            return;
+        }
+        NativeAuthStore authStore = new NativeAuthStore(activity);
+        if (!authStore.isLoggedIn()) {
+            finish(callback, SessionState.error(
+                TuyaDeviceError.NOT_LOGGED_IN,
+                "AUTH_NOT_SYNCED: H5 login state has not been synced to native."
+            ));
+            return;
+        }
         try {
             if (!ThingHomeSdk.getUserInstance().isLogin()) {
-                finish(callback, SessionState.error(
-                    TuyaDeviceError.NOT_LOGGED_IN,
-                    "Tuya user is not logged in. TODO: wire native Heybo auth token so the app can reuse the existing Heybo UID -> Tuya UID silent login flow without the H5 debug center."
-                ));
+                loginTuya(authStore, callback);
                 return;
             }
         } catch (Exception error) {
@@ -95,6 +107,31 @@ public class TuyaSessionManager {
             return;
         }
         ensureHome(callback);
+    }
+
+    private void loginTuya(NativeAuthStore authStore, TuyaDeviceResult.Callback<SessionState> callback) {
+        String tuyaUid = authStore.getTuyaUid();
+        String password = authStore.getTuyaPassword();
+        if (TextUtils.isEmpty(tuyaUid) || TextUtils.isEmpty(password)) {
+            finish(callback, SessionState.error(TuyaDeviceError.NOT_LOGGED_IN, "Tuya UID mapping is missing from native auth state."));
+            return;
+        }
+        ThingHomeSdk.getUserInstance().loginOrRegisterWithUid(
+            "86",
+            tuyaUid,
+            password,
+            new ILoginCallback() {
+                @Override
+                public void onSuccess(User user) {
+                    ensureHome(callback);
+                }
+
+                @Override
+                public void onError(String code, String error) {
+                    finish(callback, SessionState.error(TuyaDeviceError.NOT_LOGGED_IN, "Tuya UID login failed: " + code + " " + error));
+                }
+            }
+        );
     }
 
     private void ensureHome(TuyaDeviceResult.Callback<SessionState> callback) {

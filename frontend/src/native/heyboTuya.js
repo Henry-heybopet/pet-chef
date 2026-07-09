@@ -242,6 +242,18 @@ class HeyboTuyaWeb extends WebPlugin {
     await this.publishDps({ devId, dps });
     return { success: true, devId, dps: JSON.stringify(dps) };
   }
+
+  async syncAuthState() {
+    return { success: true, platform: 'web' };
+  }
+
+  async clearAuthState() {
+    return { success: true, platform: 'web' };
+  }
+
+  async getAuthToken() {
+    return { success: false, token: '', reason: 'web-preview' };
+  }
 }
 
 export const HeyboTuya = registerPlugin('HeyboTuya', {

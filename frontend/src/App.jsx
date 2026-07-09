@@ -475,6 +475,13 @@ function AppInner() {
     localStorage.setItem('sessionExpiresAt', expiresAt);
     localStorage.removeItem('petchef_auth_token');
     localStorage.removeItem('petchef_auth_user');
+    HeyboTuya.syncAuthState({
+      token,
+      userId: user?.id || '',
+      nickname: user?.display_name || '',
+      tuyaUid: result.tuyaMapping?.tuya_uid || (user?.id ? `heybo_${user.id}` : ''),
+      tuyaPassword: result.tuyaMapping?.tuya_test_password || (user?.id ? `heybo_${user.id}` : ''),
+    }).catch(error => console.warn('Sync native auth failed:', error));
   };
 
   const clearAuthSession = () => {
@@ -486,6 +493,7 @@ function AppInner() {
     localStorage.removeItem('sessionExpiresAt');
     localStorage.removeItem('petchef_auth_token');
     localStorage.removeItem('petchef_auth_user');
+    HeyboTuya.clearAuthState().catch(error => console.warn('Clear native auth failed:', error));
   };
 
   const handleAuthLogin = (result) => {

@@ -9,6 +9,7 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.heybopet.petchef.auth.NativeAuthStore;
 import com.heybopet.petchef.device.DeviceCommand;
 import com.heybopet.petchef.device.TuyaDeviceAdapterImpl;
 import com.heybopet.petchef.device.TuyaDeviceResult;
@@ -70,6 +71,10 @@ public class HeyboTuyaPlugin extends Plugin {
 
     private TuyaDeviceAdapterImpl adapter() {
         return TuyaDeviceAdapterImpl.getInstance(getActivity());
+    }
+
+    private NativeAuthStore authStore() {
+        return new NativeAuthStore(getContext());
     }
 
     @PluginMethod
@@ -678,10 +683,46 @@ public class HeyboTuyaPlugin extends Plugin {
 
     @PluginMethod
     public void getAuthToken(PluginCall call) {
+        NativeAuthStore store = authStore();
+        if (!store.isLoggedIn()) {
+            JSObject result = new JSObject();
+            result.put("success", false);
+            result.put("token", "");
+            result.put("reason", "AUTH_NOT_SYNCED");
+            call.resolve(result);
+            return;
+        }
         JSObject result = new JSObject();
-        result.put("success", false);
-        result.put("token", "");
-        result.put("reason", "native-auth-token-not-wired");
+        result.put("success", true);
+        result.put("token", store.getToken());
+        result.put("userId", store.getUserId());
+        result.put("nickname", store.getNickname());
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void syncAuthState(PluginCall call) {
+        String token = call.getString("token", "");
+        String userId = call.getString("userId", "");
+        String nickname = call.getString("nickname", "");
+        String tuyaUid = call.getString("tuyaUid", "");
+        String tuyaPassword = call.getString("tuyaPassword", "");
+        if (TextUtils.isEmpty(token) || TextUtils.isEmpty(userId)) {
+            call.reject("AUTH_SYNC_INVALID: token and userId are required.");
+            return;
+        }
+        authStore().saveAuthState(token, userId, nickname, tuyaUid, tuyaPassword);
+        JSObject result = new JSObject();
+        result.put("success", true);
+        result.put("userId", userId);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void clearAuthState(PluginCall call) {
+        authStore().clear();
+        JSObject result = new JSObject();
+        result.put("success", true);
         call.resolve(result);
     }
 
