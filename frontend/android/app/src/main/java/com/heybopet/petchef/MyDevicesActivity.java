@@ -11,13 +11,15 @@ import android.widget.TextView;
 import com.heybopet.petchef.device.DeviceStatus;
 import com.heybopet.petchef.device.TuyaDeviceAdapter;
 import com.heybopet.petchef.device.TuyaDeviceAdapterImpl;
+import com.heybopet.petchef.device.TuyaDeviceError;
+import com.heybopet.petchef.device.TuyaSessionManager;
 
 import java.util.List;
-import java.util.Map;
 
 public class MyDevicesActivity extends Activity {
     private LinearLayout list;
     private TuyaDeviceAdapter adapter;
+    private TuyaSessionManager sessionManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,28 +46,26 @@ public class MyDevicesActivity extends Activity {
         root.addView(list);
 
         setContentView(root);
+        sessionManager = TuyaSessionManager.getInstance(this);
         loadDevices();
     }
 
     private void loadDevices() {
         list.removeAllViews();
-        Map<String, Object> status = adapter.status();
-        Object home = status.get("homeId");
-        Long homeId = home instanceof Number ? ((Number) home).longValue() : null;
-
-        if (!adapter.isInitialized() || homeId == null) {
-            addDeviceCard("鲜食机", "离线", "待机", null);
-            showMessage("Tuya SDK 未初始化或缺少 homeId；请先从现有 H5 调试流程登录并初始化。");
-            return;
-        }
-
-        adapter.getDeviceList(homeId, result -> runOnUiThread(() -> {
+        showMessage("正在读取真实设备列表...");
+        sessionManager.ensureReady(result -> runOnUiThread(() -> {
             list.removeAllViews();
             if (!result.success) {
+                if (TuyaDeviceError.NOT_LOGGED_IN.equals(result.error.code)) {
+                    showMessage("未登录或原生暂时拿不到 Heybo 登录态。\n" + result.error.message);
+                    showDebugFallback();
+                    return;
+                }
                 showMessage(result.error.message);
+                showDebugFallback();
                 return;
             }
-            List<DeviceStatus> devices = result.data;
+            List<DeviceStatus> devices = result.data.devices;
             if (devices == null || devices.isEmpty()) {
                 showMessage("暂无已绑定鲜食机。");
                 return;
@@ -79,6 +79,9 @@ public class MyDevicesActivity extends Activity {
     private void addDeviceCard(String name, String online, String cooking, DeviceStatus device) {
         Button card = new Button(this);
         card.setText(name + "\n状态：" + online + " / " + cooking);
+        if (device != null) {
+            card.setText(name + "\nDevId：" + device.devId + "\n状态：" + online + " / " + cooking);
+        }
         card.setAllCaps(false);
         card.setOnClickListener(v -> {
             Intent intent = new Intent(this, DeviceDetailActivity.class);
@@ -91,6 +94,13 @@ public class MyDevicesActivity extends Activity {
             startActivity(intent);
         });
         list.addView(card);
+    }
+
+    private void showDebugFallback() {
+        TextView fallback = new TextView(this);
+        fallback.setText("Debug fallback：现有 H5 联调中心仍可用于登录、配网、DP 调试和研发排障；正式页面不依赖任意 DP 下发。");
+        fallback.setTextSize(14);
+        list.addView(fallback);
     }
 
     private void showMessage(String text) {

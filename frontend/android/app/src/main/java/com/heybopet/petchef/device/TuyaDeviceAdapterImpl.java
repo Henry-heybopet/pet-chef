@@ -13,6 +13,7 @@ import android.text.TextUtils;
 import androidx.core.content.ContextCompat;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.heybopet.petchef.BuildConfig;
 import com.thingclips.smart.home.sdk.ThingHomeSdk;
 import com.thingclips.smart.home.sdk.bean.HomeBean;
@@ -26,6 +27,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class TuyaDeviceAdapterImpl implements TuyaDeviceAdapter {
     public static final String PET_CHEF_PID = "ak2kofibhuvdtqip";
@@ -36,6 +38,9 @@ public class TuyaDeviceAdapterImpl implements TuyaDeviceAdapter {
     private WeakReference<Activity> activityRef;
     private boolean initialized = false;
     private Long currentHomeId = null;
+    private final Map<String, IThingDevice> subscribedDevices = new ConcurrentHashMap<>();
+    private final Map<String, DeviceStatus> deviceCache = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, Object>> dpsCache = new ConcurrentHashMap<>();
 
     private TuyaDeviceAdapterImpl(Activity activity) {
         this.appContext = activity.getApplicationContext();
@@ -53,6 +58,11 @@ public class TuyaDeviceAdapterImpl implements TuyaDeviceAdapter {
 
     public void setCurrentHomeId(Long homeId) {
         currentHomeId = homeId;
+    }
+
+    @Override
+    public Long getCurrentHomeId() {
+        return currentHomeId;
     }
 
     @Override
@@ -122,7 +132,11 @@ public class TuyaDeviceAdapterImpl implements TuyaDeviceAdapter {
                 List<DeviceStatus> devices = new ArrayList<>();
                 List<DeviceBean> rawDevices = homeBean.getDeviceList();
                 if (rawDevices != null) {
-                    for (DeviceBean item : rawDevices) devices.add(toDeviceStatus(item));
+                    for (DeviceBean item : rawDevices) {
+                        DeviceStatus status = toDeviceStatus(item);
+                        remember(status);
+                        devices.add(status);
+                    }
                 }
                 callback.onResult(TuyaDeviceResult.ok(devices));
             }
@@ -132,6 +146,117 @@ public class TuyaDeviceAdapterImpl implements TuyaDeviceAdapter {
                 callback.onResult(TuyaDeviceResult.fail(TuyaDeviceError.TUYA_ERROR, "Query Tuya devices failed: " + error, code));
             }
         });
+    }
+
+    @Override
+    public void getDeviceStatus(String devId, TuyaDeviceResult.Callback<DeviceStatus> callback) {
+        if (TextUtils.isEmpty(devId)) {
+            callback.onResult(TuyaDeviceResult.fail(TuyaDeviceError.INVALID_ARGUMENT, "devId is required."));
+            return;
+        }
+        getDeviceList(currentHomeId, result -> {
+            if (!result.success) {
+                callback.onResult(TuyaDeviceResult.fail(result.error.code, result.error.message, result.error.tuyaCode));
+                return;
+            }
+            for (DeviceStatus device : result.data) {
+                if (devId.equals(device.devId)) {
+                    callback.onResult(TuyaDeviceResult.ok(device));
+                    return;
+                }
+            }
+            callback.onResult(TuyaDeviceResult.fail(TuyaDeviceError.DEVICE_NOT_FOUND, "Device not found: " + devId));
+        });
+    }
+
+    @Override
+    public void getDeviceDpState(String devId, TuyaDeviceResult.Callback<Map<String, Object>> callback) {
+        if (TextUtils.isEmpty(devId)) {
+            callback.onResult(TuyaDeviceResult.fail(TuyaDeviceError.INVALID_ARGUMENT, "devId is required."));
+            return;
+        }
+        Map<String, Object> cached = dpsCache.get(devId);
+        if (cached != null) {
+            callback.onResult(TuyaDeviceResult.ok(new HashMap<>(cached)));
+            return;
+        }
+        getDeviceStatus(devId, result -> {
+            if (!result.success) {
+                callback.onResult(TuyaDeviceResult.fail(result.error.code, result.error.message, result.error.tuyaCode));
+                return;
+            }
+            callback.onResult(TuyaDeviceResult.ok(new HashMap<>(result.data.dps)));
+        });
+    }
+
+    @Override
+    public void subscribeDevice(String devId, DeviceStateListener listener, TuyaDeviceResult.Callback<Map<String, Object>> callback) {
+        if (!ensureInitialized(callback)) return;
+        if (TextUtils.isEmpty(devId)) {
+            callback.onResult(TuyaDeviceResult.fail(TuyaDeviceError.INVALID_ARGUMENT, "devId is required."));
+            return;
+        }
+        unsubscribeDevice(devId);
+        try {
+            IThingDevice device = ThingHomeSdk.newDeviceInstance(devId);
+            device.registerDevListener(new com.thingclips.smart.sdk.api.IDevListener() {
+                @Override
+                public void onDpUpdate(String updatedDevId, String dpStr) {
+                    Map<String, Object> dps = parseDps(dpStr);
+                    Map<String, Object> merged = new HashMap<>(dpsCache.getOrDefault(updatedDevId, new HashMap<>()));
+                    merged.putAll(dps);
+                    dpsCache.put(updatedDevId, merged);
+                    if (listener != null) listener.onDpUpdate(updatedDevId, new HashMap<>(merged));
+                }
+
+                @Override
+                public void onRemoved(String removedDevId) {
+                    subscribedDevices.remove(removedDevId);
+                    deviceCache.remove(removedDevId);
+                    dpsCache.remove(removedDevId);
+                    if (listener != null) listener.onRemoved(removedDevId);
+                }
+
+                @Override
+                public void onStatusChanged(String updatedDevId, boolean online) {
+                    DeviceStatus old = deviceCache.get(updatedDevId);
+                    DeviceStatus next = new DeviceStatus(
+                        updatedDevId,
+                        old == null ? "鲜食机" : old.name,
+                        old == null ? PET_CHEF_PID : old.productId,
+                        online,
+                        dpsCache.getOrDefault(updatedDevId, old == null ? new HashMap<>() : old.dps)
+                    );
+                    remember(next);
+                    if (listener != null) listener.onStatusChanged(updatedDevId, online);
+                }
+
+                @Override
+                public void onNetworkStatusChanged(String updatedDevId, boolean status) {
+                }
+
+                @Override
+                public void onDevInfoUpdate(String updatedDevId) {
+                }
+            });
+            subscribedDevices.put(devId, device);
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("devId", devId);
+            callback.onResult(TuyaDeviceResult.ok(result));
+        } catch (Exception error) {
+            if (listener != null) listener.onError(devId, new TuyaDeviceError(TuyaDeviceError.UNKNOWN, error.getMessage()));
+            callback.onResult(TuyaDeviceResult.fail(TuyaDeviceError.UNKNOWN, "Subscribe device failed: " + error.getMessage()));
+        }
+    }
+
+    @Override
+    public void unsubscribeDevice(String devId) {
+        IThingDevice device = subscribedDevices.remove(devId);
+        if (device != null) {
+            device.unRegisterDevListener();
+            device.onDestroy();
+        }
     }
 
     @Override
@@ -211,6 +336,23 @@ public class TuyaDeviceAdapterImpl implements TuyaDeviceAdapter {
     private DeviceStatus toDeviceStatus(DeviceBean item) {
         Map<String, Object> dps = item.getDps() == null ? new HashMap<>() : item.getDps();
         return new DeviceStatus(item.getDevId(), item.getName(), item.getProductId(), item.getIsOnline(), dps);
+    }
+
+    private void remember(DeviceStatus status) {
+        if (status == null || TextUtils.isEmpty(status.devId)) return;
+        deviceCache.put(status.devId, status);
+        dpsCache.put(status.devId, status.dps == null ? new HashMap<>() : new HashMap<>(status.dps));
+    }
+
+    private Map<String, Object> parseDps(String dpStr) {
+        Map<String, Object> result = new HashMap<>();
+        if (TextUtils.isEmpty(dpStr)) return result;
+        try {
+            JSONObject object = JSON.parseObject(dpStr);
+            for (String key : object.keySet()) result.put(key, object.get(key));
+        } catch (Exception ignored) {
+        }
+        return result;
     }
 
     private <T> boolean ensureInitialized(TuyaDeviceResult.Callback<T> callback) {
