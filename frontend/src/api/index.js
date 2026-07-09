@@ -52,6 +52,13 @@ async function authedPatch(path, body, token) {
   });
 }
 
+async function authedDelete(path, token) {
+  return requestJson(path, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  });
+}
+
 async function createPayment(body, token, idempotencyKey) {
   const res = await fetch(`${BASE}/api/payments`, {
     method: 'POST',
@@ -79,6 +86,7 @@ export const api = {
   updatePet: (petId, body, token) => authedPatch(`/api/pets/${petId}`, body, token),
   registerDevice: (body, token) => authedPost('/api/devices', body, token),
   listDevices: (token) => authedGet('/api/devices', token),
+  unbindDevice: (deviceId, token) => authedDelete(`/api/devices/${encodeURIComponent(deviceId)}`, token),
   syncDeviceDp: (deviceId, body, token) => authedPost(`/api/devices/${encodeURIComponent(deviceId)}/dp-sync`, body, token),
   recordCookingOperation: (body, token) => authedPost('/api/operations/cooking', body, token),
   listCookingOperations: (token) => authedGet('/api/operations/cooking', token),

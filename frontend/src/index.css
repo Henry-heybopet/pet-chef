@@ -738,8 +738,29 @@ body {
 }
 
 .fresh-recipe-card em {
-  margin-left: auto;
   color: #7cffd6;
+  white-space: nowrap;
+}
+
+.fresh-recipe-actions {
+  margin-left: auto;
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+}
+
+.fresh-recipe-actions b {
+  display: inline-grid;
+  place-items: center;
+  min-width: 96px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, #00e5ff, #0072ff);
+  color: #031018;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
   white-space: nowrap;
 }
 
@@ -911,9 +932,8 @@ body {
 
 .cooking-device-list {
   display: flex;
+  flex-direction: column;
   gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 3px;
 }
 
 .cooking-center-card,
@@ -937,7 +957,7 @@ body {
 }
 
 .cooking-device-card {
-  flex: 0 0 86%;
+  width: 100%;
   padding: 16px;
   color: #fff;
   text-align: left;
@@ -954,10 +974,16 @@ body {
   margin-bottom: 7px;
 }
 
-.cooking-device-card > div {
+.cooking-device-card-title {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  margin-top: 10px;
+  margin-bottom: 8px;
+}
+
+.cooking-device-card-title strong {
+  margin: 0;
 }
 
 .cooking-records-section {
@@ -975,7 +1001,15 @@ body {
 
 .cooking-record-row strong {
   display: block;
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.cooking-record-row .cooking-center-btn {
+  width: 84px;
+  height: 40px;
+  padding: 0;
+  flex: 0 0 84px;
 }
 
 .cooking-center-btn {
@@ -1274,6 +1308,208 @@ body {
   display: flex;
   gap: 10px;
   margin-top: 16px;
+}
+
+.cooking-start-actions {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cooking-start-actions .cooking-center-btn {
+  width: 100%;
+  height: 58px;
+  padding: 0 12px;
+  margin: 0;
+  display: grid;
+  place-items: center;
+}
+
+.cooking-detail-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  background: linear-gradient(180deg, #07131f 0%, #070b18 100%);
+}
+
+.cooking-detail-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cooking-detail-actions .cooking-center-btn {
+  width: 100%;
+  height: 58px;
+  padding: 0 8px;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  white-space: normal;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.cooking-detail-head {
+  text-align: center;
+  color: #8ea3b8;
+}
+
+.cooking-detail-head h2 {
+  margin: 0 0 8px;
+  color: #fff;
+  font-size: 18px;
+}
+
+.cooking-detail-head span {
+  font-size: 12px;
+}
+
+.cooking-lux-panel {
+  display: grid;
+  grid-template-columns: 1fr 1.12fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.cooking-lux-panel img {
+  width: 100%;
+  aspect-ratio: 1 / 1.42;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.cooking-lux-metrics {
+  display: grid;
+  gap: 10px;
+}
+
+.cooking-lux-metrics div {
+  border: 1px solid rgba(0, 229, 255, 0.22);
+  border-radius: 10px;
+  background: rgba(13, 27, 42, 0.88);
+  padding: 10px 12px;
+}
+
+.cooking-lux-metrics span,
+.cooking-lux-progress em {
+  display: block;
+  color: #8ea3b8;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.cooking-lux-metrics strong {
+  display: block;
+  margin-top: 3px;
+  color: #00e5ff;
+  font-size: 16px;
+}
+
+.cooking-lux-metrics div:nth-child(1) strong,
+.cooking-lux-metrics div:nth-child(3) strong {
+  color: #ffb020;
+}
+
+.cooking-lux-progress {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(0, 229, 255, 0.18);
+}
+
+.cooking-lux-progress div {
+  text-align: center;
+}
+
+.cooking-lux-progress span {
+  display: block;
+  height: 5px;
+  margin-bottom: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.cooking-lux-progress span.is-active {
+  background: rgba(0, 229, 255, 0.58);
+}
+
+.cooking-lux-progress.is-running span.is-active {
+  background: linear-gradient(90deg, #00e5ff, #38e88b);
+}
+
+.cooking-lux-progress strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.cooking-lux-steps {
+  border: 1px solid rgba(255, 176, 32, 0.36);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: rgba(255, 176, 32, 0.1);
+}
+
+.cooking-lux-steps h3 {
+  margin: 0 0 8px;
+  color: #ffb020;
+  font-size: 15px;
+}
+
+.cooking-lux-steps p,
+.cooking-lux-steps small {
+  display: block;
+  margin: 3px 0;
+  color: #a9bacb;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.cooking-option-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.cooking-option-grid button {
+  border: 1px solid rgba(0, 229, 255, 0.22);
+  border-radius: 14px;
+  height: 40px;
+  padding: 0 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #dcecff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cooking-option-grid button.is-active {
+  border-color: rgba(56, 232, 139, 0.62);
+  background: rgba(56, 232, 139, 0.14);
+  color: #38e88b;
+}
+
+.cooking-feedback-card {
+  color: #fff;
+}
+
+.cooking-feedback-card p,
+.cooking-feedback-card strong {
+  font-size: 12px;
+}
+
+.cooking-feedback-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.cooking-feedback-actions .cooking-center-btn {
+  width: 100%;
+  height: 46px;
+  padding: 0;
+  margin: 0;
 }
 
 .cooking-toast {

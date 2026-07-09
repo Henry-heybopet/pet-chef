@@ -542,7 +542,7 @@ function AppInner() {
         requireAuth(() => setScreen('pet_management'));
         break;
       case 'cook':
-        requireAuth(() => setScreen(cookingData ? 'cooking' : 'device_flow'));
+        requireAuth(() => setScreen('device_flow'));
         break;
       case 'mall':
         setScreen('mall_placeholder');
@@ -787,7 +787,7 @@ function AppInner() {
   const handleSelectRecipe = (recipe) => { setSelectedRecipe(recipe); setScreen('recipe_make'); };
   const handleStartCooking = (data) => {
     setCookingData(data);
-    setScreen('cooking');
+    setScreen('device_flow');
     // 首次烹饪时标记引导完成和已烹饪
     if (!hasCookedBefore) {
       markHasCooked();
@@ -899,13 +899,24 @@ function AppInner() {
           onResult={(result) => { setFreshMatchResult(result); setScreen('fresh_match_result'); }}
         />
       )}
-      {screen === 'fresh_match_result' && <FreshMatchResultScreen result={freshMatchResult} onBack={() => setScreen('fresh_match')} />}
+      {screen === 'fresh_match_result' && <FreshMatchResultScreen result={freshMatchResult} onBack={() => setScreen('fresh_match')} onStartCooking={handleStartCooking} />}
       {screen === 'dog_setup' && <DogSetup onBack={goHome} profile={editingPet} onSave={handleProfileSave} onSelectCategory={handleSelectCategory} onShowAnalysis={handleShowAnalysis} lang={lang} />}
       {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} onSelectRecipe={handleSelectRecipe} lang={lang} authToken={authToken} />}
       {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={profile} onSelectRecipe={handleSelectRecipe} lang={lang} />}
       {screen === 'recipe_make' && <RecipeMake onBack={goBack} recipe={selectedRecipe} profile={profile} onStartCooking={handleStartCooking} lang={lang} />}
       {screen === 'cooking' && <CookingScreen onBack={goHome} cookingData={cookingData} lang={lang} />}
-      {screen === 'device_flow' && <CookingCenterPage onBack={goHome} authToken={authToken} authUser={authUser} />}
+      {screen === 'device_flow' && (
+        <CookingCenterPage
+          onBack={goHome}
+          authToken={authToken}
+          recipeContext={cookingData}
+          onChooseRecipe={() => {
+            setSelectedCategory(null);
+            setEntrySource('catalog');
+            setScreen('recipe_catalog');
+          }}
+        />
+      )}
       {screen === 'mall_placeholder' && (
         <div className="animate-fade flex-col" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: '40px 20px', color: 'var(--gray)', textAlign: 'center', background: 'var(--dark)' }}>
           <span style={{ fontSize: '48px', marginBottom: '16px' }}>🛒</span>

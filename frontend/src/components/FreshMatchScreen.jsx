@@ -148,7 +148,26 @@ export function FreshMatchScreen({ profiles, authToken, onBack, onAddPet, onResu
   );
 }
 
-export function FreshMatchResultScreen({ result, onBack }) {
+function toCookingContext(recipe, result) {
+  const total = Number(recipe.total_weight_g || result?.feeding_plan?.per_meal_grams || 0);
+  const cookParams = {
+    ...(recipe.cooking_profile || recipe.cookingProfile || {}),
+    temperature: recipe.cooking_profile?.temperature ?? recipe.cookingProfile?.temperature ?? 85,
+    cookTime: recipe.cooking_profile?.cookTime ?? recipe.cookingProfile?.cookTime ?? Math.max(12 * 60, Math.round(total * 2.4)),
+    speed: recipe.cooking_profile?.speed ?? recipe.cookingProfile?.speed ?? 1,
+    power: recipe.cooking_profile?.power ?? recipe.cookingProfile?.power ?? 8,
+  };
+  return {
+    recipe: { ...recipe, id: recipe.id || recipe.name },
+    profile: result.pet,
+    intake: result.feeding_plan,
+    cookParams,
+    displayGrams: total,
+    displayIngredients: (recipe.ingredients || []).map(item => ({ ...item, grams: item.weight_g })),
+  };
+}
+
+export function FreshMatchResultScreen({ result, onBack, onStartCooking }) {
   const breeds = useBreedOptions();
   const [openRecipe, setOpenRecipe] = useState(result?.recipes?.[0]?.id || '');
   if (!result) return null;
@@ -206,7 +225,10 @@ export function FreshMatchResultScreen({ result, onBack }) {
                   <strong>{recipe.name}</strong>
                   <span>{recipe.total_weight_g}g · {recipe.reason}</span>
                 </div>
-                <em>{open ? '收起' : '展开'}</em>
+                <span className="fresh-recipe-actions">
+                  <em>{open ? '收起' : '展开'}</em>
+                  <b onClick={event => { event.stopPropagation(); onStartCooking?.(toCookingContext(recipe, result)); }}>一键启动烹饪</b>
+                </span>
               </button>
               <div className="fresh-ingredient-preview">
                 {(recipe.ingredients || []).map(item => <span key={`${recipe.id}-${item.name}`}>{item.name} {item.weight_g}g</span>)}

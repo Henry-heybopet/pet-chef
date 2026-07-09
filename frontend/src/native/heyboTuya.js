@@ -70,7 +70,8 @@ class HeyboTuyaWeb extends WebPlugin {
   }
 
   async getDeviceList() {
-    return { success: true, homeId: this.currentHomeId, devices: this.devices };
+    const devices = Array.from(new Map(this.devices.map(device => [device.devId, device])).values());
+    return { success: true, homeId: this.currentHomeId, devices };
   }
 
   async getActivatorToken() {
@@ -80,11 +81,11 @@ class HeyboTuyaWeb extends WebPlugin {
   async startWifiPairing({ ssid }) {
     const newDev = {
       ...DEMO_DEVICE,
-      devId: `web_wifi_${Date.now()}`,
+      devId: 'web_pet_chef_demo',
       name: ssid ? `Pet Chef (${ssid})` : 'Pet Chef WiFi',
       dps: { ...DEMO_DEVICE.dps },
     };
-    this.devices.push(newDev);
+    this.devices = [...this.devices.filter(d => d.devId !== newDev.devId), newDev];
     return {
       success: true,
       homeId: this.currentHomeId,
@@ -126,12 +127,12 @@ class HeyboTuyaWeb extends WebPlugin {
   async connectBleDevice({ uuid, address, productId, ssid, password }) {
     const newDev = {
       ...DEMO_DEVICE,
-      devId: `web_ble_${Date.now()}`,
+      devId: 'web_pet_chef_demo',
       name: 'Pet Chef Dual-Mode',
       productId: productId || 'ak2kofibhuvdtqip',
       dps: { ...DEMO_DEVICE.dps },
     };
-    this.devices.push(newDev);
+    this.devices = [...this.devices.filter(d => d.devId !== newDev.devId), newDev];
     return {
       success: true,
       device: newDev,
@@ -179,6 +180,12 @@ class HeyboTuyaWeb extends WebPlugin {
         dps: JSON.stringify({
           10: currentTemp,
           5: activeDev.dps[5],
+          7: activeDev.dps[7],
+          8: activeDev.dps[8],
+          9: activeDev.dps[9],
+          102: activeDev.dps[102],
+          107: activeDev.dps[107],
+          108: activeDev.dps[108],
         }),
       });
     }, 2000);

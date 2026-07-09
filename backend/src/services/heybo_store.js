@@ -541,6 +541,22 @@ function syncDeviceDp(userId, deviceId, payload = {}) {
   return device;
 }
 
+function unbindDevice(userId, deviceId) {
+  const index = db.devices.findIndex(item =>
+    (item.id === deviceId || item.tuya_device_id === deviceId) &&
+    userOwnsHousehold(userId, item.household_id)
+  );
+  if (index < 0) {
+    const error = new Error('Device not found');
+    error.status = 404;
+    throw error;
+  }
+  const [device] = db.devices.splice(index, 1);
+  db.device_pet_bindings = db.device_pet_bindings.filter(item => item.device_id !== device.id);
+  saveDb();
+  return device;
+}
+
 function bindDevicePet(deviceId, petId, isDefault = false) {
   if (!db.device_pet_bindings.some(item => item.device_id === deviceId && item.pet_id === petId)) {
     db.device_pet_bindings.push({
@@ -740,6 +756,7 @@ module.exports = {
   petToDogProfile,
   upsertDevice,
   syncDeviceDp,
+  unbindDevice,
   bindDevicePet,
   createRecord,
   createCookingOperation,

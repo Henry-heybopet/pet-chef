@@ -198,6 +198,12 @@ router.post('/devices/:id/dp-sync', authMiddleware, asyncHandler(async (req, res
   res.json({ success: true, device });
 }));
 
+router.delete('/devices/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const user = await requireUser(req);
+  const device = store.unbindDevice(user.id, req.params.id);
+  res.json({ success: true, device });
+}));
+
 router.post('/devices/:id/pets', authMiddleware, asyncHandler(async (req, res) => {
   await requireUser(req);
   const { pet_id, is_default } = req.body || {};
