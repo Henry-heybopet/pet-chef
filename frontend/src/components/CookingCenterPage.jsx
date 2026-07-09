@@ -17,8 +17,9 @@ function isActiveCookingDps(dps) {
 
 function uniqueDevices(devices) {
   return Array.from(new Map(devices.filter(device => {
-    const devId = String(device.devId || '');
-    return devId && (!/^(demo_|web_ble_|web_wifi_)/.test(devId));
+    const devId = String(device.devId || device.tuya_device_id || '');
+    const isMock = device.mock || device.isMock || device.demo || /^(demo_|web_|mock_)/.test(devId);
+    return devId && !isMock;
   }).map(device => [device.devId, device])).values());
 }
 const PALATABILITY_OPTIONS = ['光盘行动', '吃了一半', '挑食行为', '完全不吃'];
@@ -731,6 +732,12 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const handleUnbind = async () => {
     if (!unbindTarget) return;
     const devId = unbindTarget.devId || unbindTarget.tuya_device_id;
+    const isMock = unbindTarget.mock || unbindTarget.isMock || unbindTarget.demo || /^(demo_|web_|mock_)/.test(String(devId || ''));
+    if (isMock) {
+      setMessage('这是测试设备，正式消费者 App 不执行 Tuya 解绑。');
+      setUnbindTarget(null);
+      return;
+    }
     await HeyboTuya.unbindDevice({ devId });
     await api.unbindDevice(devId, authToken);
     setDevices(prev => prev.filter(device => (device.devId || device.tuya_device_id) !== devId));
