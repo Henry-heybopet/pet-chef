@@ -224,6 +224,18 @@ body {
   opacity: 0.65;
 }
 
+.auth-modal-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.auth-modal-actions .auth-modal-register {
+  border: 1px solid rgba(0, 230, 255, 0.45);
+  background: rgba(0, 230, 255, 0.08);
+  color: var(--primary);
+}
+
 .auth-modal-message {
   display: grid;
   gap: 4px;
@@ -482,8 +494,8 @@ body {
   width: 58px;
   height: 58px;
   border-radius: 50%;
-  object-fit: cover;
   border: 2px solid rgba(124, 255, 214, 0.35);
+  object-fit: cover;
 }
 
 .fresh-pet-card.is-active img {

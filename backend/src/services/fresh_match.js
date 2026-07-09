@@ -1,8 +1,13 @@
-const { analyzeFreshMatch } = require('./deepseek');
+const { analyzeFreshMatch, classifyFreshMatchIngredients } = require('./deepseek');
 
 const FORBIDDEN_DOG_INGREDIENTS = [
   '木糖醇', '巧克力', '可可制品', '含咖啡因食品', '咖啡因', '葡萄', '葡萄干', '洋葱', '大蒜',
   '韭菜', '大葱', '夏威夷果', '牛油果', '苹果籽', '樱桃核', '桃核', '李子核', '酒精', '发酵面团',
+];
+
+const INEDIBLE_INGREDIENTS = [
+  '水泥', '木头', '木块', '混凝土', '推土机', '塑料', '金属', '玻璃', '泥土', '沙子', '石头',
+  '清洁剂', '洗洁精', '洗衣液', '肥皂', '药品', '药片', '水杯', '杯子', '手机', '钥匙',
 ];
 
 const ALLERGEN_ALIASES = {
@@ -21,6 +26,15 @@ const CARB_PRIORITY = ['红薯', '藜麦', '土豆', '燕麦', '糙米'];
 const LOW_PRIORITY_CARBS = ['小米', '玉米'];
 const LEAFY_VEGETABLES = ['菠菜', '生菜', '油麦菜', '上海青', '青菜', '白菜', '羽衣甘蓝'];
 const HIGH_FIBER_VEGETABLES = ['南瓜', '胡萝卜', '西兰花', '西葫芦'];
+const PROTEIN_TERMS = [
+  ...Object.entries(ALLERGEN_ALIASES).filter(([key]) => key !== '燕麦').flatMap(([key, aliases]) => [key, ...aliases]),
+  '鸡蛋', '鸭蛋', '鹌鹑蛋', '蛋', '虾', '虾仁',
+];
+const VEGETABLE_FRUIT_TERMS = [
+  ...VEGETABLE_PRIORITY, ...FRUIT_PRIORITY, ...LEAFY_VEGETABLES, ...HIGH_FIBER_VEGETABLES,
+  '番茄', '西红柿', '黄瓜', '芹菜', '甜椒', '紫甘蓝',
+];
+const CARB_TERMS = [...CARB_PRIORITY, ...LOW_PRIORITY_CARBS, '米饭', '大米', '白米饭', '南瓜'];
 
 const PREP_TIPS = '食材预处理建议：肉类请去骨，切成约1立方厘米小块；鱼类请去骨、去刺，切成约1立方厘米小块；青菜、果蔬请洗净后切成约1立方厘米小块。';
 
@@ -30,11 +44,68 @@ function normalizeList(value) {
 }
 
 function normalizeIngredients(ingredients = {}) {
+  const classified = { proteins: [], vegetables_fruits: [], carbs: [], unknown: [], all_inputs: [] };
+  const add = (key, item) => {
+    if (!classified[key].some(value => includesIngredient(value, item))) classified[key].push(item);
+  };
+  const classify = (item) => {
+    classified.all_inputs.push(item);
+    if (PROTEIN_TERMS.some(term => includesIngredient(item, term))) add('proteins', item);
+    else if (CARB_TERMS.some(term => includesIngredient(item, term))) add('carbs', item);
+    else if (VEGETABLE_FRUIT_TERMS.some(term => includesIngredient(item, term))) add('vegetables_fruits', item);
+    else add('unknown', item);
+  };
+  [
+    ...normalizeList(ingredients.proteins),
+    ...normalizeList(ingredients.vegetables_fruits),
+    ...normalizeList(ingredients.carbs),
+  ].forEach(classify);
+  return classified;
+}
+
+function rawIngredients(ingredients = {}) {
   return {
     proteins: normalizeList(ingredients.proteins),
     vegetables_fruits: normalizeList(ingredients.vegetables_fruits),
     carbs: normalizeList(ingredients.carbs),
   };
+}
+
+function normalizeRemovedItems(items = []) {
+  return items
+    .map(item => ({
+      name: String(item?.name || '').trim(),
+      reason: String(item?.reason || '').trim(),
+      type: String(item?.type || 'inedible').trim(),
+    }))
+    .filter(item => item.name);
+}
+
+async function classifyIngredients(ingredients = {}) {
+  const raw = rawIngredients(ingredients);
+  if (process.env.FRESH_MATCH_AI_CLASSIFY === 'off') {
+    return {
+      ingredients: normalizeIngredients(raw),
+      removed: [],
+      source: 'rules',
+    };
+  }
+  try {
+    const ai = await classifyFreshMatchIngredients({ ingredients: raw });
+    const usable = ai?.usable || {};
+    return {
+      ingredients: normalizeIngredients(usable),
+      removed: normalizeRemovedItems(ai?.removed),
+      source: 'deepseek',
+    };
+  } catch (error) {
+    if (process.env.DEEPSEEK_API_KEY) console.error('Fresh Match ingredient classification fallback:', error.message);
+    return {
+      ingredients: normalizeIngredients(raw),
+      removed: [],
+      source: 'rules',
+    };
+  }
 }
 
 function includesIngredient(input, target) {
@@ -43,6 +114,10 @@ function includesIngredient(input, target) {
 
 function findMatches(inputs, candidates) {
   return [...new Set(inputs.filter(input => candidates.some(candidate => includesIngredient(input, candidate))))];
+}
+
+function findBlockedInputs(inputs, candidates) {
+  return [...new Set(inputs.filter(input => candidates.some(candidate => input === candidate || input.includes(candidate))))];
 }
 
 function priorityIndex(item, priority) {
@@ -101,15 +176,28 @@ function petDTO(pet) {
   };
 }
 
-function safetyCheck(ingredients, allergens = []) {
-  const allInputs = [...ingredients.proteins, ...ingredients.vegetables_fruits, ...ingredients.carbs];
-  const forbidden = findMatches(allInputs, FORBIDDEN_DOG_INGREDIENTS);
+function safetyCheck(ingredients, allergens = [], removedItems = []) {
+  const allInputs = ingredients.all_inputs || [...ingredients.proteins, ...ingredients.vegetables_fruits, ...ingredients.carbs];
+  const forbidden = findBlockedInputs(allInputs, FORBIDDEN_DOG_INGREDIENTS);
+  const inedible = findBlockedInputs(allInputs, INEDIBLE_INGREDIENTS);
   const allergy = findAllergyMatches(allInputs, allergens);
-  const forbidden_items = forbidden.map(name => ({
+  const aiBlockedItems = normalizeRemovedItems(removedItems).map(item => ({
+    name: item.name,
+    level: 'danger',
+    message: item.type === 'unsafe'
+      ? `检测到犬类禁食食材：${item.name}。${item.reason || '该食材禁止给狗食用，请立即移除。'}`
+      : `检测到非犬类可食用食材：${item.name}。${item.reason || '不能给狗食用，请立即移除。'}`,
+  }));
+  const alreadyBlocked = new Set(aiBlockedItems.map(item => item.name));
+  const forbidden_items = aiBlockedItems.concat(forbidden.filter(name => !alreadyBlocked.has(name)).map(name => ({
     name,
     level: 'danger',
     message: `检测到犬类禁食食材：${name}。该食材绝对禁止给狗食用，请立即移除。`,
-  }));
+  }))).concat(inedible.filter(name => !alreadyBlocked.has(name)).map(name => ({
+    name,
+    level: 'danger',
+    message: `检测到非犬类可食用食材：${name}。不能给狗食用，请立即移除。`,
+  })));
   const allergy_items = allergy.map(match => ({
     name: match.name,
     allergen: match.allergen,
@@ -119,8 +207,8 @@ function safetyCheck(ingredients, allergens = []) {
   return {
     forbidden_items,
     allergy_items,
-    summary: forbidden.length
-      ? `检测到犬类禁食食材：${forbidden.join('、')}。该食材绝对禁止给狗食用，请立即移除。`
+    summary: forbidden_items.length
+      ? `检测到不能给狗食用的食材：${forbidden_items.map(item => item.name).join('、')}。请立即移除。`
       : allergy.length
         ? `检测到该宠物档案记录的过敏食材：${[...new Set(allergy.map(item => item.allergen))].join('、')}。本次配方将自动排除相关食材。`
         : '未发现明显禁食或过敏冲突，但首次尝试新食材仍建议少量观察。',
@@ -260,8 +348,9 @@ function sanitizeRecipes(recipes, safeIngredients, pet) {
 }
 
 async function buildFreshMatchAnalysis({ pet, ingredients }) {
-  const normalized = normalizeIngredients(ingredients);
-  const safety = safetyCheck(normalized, pet.allergens || []);
+  const classified = await classifyIngredients(ingredients);
+  const normalized = classified.ingredients;
+  const safety = safetyCheck(normalized, pet.allergens || [], classified.removed);
   const safeIngredients = removeUnsafe(normalized, safety);
   const gap = nutritionGap(safeIngredients, pet.allergens || []);
   let recipes = localRecipes(pet, safeIngredients);
@@ -290,6 +379,7 @@ async function buildFreshMatchAnalysis({ pet, ingredients }) {
 }
 
 if (require.main === module) {
+  process.env.FRESH_MATCH_AI_CLASSIFY = 'off';
   const assert = require('assert');
   const pet = { id: 'p1', name: 'Cici', breed: '史宾格犬', current_weight_kg: 50, allergens: ['燕麦', '牛肉', '鸡肉'] };
   buildFreshMatchAnalysis({ pet, ingredients: { proteins: ['鸡胸肉', '牛心', '鸡蛋'], vegetables_fruits: ['葡萄', '胡萝卜'], carbs: [] } })
@@ -325,6 +415,25 @@ if (require.main === module) {
       assert.equal(recipe.ingredients.filter(item => item.category === 'fruit').length, 1);
       assert(recipe.ingredients.filter(item => item.category === 'fruit').every(item => Number.parseFloat(item.ratio) < 5));
       assert(recipe.ingredients.filter(item => item.category === 'vegetable').length >= 2);
+      return buildFreshMatchAnalysis({
+        pet: { ...pet, allergens: [] },
+        ingredients: { proteins: ['鸡肉'], vegetables_fruits: ['胡萝卜', '燕麦', '南瓜', '苹果'], carbs: [] },
+      });
+    })
+    .then(result => {
+      assert.equal(result.safety_check.forbidden_items.length, 0);
+      assert.equal(result.nutrition_gap.carbs, 'sufficient');
+      assert(result.recipes[0].ingredients.some(item => item.name === '燕麦' && item.category === 'carb'));
+      assert(result.recipes[0].ingredients.some(item => item.name === '南瓜' && item.category === 'carb'));
+      return buildFreshMatchAnalysis({
+        pet: { ...pet, allergens: [] },
+        ingredients: { proteins: ['水泥', '木头'], vegetables_fruits: ['混凝土'], carbs: ['推土机'] },
+      });
+    })
+    .then(result => {
+      assert.equal(result.safety_check.forbidden_items.length, 4);
+      assert.equal(result.nutrition_gap.protein, 'missing');
+      assert.equal(result.recipes.length, 0);
       console.log('fresh_match self-check ok');
     });
 }

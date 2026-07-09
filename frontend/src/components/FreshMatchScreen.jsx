@@ -7,11 +7,39 @@ function petBreed(pet) {
   return pet.breedName || pet.breed?.name || pet.breed || pet.customBreed || '未知犬种';
 }
 
-function petAvatar(pet) {
-  return pet.avatar || pet.avatar_url || pet.breed?.img || '/dog.png';
+function findBreed(breeds, pet) {
+  const name = petBreed(pet);
+  return breeds.find(breed =>
+    breed.id === pet.breedId ||
+    breed.name === name ||
+    (name && (name.includes(breed.name) || breed.name.includes(name)))
+  );
+}
+
+function petAvatar(pet, breeds) {
+  return pet.avatar || pet.avatar_url || findBreed(breeds, pet)?.img || '/dog.png';
+}
+
+function useBreedOptions() {
+  const [breeds, setBreeds] = useState([]);
+  useEffect(() => {
+    let active = true;
+    api.getBreeds()
+      .then(result => {
+        if (active && result?.success) setBreeds(result.breeds || []);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+  return breeds;
+}
+
+function PetAvatar({ pet, breeds }) {
+  return <img src={petAvatar(pet, breeds)} alt="" />;
 }
 
 export function FreshMatchScreen({ profiles, authToken, onBack, onAddPet, onResult }) {
+  const breeds = useBreedOptions();
   const dogPets = useMemo(() => (profiles || []).filter(pet => !pet.species || pet.species === 'dog'), [profiles]);
   const [selected, setSelected] = useState(0);
   const [proteins, setProteins] = useState('');
@@ -80,7 +108,7 @@ export function FreshMatchScreen({ profiles, authToken, onBack, onAddPet, onResu
                 const isActive = pet.id === currentPet?.id;
                 return (
                   <button key={`${pet.id}-${slot}`} type="button" className={`fresh-pet-card ${isActive ? 'is-active' : ''}`} onClick={() => setSelected(dogPets.findIndex(item => item.id === pet.id))}>
-                    <img src={petAvatar(pet)} alt="" />
+                    <PetAvatar pet={pet} breeds={breeds} />
                     <strong>{pet.name}</strong>
                     <span>{petBreed(pet)}</span>
                   </button>
@@ -121,6 +149,7 @@ export function FreshMatchScreen({ profiles, authToken, onBack, onAddPet, onResu
 }
 
 export function FreshMatchResultScreen({ result, onBack }) {
+  const breeds = useBreedOptions();
   const [openRecipe, setOpenRecipe] = useState(result?.recipes?.[0]?.id || '');
   if (!result) return null;
   const pet = result.pet || {};
@@ -131,7 +160,7 @@ export function FreshMatchResultScreen({ result, onBack }) {
         <div className="fresh-kicker">Powered by Heybo AI</div>
         <h1>Fresh Match鲜食智配</h1>
         <div className="fresh-result-pet">
-          <img src={pet.avatar || '/dog.png'} alt="" />
+          <PetAvatar pet={pet} breeds={breeds} />
           <div>
             <strong>{pet.name}</strong>
             <span>{pet.breed} · {pet.age || '-'}岁 · {pet.weight_kg || '-'}kg</span>

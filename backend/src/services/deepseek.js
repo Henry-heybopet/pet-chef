@@ -137,4 +137,68 @@ async function analyzeFreshMatch({ pet, ingredients, safety_check, nutrition_gap
   return JSON.parse(String(content).replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
 }
 
-module.exports = { evaluatePetBCS, analyzeFreshMatch };
+async function classifyFreshMatchIngredients({ ingredients }) {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
+  const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+
+  if (!apiKey) {
+    throw new Error('DEEPSEEK_API_KEY is not configured');
+  }
+
+  const systemPrompt = `你是 Heybo AI 宠物鲜食安全审核助手。你的任务不是生成食谱，而是对用户输入的“家中现有食材”进行第一轮安全清洗和分类。
+
+请严格判断每一个用户输入项是否属于“犬类可食用食材”。
+
+处理规则：
+1. 如果输入项不是食物、不是可食用原料、不是宠物鲜食可使用的天然食材，必须标记为 inedible，并从后续食材中剔除。
+   例如：水杯、手机、钥匙、木头、水泥、塑料、玻璃、金属、推土机、清洁剂、药品、玩具、纸巾、衣服等。
+2. 如果输入项是人类食物但明显不适合犬类食用，标记为 unsafe。
+   例如：巧克力、葡萄、葡萄干、洋葱、大蒜、酒精、咖啡、茶、木糖醇、发酵面团、夏威夷果、牛油果等。
+3. 如果输入项是犬类可食用食材，请按实际营养类别重新归类，不要受用户填写在哪个输入框影响：
+   - protein：肉类、内脏、蛋类、鱼虾等动物蛋白
+   - vegetable_fruit：蔬菜、水果、可作为少量果蔬补充的食材
+   - carb：米饭、红薯、土豆、南瓜、燕麦、藜麦、糙米等主食/碳水来源
+4. 苹果果肉是可食用水果，不要把“苹果”判为禁食；只有“苹果籽/苹果核”需要标记为 unsafe。
+5. 如果无法确认某个输入项是否为食材，保守标记为 inedible，不要放入可用食材。
+6. 不要生成配方，不要给烹饪建议，只返回 JSON。
+7. 返回 JSON 必须保留用户原始输入名称，方便前端提示用户哪些被剔除。
+
+返回格式必须严格如下：
+{
+  "usable": {
+    "proteins": [],
+    "vegetables_fruits": [],
+    "carbs": []
+  },
+  "removed": [
+    {
+      "name": "水杯",
+      "reason": "不是犬类可食用食材",
+      "type": "inedible"
+    }
+  ],
+  "notes": "一句话总结本次清洗结果"
+}`;
+
+  const response = await axios.post(`${baseUrl}/chat/completions`, {
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: JSON.stringify({ ingredients }) },
+    ],
+    temperature: 0,
+    response_format: { type: 'json_object' },
+  }, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    timeout: 12000,
+  });
+
+  const content = response.data.choices?.[0]?.message?.content || '{}';
+  return JSON.parse(String(content).replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
+}
+
+module.exports = { evaluatePetBCS, analyzeFreshMatch, classifyFreshMatchIngredients };

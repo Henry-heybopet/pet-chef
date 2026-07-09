@@ -88,24 +88,33 @@ app.get('/api/v1/breeds', (req, res) => {
 app.get('/api/v1/recipes', async (req, res) => {
   const { category, life_stage, dog_size, functional, protein, all, custom_category } = req.query;
 
-  // custom_category 映射表：新分类体系 → 食谱过滤逻辑
+  const ingredientNames = (r) => Object.keys(r.ingredients || {});
+  const hasIngredient = (r, markers) => markers.some(marker => ingredientNames(r).some(name => name.includes(marker)));
+  const hasText = (r, marker) => [
+    r.category,
+    r.name,
+    r.b_pack,
+    r.c_pack,
+    ...(r.health_tags || []),
+    ...(r.tags || []),
+  ].some(value => String(value || '').includes(marker));
+
+  // custom_category 映射表：食谱分类页 → 当前 40 条食谱字段
   const customCategoryFilter = (r) => {
     switch (custom_category) {
-      case 'puppy': return r.life_stage === '幼犬';
-      case 'adult': return r.life_stage === '成年犬';
-      case 'senior': return r.life_stage === '老年犬';
-      case 'skin': return r.category === '美毛';
-      case 'digestive':
-        return ['dog_recipe_004', 'dog_recipe_022'].includes(r.id) || r.category === '低敏';
-      case 'joint':
-        return r.id === 'dog_recipe_021' || (r.life_stage === '幼犬' && r.dog_size === '大型犬');
-      case 'weight':
-        return ['dog_recipe_017', 'dog_recipe_018', 'dog_recipe_023', 'dog_recipe_032'].includes(r.id);
-      case 'anti_inflammatory':
-        return ['dog_recipe_003', 'dog_recipe_030', 'dog_recipe_034'].includes(r.id);
-      case 'cardiac': return r.id === 'dog_recipe_024';
-      case 'liver': return r.category === '护肝';
-      case 'brain': return r.id === 'dog_recipe_002';
+      case 'puppy_general': return r.category === '幼犬通用';
+      case 'puppy_calcium': return r.category === '控钙幼犬（大型幼犬）';
+      case 'adult_general': return r.category === '成犬通用';
+      case 'senior_general': return r.category === '老年犬通用';
+      case 'protein_chicken': return hasIngredient(r, ['鸡']);
+      case 'protein_beef': return hasIngredient(r, ['牛']);
+      case 'protein_fish': return hasIngredient(r, ['鱼', '金枪']);
+      case 'protein_other': return hasIngredient(r, ['鸭', '兔', '羊', '鹿', '火鸡']);
+      case 'skin': return r.category === '美毛护肤' || hasText(r, '美毛');
+      case 'liver': return r.category === '护肝' || hasText(r, '护肝');
+      case 'hypoallergenic': return r.category === '低敏单一蛋白' || hasText(r, '低敏');
+      case 'low_fat': return hasText(r, '低脂');
+      case 'joint': return hasText(r, '关节') || hasText(r, '护关节');
       default: return false;
     }
   };

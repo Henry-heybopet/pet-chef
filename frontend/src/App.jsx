@@ -75,6 +75,7 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
   const [username, setUsername] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [authAction, setAuthAction] = useState('login');
 
   useEffect(() => {
     if (!authPrompt) return;
@@ -96,11 +97,15 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
     resetModal();
   };
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event, action = 'login') => {
     event.preventDefault();
     const loginValue = login.trim();
     if (!loginValue) {
       setMessage('请输入用户名或手机号');
+      return;
+    }
+    if (action === 'signup' && !/^1[3-9]\d{9}$/.test(loginValue)) {
+      setMessage('新用户注册请输入手机号');
       return;
     }
     if (!/^\d{6}$/.test(password)) {
@@ -108,6 +113,7 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
       return;
     }
     setBusy(true);
+    setAuthAction(action);
     setMessage('');
     try {
       const result = await api.phoneLogin({ login: loginValue, password });
@@ -208,7 +214,14 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
                   placeholder="6位数字密码"
                   autoComplete="current-password"
                 />
-                <button type="submit" disabled={busy}>{busy ? '登录中' : (message.includes('激活') ? '立即登录' : '登录')}</button>
+                <div className="auth-modal-actions">
+                  <button type="button" className="auth-modal-register" disabled={busy} onClick={event => handleSubmit(event, 'signup')}>
+                    {busy && authAction === 'signup' ? '注册中' : '新用户注册'}
+                  </button>
+                  <button type="submit" disabled={busy}>
+                    {busy && authAction === 'login' ? '登录中' : '登录'}
+                  </button>
+                </div>
               </form>
             ) : (
               <form onSubmit={handleSignup} className="auth-modal-form">
@@ -386,6 +399,7 @@ function AppInner() {
   const [authPromptMessage, setAuthPromptMessage] = useState('');
   const [pendingAuthAction, setPendingAuthAction] = useState(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [breedOptions, setBreedOptions] = useState(dogBreeds);
   const swipeStartRef = useRef(null);
 
   // Derived active tab based on current screen
@@ -439,6 +453,14 @@ function AppInner() {
     if (onboardingDone) {
       setScreen('home');
     }
+  }, []);
+
+  useEffect(() => {
+    api.getBreeds()
+      .then(result => {
+        if (result?.success && result.breeds?.length) setBreedOptions(result.breeds);
+      })
+      .catch(error => console.error('Load breeds failed:', error));
   }, []);
 
   const saveAuthSession = (result) => {
@@ -551,8 +573,8 @@ function AppInner() {
   };
 
   const toUiPet = (pet) => {
-    const breedName = pet.breed || pet.breedName;
-    const breed = dogBreeds.find(item =>
+    const breedName = typeof pet.breed === 'object' ? pet.breed?.name : (pet.breed || pet.breedName);
+    const breed = breedOptions.find(item =>
       item.id === pet.breedId ||
       item.name === breedName ||
       (breedName && (breedName.includes(item.name) || item.name.includes(breedName)))
@@ -588,7 +610,7 @@ function AppInner() {
         if (result?.success) replaceProfiles((result.pets || []).map(toUiPet));
       })
       .catch(error => console.error('Load DB pets failed:', error));
-  }, [authToken]);
+  }, [authToken, breedOptions]);
 
   const savePetProfile = async (draft) => {
     if (!authToken) return draft;
