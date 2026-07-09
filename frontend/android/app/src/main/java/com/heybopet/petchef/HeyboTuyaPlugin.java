@@ -1,5 +1,6 @@
 package com.heybopet.petchef;
 
+import android.content.Intent;
 import android.text.TextUtils;
 
 import com.alibaba.fastjson.JSON;
@@ -8,6 +9,9 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.heybopet.petchef.device.DeviceCommand;
+import com.heybopet.petchef.device.TuyaDeviceAdapterImpl;
+import com.heybopet.petchef.device.TuyaDeviceResult;
 import com.thingclips.smart.android.user.api.ILoginCallback;
 import com.thingclips.smart.android.user.bean.User;
 import com.thingclips.smart.home.sdk.ThingHomeSdk;
@@ -64,109 +68,21 @@ public class HeyboTuyaPlugin extends Plugin {
     private IThingActivator currentActivator = null;
     private final Map<String, IThingDevice> activeDevices = new HashMap<>();
 
+    private TuyaDeviceAdapterImpl adapter() {
+        return TuyaDeviceAdapterImpl.getInstance(getActivity());
+    }
+
     @PluginMethod
     public void status(PluginCall call) {
-        JSObject result = new JSObject();
-        result.put("platform", "android");
-        result.put("nativeAvailable", true);
-        result.put("configured", hasTuyaCredentials());
-        result.put("initialized", initialized);
-        result.put("appKey", mask(BuildConfig.TUYA_ANDROID_APP_KEY));
-        result.put("pid", PET_CHEF_PID);
-        if (currentHomeId != null) result.put("homeId", currentHomeId);
-
-        // 1. Bluetooth Enabled check
-        boolean bluetoothEnabled = false;
-        try {
-            android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
-            bluetoothEnabled = (adapter != null && adapter.isEnabled());
-        } catch (Exception e) {
-            // ignore
-        }
-        result.put("bluetoothEnabled", bluetoothEnabled);
-
-        // 2. Location (GPS) Enabled check
-        boolean gpsEnabled = false;
-        try {
-            android.location.LocationManager lm = (android.location.LocationManager) getContext().getSystemService(android.content.Context.LOCATION_SERVICE);
-            if (lm != null) {
-                gpsEnabled = lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
-                             lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER);
-            }
-        } catch (Exception e) {
-            // ignore
-        }
-        result.put("gpsEnabled", gpsEnabled);
-
-        // 3. WiFi SSID and Frequency check
-        String wifiSsid = "Unknown";
-        String wifiFreq = "Unknown";
-        try {
-            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) getContext().getApplicationContext().getSystemService(android.content.Context.WIFI_SERVICE);
-            if (wm != null) {
-                android.net.wifi.WifiInfo info = wm.getConnectionInfo();
-                if (info != null) {
-                    wifiSsid = info.getSSID();
-                    if (wifiSsid != null && wifiSsid.startsWith("\"") && wifiSsid.endsWith("\"")) {
-                        wifiSsid = wifiSsid.substring(1, wifiSsid.length() - 1);
-                    }
-                    int freq = info.getFrequency();
-                    if (freq >= 2400 && freq <= 2500) {
-                        wifiFreq = "2.4G";
-                    } else if (freq >= 4900 && freq <= 5900) {
-                        wifiFreq = "5G";
-                    } else {
-                        wifiFreq = freq + " MHz";
-                    }
-                }
-            }
-        } catch (Exception e) {
-            // ignore
-        }
-        result.put("wifiSsid", wifiSsid);
-        result.put("wifiFreq", wifiFreq);
-
-        // 4. Runtime Permissions check
-        boolean permBluetoothScan = false;
-        boolean permBluetoothConnect = false;
-        boolean permLocation = false;
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            permBluetoothScan = androidx.core.content.ContextCompat.checkSelfPermission(getContext(), android.Manifest.permission.BLUETOOTH_SCAN) == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            permBluetoothConnect = androidx.core.content.ContextCompat.checkSelfPermission(getContext(), android.Manifest.permission.BLUETOOTH_CONNECT) == android.content.pm.PackageManager.PERMISSION_GRANTED;
-        } else {
-            permBluetoothScan = true; // not required
-            permBluetoothConnect = true; // not required
-        }
-        permLocation = androidx.core.content.ContextCompat.checkSelfPermission(getContext(), android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
-
-        result.put("permBluetoothScan", permBluetoothScan);
-        result.put("permBluetoothConnect", permBluetoothConnect);
-        result.put("permLocation", permLocation);
-
-        call.resolve(result);
+        call.resolve(mapToJsObject(adapter().status()));
     }
 
     @PluginMethod
     public void init(PluginCall call) {
-        if (!hasTuyaCredentials()) {
-            call.reject("Tuya Android AppKey/AppSecret is missing. Configure frontend/android/tuya.properties locally.");
-            return;
-        }
-
-        try {
-            ThingHomeSdk.init(getActivity().getApplication(), BuildConfig.TUYA_ANDROID_APP_KEY, BuildConfig.TUYA_ANDROID_APP_SECRET);
-            ThingHomeSdk.setDebugMode(BuildConfig.DEBUG);
-            initialized = true;
-
-            JSObject result = new JSObject();
-            result.put("initialized", true);
-            result.put("appKey", mask(BuildConfig.TUYA_ANDROID_APP_KEY));
-            call.resolve(result);
-        } catch (Exception error) {
-            initialized = false;
-            call.reject("Tuya SDK init failed: " + error.getMessage(), error);
-        }
+        adapter().init(result -> {
+            initialized = result.success;
+            resolveMapResult(call, result);
+        });
     }
 
     @PluginMethod
@@ -238,6 +154,7 @@ public class HeyboTuyaPlugin extends Plugin {
             public void onSuccess(List<HomeBean> homeBeans) {
                 if (homeBeans != null && !homeBeans.isEmpty()) {
                     currentHomeId = homeBeans.get(0).getHomeId();
+                    adapter().setCurrentHomeId(currentHomeId);
                     call.resolve(homeResult(homeBeans.get(0), false));
                     return;
                 }
@@ -252,6 +169,7 @@ public class HeyboTuyaPlugin extends Plugin {
                         @Override
                         public void onSuccess(HomeBean homeBean) {
                             currentHomeId = homeBean.getHomeId();
+                            adapter().setCurrentHomeId(currentHomeId);
                             call.resolve(homeResult(homeBean, true));
                         }
 
@@ -281,6 +199,7 @@ public class HeyboTuyaPlugin extends Plugin {
             @Override
             public void onSuccess(HomeBean homeBean) {
                 currentHomeId = homeBean.getHomeId();
+                adapter().setCurrentHomeId(currentHomeId);
                 JSObject result = new JSObject();
                 result.put("success", true);
                 result.put("homeId", homeBean.getHomeId());
@@ -310,7 +229,7 @@ public class HeyboTuyaPlugin extends Plugin {
             return;
         }
 
-        publishDpsMap(devId, jsObjectToMap(dps), call, "Publish DP failed");
+        adapter().publishDps(new DeviceCommand(devId, jsObjectToMap(dps)), result -> resolveMapResult(call, result));
     }
 
     @PluginMethod
@@ -445,16 +364,7 @@ public class HeyboTuyaPlugin extends Plugin {
             return;
         }
 
-        Map<String, Object> dps = new HashMap<>();
-        dps.put(DP_POWER, true);
-        dps.put(DP_MODE, "diy");
-        dps.put(DP_COOK_TEMPERATURE, temperature);
-        dps.put(DP_COOK_TIME, cookTime);
-        dps.put(DP_COOK_MODE_POWER, power);
-        dps.put(DP_COOK_MODE_SPEED, speed);
-        dps.put(DP_COOK_START_PAUSE_RESET, "start");
-
-        publishDpsMap(devId, dps, call, "Start DIY cooking failed");
+        adapter().startDiyCooking(devId, temperature, cookTime, power, speed, result -> resolveMapResult(call, result));
     }
 
     @PluginMethod
@@ -477,23 +387,7 @@ public class HeyboTuyaPlugin extends Plugin {
             return;
         }
 
-        IThingDevice device = ThingHomeSdk.newDeviceInstance(devId);
-        device.removeDevice(new IResultCallback() {
-            @Override
-            public void onSuccess() {
-                JSObject result = new JSObject();
-                result.put("success", true);
-                result.put("devId", devId);
-                call.resolve(result);
-                device.onDestroy();
-            }
-
-            @Override
-            public void onError(String code, String error) {
-                call.reject("Unbind device failed: " + code + " " + error);
-                device.onDestroy();
-            }
-        });
+        adapter().unbindDevice(devId, result -> resolveMapResult(call, result));
     }
 
     @PluginMethod
@@ -734,6 +628,63 @@ public class HeyboTuyaPlugin extends Plugin {
         }
     }
 
+    @PluginMethod
+    public void openNativeCookingCenter(PluginCall call) {
+        getActivity().startActivity(new Intent(getActivity(), CookingCenterActivity.class));
+        JSObject result = new JSObject();
+        result.put("success", true);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void openNativeMyDevices(PluginCall call) {
+        getActivity().startActivity(new Intent(getActivity(), MyDevicesActivity.class));
+        JSObject result = new JSObject();
+        result.put("success", true);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void openNativeDeviceDetail(PluginCall call) {
+        Intent intent = new Intent(getActivity(), DeviceDetailActivity.class);
+        String devId = call.getString("devId");
+        String name = call.getString("name");
+        if (!TextUtils.isEmpty(devId)) intent.putExtra("devId", devId);
+        if (!TextUtils.isEmpty(name)) intent.putExtra("name", name);
+        getActivity().startActivity(intent);
+        JSObject result = new JSObject();
+        result.put("success", true);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void openH5Page(PluginCall call) {
+        getActivity().startActivity(new Intent(getActivity(), MainActivity.class));
+        JSObject result = new JSObject();
+        result.put("success", true);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void getAppInfo(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("platform", "android");
+        result.put("appVersion", BuildConfig.VERSION_NAME);
+        result.put("buildNumber", BuildConfig.VERSION_CODE);
+        result.put("nativeAvailable", true);
+        result.put("tuyaConfigured", hasTuyaCredentials());
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void getAuthToken(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("success", false);
+        result.put("token", "");
+        result.put("reason", "native-auth-token-not-wired");
+        call.resolve(result);
+    }
+
     private boolean hasTuyaCredentials() {
         return !TextUtils.isEmpty(BuildConfig.TUYA_ANDROID_APP_KEY)
             && !TextUtils.isEmpty(BuildConfig.TUYA_ANDROID_APP_SECRET);
@@ -765,9 +716,11 @@ public class HeyboTuyaPlugin extends Plugin {
             return;
         }
 
-        Map<String, Object> dps = new HashMap<>();
-        dps.put(DP_COOK_START_PAUSE_RESET, command);
-        publishDpsMap(devId, dps, call, "Send cook command failed");
+        if ("pause".equals(command)) {
+            adapter().pauseCooking(devId, result -> resolveMapResult(call, result));
+        } else {
+            adapter().resetCooking(devId, result -> resolveMapResult(call, result));
+        }
     }
 
     private void publishDpsMap(String devId, Map<String, Object> dps, PluginCall call, String errorPrefix) {
@@ -866,6 +819,25 @@ public class HeyboTuyaPlugin extends Plugin {
             map.put(key, object.opt(key));
         }
         return map;
+    }
+
+    private void resolveMapResult(PluginCall call, TuyaDeviceResult<Map<String, Object>> result) {
+        if (result.success) {
+            call.resolve(mapToJsObject(result.data));
+            return;
+        }
+        String message = result.error == null ? "Tuya operation failed." : result.error.message;
+        String code = result.error == null ? null : result.error.code;
+        call.reject(code == null ? message : code + ": " + message);
+    }
+
+    private JSObject mapToJsObject(Map<String, Object> map) {
+        JSObject object = new JSObject();
+        if (map == null) return object;
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            object.put(entry.getKey(), entry.getValue());
+        }
+        return object;
     }
 
     private String mask(String value) {
