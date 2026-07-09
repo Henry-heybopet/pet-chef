@@ -2,8 +2,9 @@ import React from 'react';
 import { useTranslation } from '../i18n/translations';
 import { tData } from '../i18n/dataTranslations';
 import TopBar from './TopBar';
+import { fallbackPetAvatar, resolvePetAvatar } from '../utils/petAvatar';
 
-export default function PetManagementScreen({ profiles = [], onAddPet, onEditPet, onSelectPet, onBack, lang }) {
+export default function PetManagementScreen({ profiles = [], breeds = [], onAddPet, onEditPet, onSelectPet, onBack, lang }) {
   const t = useTranslation(lang);
 
   return (
@@ -55,6 +56,7 @@ export default function PetManagementScreen({ profiles = [], onAddPet, onEditPet
               : `${pet.age || 0}岁`;
               
             const allergensList = pet.allergensText?.trim() || pet.allergens?.join('/') || (lang === 'zh' ? '无' : 'None');
+            const avatar = resolvePetAvatar(pet, breeds);
 
             return (
               <div 
@@ -88,26 +90,15 @@ export default function PetManagementScreen({ profiles = [], onAddPet, onEditPet
                     marginBottom: '8px',
                     position: 'relative'
                   }}>
-                    {pet.avatar ? (
-                      <img 
-                        src={pet.avatar} 
-                        alt="Avatar" 
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                          const parent = e.target.parentElement;
-                          if (parent && !parent.querySelector('.fallback-emoji')) {
-                            const span = document.createElement('span');
-                            span.className = 'fallback-emoji';
-                            span.style.fontSize = '28px';
-                            span.innerText = '🐕';
-                            parent.appendChild(span);
-                          }
-                        }}
-                      />
-                    ) : (
-                      <span style={{ fontSize: '28px' }}>🐕</span>
-                    )}
+                    <img
+                      src={avatar}
+                      alt="Avatar"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={(event) => {
+                        event.currentTarget.src = fallbackPetAvatar(pet);
+                        event.currentTarget.onerror = null;
+                      }}
+                    />
                   </div>
                   <button 
                     onClick={(e) => {

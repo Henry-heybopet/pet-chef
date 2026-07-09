@@ -882,6 +882,7 @@ function AppInner() {
       {screen === 'pet_management' && (
         <PetManagementScreen
           profiles={profiles}
+          breeds={breedOptions}
           onAddPet={handleAddPet}
           onEditPet={handleEditPet}
           onSelectPet={handleSelectPet}

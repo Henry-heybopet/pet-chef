@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/index';
+import { fallbackPetAvatar, resolvePetAvatar } from '../utils/petAvatar';
 
 const splitIngredients = value => String(value || '').split(/[,，、;；\s\n]+/).map(item => item.trim()).filter(Boolean);
 
@@ -17,7 +18,7 @@ function findBreed(breeds, pet) {
 }
 
 function petAvatar(pet, breeds) {
-  return pet.avatar || pet.avatar_url || findBreed(breeds, pet)?.img || '/dog.png';
+  return resolvePetAvatar(pet, breeds);
 }
 
 function useBreedOptions() {
@@ -35,7 +36,16 @@ function useBreedOptions() {
 }
 
 function PetAvatar({ pet, breeds }) {
-  return <img src={petAvatar(pet, breeds)} alt="" />;
+  return (
+    <img
+      src={petAvatar(pet, breeds)}
+      alt=""
+      onError={(event) => {
+        event.currentTarget.src = fallbackPetAvatar(pet);
+        event.currentTarget.onerror = null;
+      }}
+    />
+  );
 }
 
 export function FreshMatchScreen({ profiles, authToken, onBack, onAddPet, onResult }) {
