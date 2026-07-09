@@ -13,6 +13,7 @@ import com.heybopet.petchef.auth.NativeAuthStore;
 import com.heybopet.petchef.device.DeviceCommand;
 import com.heybopet.petchef.device.TuyaDeviceAdapterImpl;
 import com.heybopet.petchef.device.TuyaDeviceResult;
+import com.heybopet.petchef.device.TuyaSessionManager;
 import com.thingclips.smart.android.user.api.ILoginCallback;
 import com.thingclips.smart.android.user.bean.User;
 import com.thingclips.smart.home.sdk.ThingHomeSdk;
@@ -216,6 +217,28 @@ public class HeyboTuyaPlugin extends Plugin {
             public void onError(String code, String error) {
                 call.reject("Query Tuya devices failed: " + code + " " + error);
             }
+        });
+    }
+
+    @PluginMethod
+    public void ensureNativeSession(PluginCall call) {
+        if (getActivity() == null) {
+            call.reject("Activity is not available.");
+            return;
+        }
+        TuyaSessionManager.getInstance(getActivity()).ensureReady(result -> {
+            if (!result.success) {
+                call.reject(result.error.message);
+                return;
+            }
+            initialized = true;
+            currentHomeId = result.data.homeId;
+            JSObject payload = new JSObject();
+            payload.put("success", true);
+            payload.put("ready", true);
+            payload.put("homeId", result.data.homeId);
+            payload.put("deviceCount", result.data.devices == null ? 0 : result.data.devices.size());
+            call.resolve(payload);
         });
     }
 

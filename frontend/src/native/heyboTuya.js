@@ -78,6 +78,10 @@ class HeyboTuyaWeb extends WebPlugin {
     return { success: true, homeId: this.currentHomeId, token: 'web-demo-token' };
   }
 
+  async ensureNativeSession() {
+    return { success: true, ready: true, homeId: this.currentHomeId, deviceCount: this.devices.length, platform: 'web' };
+  }
+
   async startWifiPairing({ ssid }) {
     const newDev = {
       ...DEMO_DEVICE,

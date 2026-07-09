@@ -75,6 +75,12 @@ function formatClock(value) {
   return new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
 
+function maskId(value) {
+  const text = String(value || '');
+  if (text.length <= 8) return text || '--';
+  return `${text.slice(0, 4)}...${text.slice(-4)}`;
+}
+
 function formatDuration(ms) {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(seconds / 60);
@@ -193,20 +199,51 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
   const [foundDevices, setFoundDevices] = useState([]);
   const [empty, setEmpty] = useState(false);
   const [hotspotReady, setHotspotReady] = useState(false);
+  const [scanLogs, setScanLogs] = useState([]);
+
+  const addScanLog = (message) => {
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    setScanLogs(prev => [...prev.slice(-11), `${time} ${message}`]);
+  };
 
   async function scan() {
     const found = [];
     setFoundDevices([]);
     setEmpty(false);
     setScanning(true);
-    const listener = await HeyboTuya.addListener('bleDeviceFound', item => {
-      if (!found.some(device => device.uuid === item.uuid)) found.push(item);
-      setFoundDevices(prev => prev.some(device => device.uuid === item.uuid) ? prev : [...prev, item]);
-    });
-    await HeyboTuya.startBleScan();
+    addScanLog('点击添加鲜食机：开始自动扫描');
+    let listener;
+    try {
+      const status = await HeyboTuya.status().catch(error => ({ error: error?.message || String(error) }));
+      addScanLog(`Native=${status?.nativeAvailable !== false ? 'yes' : 'no'} SDK=${status?.initialized ? 'initialized' : 'not-ready'}`);
+      if (status?.permBluetoothScan !== undefined || status?.permLocation !== undefined) {
+        addScanLog(`权限 蓝牙=${status?.permBluetoothScan ? 'ok' : 'missing'} 定位=${status?.permLocation ? 'ok' : 'missing'} GPS=${status?.gpsEnabled ? 'on' : 'off'}`);
+      }
+      const session = await HeyboTuya.ensureNativeSession();
+      addScanLog(`Tuya session ready, homeId=${session?.homeId || '--'}, devices=${session?.deviceCount ?? '--'}`);
+      const token = await HeyboTuya.getActivatorToken().catch(error => {
+        addScanLog(`activatorToken 失败：${error?.message || String(error)}`);
+        return null;
+      });
+      if (token?.success) addScanLog(`activatorToken ok, homeId=${token.homeId || '--'}`);
+      listener = await HeyboTuya.addListener('bleDeviceFound', item => {
+        if (!found.some(device => device.uuid === item.uuid)) found.push(item);
+        addScanLog(`发现 BLE 设备：${item.name || '--'} pid=${maskId(item.productId)} uuid=${maskId(item.uuid)}`);
+        setFoundDevices(prev => prev.some(device => device.uuid === item.uuid) ? prev : [...prev, item]);
+      });
+      await HeyboTuya.startBleScan();
+      addScanLog('BLE scan start');
+    } catch (error) {
+      addScanLog(`扫描准备失败：${error?.message || String(error)}`);
+      setScanning(false);
+      setEmpty(true);
+      listener?.remove?.();
+      return;
+    }
     setTimeout(async () => {
-      await HeyboTuya.stopBleScan();
-      await listener.remove();
+      await HeyboTuya.stopBleScan().catch(error => addScanLog(`BLE scan stop 失败：${error?.message || String(error)}`));
+      await listener?.remove?.();
+      addScanLog(`BLE scan finished, result=${found.length}`);
       setScanning(false);
       setEmpty(found.length === 0);
     }, 2200);
@@ -223,6 +260,7 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
     setFailed(false);
     const timer = setInterval(() => setProgress(prev => Math.min(prev + 1, 3)), 650);
     try {
+      addScanLog(`pairing start：${device.uuid === 'manual_ap' ? 'AP' : 'BLE'} ${maskId(device.uuid)}`);
       const result = device.uuid === 'manual_ap'
         ? await HeyboTuya.startWifiPairing({ ssid: wifi.name, password, mode: 'AP' })
         : await HeyboTuya.connectBleDevice({ uuid: device.uuid, address: device.address, productId: device.productId, ssid: wifi.name, password });
@@ -230,10 +268,12 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
       setProgress(3);
       if (!result?.device) throw new Error('Pairing returned empty device');
       setSuccess(true);
+      addScanLog(`pairing success：${maskId(result.device.devId)}`);
       await onBound(result.device);
       setTimeout(onClose, 900);
-    } catch {
+    } catch (error) {
       clearInterval(timer);
+      addScanLog(`pairing error：${error?.message || String(error)}`);
       setFailed(true);
     }
   };
@@ -267,13 +307,22 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
               </div>
             ))}
             {empty && (
-              <div className="cooking-sheet-actions">
-                <GhostButton onClick={scan}>重新扫描</GhostButton>
-                <GhostButton onClick={scan}>我已确认设备在配网模式</GhostButton>
-                <GhostButton onClick={() => setMode('manual')}>手动配网</GhostButton>
+              <div>
+                <div className="cooking-warning">没有发现可添加设备。请确认蓝牙、定位/GPS 已开启，手机连接 2.4G Wi-Fi，并长按鲜食机 Wi-Fi 键 3 秒进入配网模式。</div>
+                <div className="cooking-sheet-actions">
+                  <GhostButton onClick={scan}>重新扫描</GhostButton>
+                  <GhostButton onClick={scan}>我已确认设备在配网模式</GhostButton>
+                  <GhostButton onClick={() => setMode('manual')}>手动配网</GhostButton>
+                </div>
               </div>
             )}
             {!scanning && !foundDevices.length && !empty && <PrimaryButton onClick={scan}>开始扫描</PrimaryButton>}
+            {scanLogs.length > 0 && (
+              <div className="cooking-center-card is-compact" style={{ textAlign: 'left', fontSize: 11, lineHeight: 1.6 }}>
+                <strong>添加设备调试日志</strong>
+                {scanLogs.map((line, index) => <span key={`${line}-${index}`}>{line}</span>)}
+              </div>
+            )}
           </div>
         )}
 
