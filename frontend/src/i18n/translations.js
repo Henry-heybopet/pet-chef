@@ -7,8 +7,8 @@ const T = {
   'slogan3': ["用科技为爱宠做一顿'处方级'鲜食","Tech-powered prescription-grade fresh food","Technologie für rezeptgenaues Frischfutter","Alimentation fraîche de qualité prescriptive","Comida fresca de grado prescriptivo","Cibo fresco di qualità prescrittiva","テクノロジーで処方グレードの手作り食を","기술로 처방급 생식을"],
   'myDog': ['我的爱宠','My Pet','Mein Hund','Mon Chien','Mi Perro','Il Mio Cane','愛犬','나의 반려견'],
   'myDogDesc': ['管理基础档案与体态目标','Manage base profile & targets','Profil · Rezepte wählen','Profil · Choisir recettes','Perfil · Elegir recetas','Profilo · Scegli ricette','プロフィール管理・レシピ选择','프로필 관리 · 레시피 선택'],
-  'aiRecipe': ['AI 健康食谱','AI Health Recipe','AI Gesundheitsrezept','AI Recette Santé','AI Receta Saludable','AI Ricetta Salute','AI 健康レシピ','AI 건강 레시피'],
-  'aiRecipeDesc': ['Gemini AI 营养专家定制','Gemini AI nutrition expert','Gemini AI Ernährungsexperte','Expert nutrition Gemini AI','Experto nutrición Gemini AI','Esperto nutrizione Gemini AI','Gemini AI 栄養専門家','Gemini AI 영양 전문가'],
+  'aiRecipe': ['Fresh Match鲜食智配','Fresh Match','Fresh Match','Fresh Match','Fresh Match','Fresh Match','Fresh Match','Fresh Match'],
+  'aiRecipeDesc': ['Powered by Heybo AI','Powered by Heybo AI','Powered by Heybo AI','Powered by Heybo AI','Powered by Heybo AI','Powered by Heybo AI','Powered by Heybo AI','Powered by Heybo AI'],
   'deviceControl': ['设备闭环','Device Flow','Geräte-Steuerung','Contrôle Appareil','Control Dispositivo','Controllo Dispositivo','デバイス連携','기기 연동'],
   'deviceControlDesc': ['登录 · 配网 · 设备列表 · 85°C DIY','Login, pair, status, DIY','Login, pair, status, DIY','Login, pair, status, DIY','Login, pair, status, DIY','Login, pair, status, DIY','ログイン・ペアリング・DIY','로그인 · 페어링 · DIY'],
   // DogSetup
@@ -130,6 +130,7 @@ const T = {
   'recipeCatalogTitle': ['营养食谱分类中心','Nutrition Recipe Catalog','Ernährungsrezept-Katalog','Catalogue de Recettes Nutritionnelles','Catálogo de Recetas Nutricionales','Catalogo Ricette Nutrizionali','栄養レシピカタログ','영양 레시피 카탈로그'],
   'recipeCatalogDesc': ['基于处方级鲜食标准，从年龄、健康功能以及疾病干预三维立体为爱宠定制个性化食谱配方。','Prescription-grade fresh food recipes by age, function, and health needs.','Rezeptgenaues Frischfutter nach Alter, Funktion und Gesundheitsbedarf.','Alimentation fraîche de qualité prescriptive par âge, fonction et santé.','Comida fresca de grado prescriptivo por edad, función y salud.','Cibo fresco di qualità prescrittiva per età, funzione e salute.','処方グレードの手作り食を年齢・機能・健康ニーズ別に。','처방급 생식을 연령, 기능, 건강 필요별로.'],
   'ageCategoryTitle': ['按年龄生命阶段分类','By Life Stage','Nach Lebensstadium','Par Stade de Vie','Por Etapa de Vida','Per Fase della Vita','ライフステージ別','생애 단계별'],
+  'ingredientCategoryTitle': ['按食材种类分类','By Ingredient Type','Nach Zutatenart','Par Type d’Ingrédient','Por Tipo de Ingrediente','Per Tipo di Ingrediente','食材タイプ別','식재료 유형별'],
   'funcCategoryTitle': ['按健康功能需求分类','By Health Function','Nach Gesundheitsfunktion','Par Fonction Santé','Por Función de Salud','Per Funzione Salute','健康機能別','건강 기능별'],
   'extCategoryTitle': ['特需疾病扩展分类','Specialty Disease Support','Spezialkrankheitsunterstützung','Support Maladie Spécialisé','Soporte Enfermedad Especializado','Supporto Malattia Specializzato','特殊疾患サポート','특수 질환 지원'],
   'pendingDev': ['标注待开发','Under Development','In Entwicklung','En Développement','En Desarrollo','In Sviluppo','開発中','개발 중'],

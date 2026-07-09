@@ -22,8 +22,12 @@ const petRepository = require('./services/pet_repository');
 const userRepository = require('./services/user_repository');
 
 const app = express();
+app.set('trust proxy', 1);
 const uploadsDir = path.resolve(__dirname, '../public/uploads');
+const runtimeDataDir = path.resolve(__dirname, '../.data');
+const AI_RECOMMENDATION_CACHE_VERSION = 8;
 fs.mkdirSync(uploadsDir, { recursive: true });
+fs.mkdirSync(runtimeDataDir, { recursive: true });
 
 // 路由兼容性中间件：自动将 /api/xxx 转发至 /api/v1/xxx （防止生产环境 Nginx 或 Capacitor 容器导致 404）
 app.use((req, res, next) => {
@@ -84,24 +88,33 @@ app.get('/api/v1/breeds', (req, res) => {
 app.get('/api/v1/recipes', async (req, res) => {
   const { category, life_stage, dog_size, functional, protein, all, custom_category } = req.query;
 
-  // custom_category 映射表：新分类体系 → 食谱过滤逻辑
+  const ingredientNames = (r) => Object.keys(r.ingredients || {});
+  const hasIngredient = (r, markers) => markers.some(marker => ingredientNames(r).some(name => name.includes(marker)));
+  const hasText = (r, marker) => [
+    r.category,
+    r.name,
+    r.b_pack,
+    r.c_pack,
+    ...(r.health_tags || []),
+    ...(r.tags || []),
+  ].some(value => String(value || '').includes(marker));
+
+  // custom_category 映射表：食谱分类页 → 当前 40 条食谱字段
   const customCategoryFilter = (r) => {
     switch (custom_category) {
-      case 'puppy': return r.life_stage === '幼犬';
-      case 'adult': return r.life_stage === '成年犬';
-      case 'senior': return r.life_stage === '老年犬';
-      case 'skin': return r.category === '美毛';
-      case 'digestive':
-        return ['dog_recipe_004', 'dog_recipe_022'].includes(r.id) || r.category === '低敏';
-      case 'joint':
-        return r.id === 'dog_recipe_021' || (r.life_stage === '幼犬' && r.dog_size === '大型犬');
-      case 'weight':
-        return ['dog_recipe_017', 'dog_recipe_018', 'dog_recipe_023', 'dog_recipe_032'].includes(r.id);
-      case 'anti_inflammatory':
-        return ['dog_recipe_003', 'dog_recipe_030', 'dog_recipe_034'].includes(r.id);
-      case 'cardiac': return r.id === 'dog_recipe_024';
-      case 'liver': return r.category === '护肝';
-      case 'brain': return r.id === 'dog_recipe_002';
+      case 'puppy_general': return r.category === '幼犬通用';
+      case 'puppy_calcium': return r.category === '控钙幼犬（大型幼犬）';
+      case 'adult_general': return r.category === '成犬通用';
+      case 'senior_general': return r.category === '老年犬通用';
+      case 'protein_chicken': return hasIngredient(r, ['鸡']);
+      case 'protein_beef': return hasIngredient(r, ['牛']);
+      case 'protein_fish': return hasIngredient(r, ['鱼', '金枪']);
+      case 'protein_other': return hasIngredient(r, ['鸭', '兔', '羊', '鹿', '火鸡']);
+      case 'skin': return r.category === '美毛护肤' || hasText(r, '美毛');
+      case 'liver': return r.category === '护肝' || hasText(r, '护肝');
+      case 'hypoallergenic': return r.category === '低敏单一蛋白' || hasText(r, '低敏');
+      case 'low_fat': return hasText(r, '低脂');
+      case 'joint': return hasText(r, '关节') || hasText(r, '护关节');
       default: return false;
     }
   };
@@ -115,10 +128,10 @@ app.get('/api/v1/recipes', async (req, res) => {
     if (life_stage) match = match && r.life_stage === life_stage;
     if (dog_size) match = match && (!r.dog_size || r.dog_size === dog_size);
     if (functional) match = match && r.category_type === 'functional' && r.category.includes(functional);
-    if (protein) match = match && Object.keys(r.ingredients).some(name => name.includes(protein));
+    if (protein) match = match && Object.keys(r.ingredients || {}).some(name => name.includes(protein));
     if (req.query.protein_other) {
       const otherMeats = ['鸭', '羊', '鹿', '火鸡'];
-      const ingNames = Object.keys(r.ingredients);
+      const ingNames = Object.keys(r.ingredients || {});
       match = match && otherMeats.some(m => ingNames.some(name => name.includes(m)));
     }
     return match;
@@ -182,6 +195,86 @@ app.get('/api/v1/admin/users', async (req, res) => {
   }
 });
 
+const PET_CHEF_SPEED_RPM = { 0: 0, 1: 60, 2: 120, 3: 230, 4: 500, 5: 1200, 6: 2500, 7: 4000, 8: 5500, 9: 7500, 10: 9500 };
+const PET_CHEF_FAULTS = {
+  1: 'E01 盖子没有盖好',
+  2: 'E02 鲜食杯没有安装好',
+  3: 'E03 马达堵转',
+  4: 'E04 鲜食杯温度超过145度',
+  5: 'E05 马达温度超过80度',
+  7: 'E07 换挡位失败',
+  8: 'E04 马达NTC失败',
+  11: 'E11 高速搅拌时温度超过90度',
+  12: 'E12 电子秤超过5KG',
+};
+
+function petChefFault(value) {
+  if (value === undefined || value === null || value === '' || Number(value) === 0) return { code: '-', message: '无' };
+  return { code: `DP12=${value}`, message: PET_CHEF_FAULTS[Number(value)] || `未知故障 ${value}` };
+}
+
+function petChefSpeed(value) {
+  if (value === undefined || value === null || value === '') return '-';
+  const level = Number(value);
+  return PET_CHEF_SPEED_RPM[level] === undefined ? `${value}档` : `${level}档（${PET_CHEF_SPEED_RPM[level]}转/分钟）`;
+}
+
+function petChefPower(value) {
+  if (value === undefined || value === null || value === '') return '-';
+  const level = Number(value);
+  return level >= 1 && level <= 10 ? `${level}档（${level * 100}W）` : `${value}档`;
+}
+
+function tuyaRowsToDps(rows = []) {
+  return Object.fromEntries(rows.map(item => [item.code ?? item.dpId ?? item.dp_id ?? item.dpCode, item.value]));
+}
+
+app.get('/api/v1/admin/devices', async (req, res) => {
+  const devices = await Promise.all((store.db.devices || [])
+    .filter(device => !/^(demo_|web_)/.test(String(device.tuya_device_id || '')))
+    .map(async device => {
+      try {
+        const status = await getDeviceStatus(device.tuya_device_id);
+        const dps = tuyaRowsToDps(status.result || []);
+        const fault = petChefFault(dps.fault ?? dps[12]);
+        return {
+          ...device,
+          region: 'CN',
+          dps,
+          last_dp_reported_at: new Date().toISOString(),
+          telemetry: {
+            online: true,
+            current_temp: dps.temperature ?? dps.cook_temperature ?? '-',
+            motor_speed: petChefSpeed(dps.cook_mode_speed ?? dps[108]),
+            motor_power: petChefPower(dps.cook_mode_power ?? dps[102]),
+            water_tank_level: '-',
+            scale_weight: '-',
+            error_code: fault.code,
+            error_message: fault.message,
+            cup_status: Number(dps.fault ?? dps[12]) === 2 ? '未安装好' : '正常',
+            lid_status: Number(dps.fault ?? dps[12]) === 1 ? '未盖好' : '正常',
+            status: dps.status ?? '-',
+            remain_time: dps.remain_time ?? '-',
+          },
+        };
+      } catch (error) {
+        return {
+          ...device,
+          region: 'CN',
+          telemetry: {
+            online: device.status !== 'offline',
+            current_temp: '-',
+            motor_speed: '-',
+            water_tank_level: '-',
+            scale_weight: '-',
+            error_code: error.message,
+          },
+        };
+      }
+    }));
+  res.json({ success: true, devices, count: devices.length, source: 'heybo_store' });
+});
+
 const LIFE_STAGE_LABEL = { puppy: '幼犬', adult: '成年犬', senior: '老年犬' };
 const BODY_SIZE_LABEL = { mini: '小型犬', small: '小型犬', medium: '中型犬', large: '大型犬', giant: '大型犬' };
 const ALLERGEN_ALIASES = {
@@ -194,7 +287,7 @@ const ALLERGEN_ALIASES = {
 };
 
 function hasRecipeAllergen(recipe, allergens = []) {
-  const ingredientNames = Object.keys(recipe.ingredients || {});
+  const ingredientNames = Object.keys(recipe?.ingredients || {});
   return allergens.some(allergen => {
     if (!allergen || typeof allergen !== 'string') return false;
     const aliases = ALLERGEN_ALIASES[allergen] || [allergen];
@@ -321,6 +414,10 @@ function safeCacheId(value) {
   return String(value || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
+function compareCachePath(petCacheId) {
+  return path.join(runtimeDataDir, `compare_cache_${petCacheId}.json`);
+}
+
 function normalizeCacheTimestamp(value) {
   if (!value) return null;
   const date = new Date(value);
@@ -356,17 +453,18 @@ app.post('/api/v1/recommend/compare', async (req, res) => {
 
   // 尝试读取物理缓存
   const petCacheId = safeCacheId(dogProfile.pet_id || dogProfile.id || dogProfile.name || 'default');
-  const cacheFilePath = path.resolve(__dirname, `data/compare_cache_${petCacheId}.json`);
+  const cacheFilePath = compareCachePath(petCacheId);
   if (fs.existsSync(cacheFilePath)) {
     try {
       const cacheData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
       const cacheAgeMs = Date.now() - (cacheData.timestamp || 0);
       const isExpired = cacheAgeMs > 30 * 24 * 60 * 60 * 1000;
+      const isOldVersion = cacheData.cache_version !== AI_RECOMMENDATION_CACHE_VERSION;
       const isDirty = dogProfile.pet_updated_at
         ? normalizeCacheTimestamp(cacheData.pet_updated_at) !== normalizeCacheTimestamp(dogProfile.pet_updated_at)
         : !isProfileEqual(cacheData.dogProfile, dogProfile);
 
-      if (!isExpired && !isDirty) {
+      if (!isExpired && !isDirty && !isOldVersion) {
         const proposedRecipeName = proposedSelection.a_recipe_name;
         if (cacheData.comparisons && cacheData.comparisons[proposedRecipeName]) {
           console.log(`[Compare Cache Hit File] Served ${proposedRecipeName} from cache for ${petCacheId}`);
@@ -447,7 +545,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
   const intake = calcDailyIntake(breed, weight, age);
 
   const petCacheId = safeCacheId(dogProfile.pet_id || id || name || 'default');
-  const cacheFilePath = path.resolve(__dirname, `data/compare_cache_${petCacheId}.json`);
+  const cacheFilePath = compareCachePath(petCacheId);
   let comparisons = null;
   let cacheValid = false;
   let cacheNeedsWrite = false;
@@ -457,11 +555,12 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       const cacheData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
       const cacheAgeMs = Date.now() - (cacheData.timestamp || 0);
       const isExpired = cacheAgeMs > 30 * 24 * 60 * 60 * 1000;
+      const isOldVersion = cacheData.cache_version !== AI_RECOMMENDATION_CACHE_VERSION;
       const isDirty = dogProfile.pet_updated_at
         ? normalizeCacheTimestamp(cacheData.pet_updated_at) !== normalizeCacheTimestamp(dogProfile.pet_updated_at)
         : !isProfileEqual(cacheData.dogProfile, dogProfile);
 
-      if (!isExpired && !isDirty) {
+      if (!isExpired && !isDirty && !isOldVersion) {
         comparisons = cacheData.comparisons || null;
         cacheValid = true;
         if (cacheData.analysis && comparisons) {
@@ -606,6 +705,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
 
   if (cacheNeedsWrite) {
     fs.writeFileSync(cacheFilePath, JSON.stringify({
+      cache_version: AI_RECOMMENDATION_CACHE_VERSION,
       timestamp: Date.now(),
       pet_id: dogProfile.pet_id || dogProfile.id,
       pet_updated_at: normalizeCacheTimestamp(dogProfile.pet_updated_at),
@@ -767,8 +867,8 @@ app.post('/api/v1/tuya/stop', async (req, res) => {
 // ============================================================
 app.get('/api/v1/tuya/status', async (req, res) => {
   try {
-    const result = await getDeviceStatus();
-    res.json({ success: true, status: result });
+    const result = await getDeviceStatus(req.query.devId);
+    res.json({ success: true, status: result, dps: tuyaRowsToDps(result.result || []) });
   } catch (err) {
     console.error('Tuya status error:', err.message);
     res.json({ success: true, simulated: true, status: { online: true, cooking: false }, error_detail: err.message });
