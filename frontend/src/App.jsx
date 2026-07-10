@@ -588,7 +588,8 @@ function AppInner() {
       (breedName && (breedName.includes(item.name) || item.name.includes(breedName)))
     );
     const ageMonths = pet.age_months ?? pet.ageMonths;
-    return {
+    const avatarUrl = pet.avatar_url || pet.avatarUrl || pet.photoUrl || pet.profileImage || pet.imageUrl || pet.photo || pet.avatar || '';
+    const mapped = {
       ...pet,
       birthDate: toDateInput(pet.birth_date || pet.birthDate),
       breedId: pet.breedId || breed?.id || (breedName ? 'custom' : ''),
@@ -605,18 +606,29 @@ function AppInner() {
       allergySymptoms: pet.allergy_symptoms || pet.allergySymptoms || [],
       allergySeverity: pet.allergy_severity || pet.allergySeverity,
       specialPeriod: pet.special_period || pet.specialPeriod,
-      avatar: pet.avatar_url || pet.avatar,
+      avatar: avatarUrl,
+      avatar_url: avatarUrl,
+      avatarUpdatedAt: pet.avatar_updated_at || pet.updated_at || pet.updatedAt || '',
       gender: pet.sex || pet.gender,
       age: ageMonths ? Number((Number(ageMonths) / 12).toFixed(1)) : pet.age,
     };
+    return mapped;
+  };
+
+  const reloadPets = async (reason = 'manual') => {
+    if (!authToken) return [];
+    const result = await api.listPets(authToken);
+    if (result?.success) {
+      const mapped = (result.pets || []).map(toUiPet);
+      replaceProfiles(mapped);
+      return mapped;
+    }
+    return [];
   };
 
   useEffect(() => {
     if (!authToken) return;
-    api.listPets(authToken)
-      .then(result => {
-        if (result?.success) replaceProfiles((result.pets || []).map(toUiPet));
-      })
+    reloadPets('auth-or-breed-change')
       .catch(error => console.error('Load DB pets failed:', error));
   }, [authToken, breedOptions]);
 
@@ -719,6 +731,11 @@ function AppInner() {
       updateProfile(editingPet.id, savedPet);
     } else {
       addProfile(savedPet);
+    }
+    try {
+      await reloadPets('after-save');
+    } catch (error) {
+      console.warn('Reload pets after save failed:', error);
     }
     setScreen('pet_management');
   };

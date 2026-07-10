@@ -1,14 +1,21 @@
 package com.heybopet.petchef;
 
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.location.LocationManager;
+import android.net.Uri;
+import android.os.Build;
+import android.provider.Settings;
 import android.text.TextUtils;
 
 import com.alibaba.fastjson.JSON;
 import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.PermissionCallback;
 import com.heybopet.petchef.auth.NativeAuthStore;
 import com.heybopet.petchef.device.DeviceCommand;
 import com.heybopet.petchef.device.TuyaDeviceAdapterImpl;
@@ -36,6 +43,8 @@ import java.util.List;
 import java.util.Map;
 
 import android.Manifest;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import com.getcapacitor.annotation.Permission;
 
 @CapacitorPlugin(
@@ -421,6 +430,11 @@ public class HeyboTuyaPlugin extends Plugin {
     @PluginMethod
     public void startBleScan(PluginCall call) {
         if (!ensureInitialized(call)) return;
+        JSObject permission = pairingPermissionResult();
+        if (!Boolean.TRUE.equals(permission.getBool("canStartBleScan"))) {
+            call.reject("PAIRING_PERMISSION_MISSING: " + permission.optJSONArray("missingPermissions"));
+            return;
+        }
 
         try {
             com.thingclips.smart.android.ble.api.LeScanSetting setting = new com.thingclips.smart.android.ble.api.LeScanSetting.Builder()
@@ -440,6 +454,10 @@ public class HeyboTuyaPlugin extends Plugin {
                         device.put("address", scanDeviceBean.getAddress());
                         device.put("uuid", scanDeviceBean.getUuid());
                         device.put("productId", scanDeviceBean.getProductId());
+                        putIfPresent(device, "pid", invokeNoArg(scanDeviceBean, "getPid"));
+                        putIfPresent(device, "mac", invokeNoArg(scanDeviceBean, "getMac"));
+                        putIfPresent(device, "deviceId", invokeNoArg(scanDeviceBean, "getDevId"));
+                        putIfPresent(device, "rssi", invokeNoArg(scanDeviceBean, "getRssi"));
                         device.put("deviceType", scanDeviceBean.getDeviceType());
                         device.put("flag", scanDeviceBean.getFlag());
                         device.put("isNearby", true);
@@ -452,6 +470,28 @@ public class HeyboTuyaPlugin extends Plugin {
         } catch (Exception e) {
             call.reject("Start BLE scan failed: " + e.getMessage(), e);
         }
+    }
+
+    @PluginMethod
+    public void checkPairingPermissions(PluginCall call) {
+        call.resolve(pairingPermissionResult());
+    }
+
+    @PluginMethod
+    public void requestPairingPermissions(PluginCall call) {
+        JSObject current = pairingPermissionResult();
+        if (Boolean.TRUE.equals(current.getBool("canStartBleScan"))) {
+            call.resolve(current);
+            return;
+        }
+        requestPermissionForAliases(missingPairingPermissionAliases(), call, "pairingPermissionsCallback");
+    }
+
+    @PermissionCallback
+    private void pairingPermissionsCallback(PluginCall call) {
+        JSObject result = pairingPermissionResult();
+        result.put("requested", true);
+        call.resolve(result);
     }
 
     @PluginMethod
@@ -645,14 +685,29 @@ public class HeyboTuyaPlugin extends Plugin {
     @PluginMethod
     public void openBluetoothSettings(PluginCall call) {
         try {
-            android.content.Intent intent = new android.content.Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS);
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            Intent intent = new Intent(Settings.ACTION_BLUETOOTH_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getActivity().startActivity(intent);
             JSObject result = new JSObject();
             result.put("success", true);
             call.resolve(result);
         } catch (Exception e) {
             call.reject("Open Bluetooth settings failed: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + getContext().getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getActivity().startActivity(intent);
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Open app settings failed: " + e.getMessage(), e);
         }
     }
 
@@ -762,6 +817,90 @@ public class HeyboTuyaPlugin extends Plugin {
         return true;
     }
 
+    private JSObject pairingPermissionResult() {
+        boolean bluetoothRequired = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S;
+        boolean locationRequired = Build.VERSION.SDK_INT < Build.VERSION_CODES.S;
+        boolean bluetoothScanGranted = !bluetoothRequired || hasAndroidPermission(Manifest.permission.BLUETOOTH_SCAN);
+        boolean bluetoothConnectGranted = !bluetoothRequired || hasAndroidPermission(Manifest.permission.BLUETOOTH_CONNECT);
+        boolean locationGranted = !locationRequired || hasAndroidPermission(Manifest.permission.ACCESS_FINE_LOCATION);
+        boolean gpsEnabled = isLocationEnabled();
+        boolean bluetoothGranted = bluetoothScanGranted && bluetoothConnectGranted;
+
+        com.getcapacitor.JSArray missing = new com.getcapacitor.JSArray();
+        if (bluetoothRequired && !bluetoothScanGranted) missing.put(Manifest.permission.BLUETOOTH_SCAN);
+        if (bluetoothRequired && !bluetoothConnectGranted) missing.put(Manifest.permission.BLUETOOTH_CONNECT);
+        if (locationRequired && !locationGranted) missing.put(Manifest.permission.ACCESS_FINE_LOCATION);
+
+        JSObject permissions = new JSObject();
+        permissions.put("BLUETOOTH_SCAN", bluetoothRequired ? permissionLabel(bluetoothScanGranted) : "not_required");
+        permissions.put("BLUETOOTH_CONNECT", bluetoothRequired ? permissionLabel(bluetoothConnectGranted) : "not_required");
+        permissions.put("ACCESS_FINE_LOCATION", locationRequired ? permissionLabel(locationGranted) : "not_required");
+
+        JSObject result = new JSObject();
+        result.put("platform", "android");
+        result.put("androidVersion", Build.VERSION.SDK_INT);
+        result.put("bluetoothGranted", bluetoothGranted);
+        result.put("locationGranted", locationGranted);
+        result.put("gpsEnabled", gpsEnabled);
+        result.put("bluetoothRequired", bluetoothRequired);
+        result.put("locationRequired", locationRequired);
+        result.put("missingPermissions", missing);
+        result.put("permissions", permissions);
+        result.put("canStartBleScan", bluetoothGranted && locationGranted);
+        result.put("shouldOpenSettings", shouldOpenSettings());
+        result.put("bluetoothAliasState", permissionState("bluetooth"));
+        result.put("locationAliasState", permissionState("location"));
+        return result;
+    }
+
+    private boolean hasAndroidPermission(String permission) {
+        return ContextCompat.checkSelfPermission(getContext(), permission) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private String permissionLabel(boolean granted) {
+        return granted ? "granted" : "denied";
+    }
+
+    private String permissionState(String alias) {
+        PermissionState state = getPermissionState(alias);
+        return state == null ? "unknown" : state.toString();
+    }
+
+    private boolean shouldOpenSettings() {
+        if (getActivity() == null) return false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!hasAndroidPermission(Manifest.permission.BLUETOOTH_SCAN)
+                && !ActivityCompat.shouldShowRequestPermissionRationale(getActivity(), Manifest.permission.BLUETOOTH_SCAN)) return true;
+            if (!hasAndroidPermission(Manifest.permission.BLUETOOTH_CONNECT)
+                && !ActivityCompat.shouldShowRequestPermissionRationale(getActivity(), Manifest.permission.BLUETOOTH_CONNECT)) return true;
+        } else if (!hasAndroidPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+            && !ActivityCompat.shouldShowRequestPermissionRationale(getActivity(), Manifest.permission.ACCESS_FINE_LOCATION)) {
+            return true;
+        }
+        return false;
+    }
+
+    private String[] missingPairingPermissionAliases() {
+        List<String> aliases = new ArrayList<>();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!hasAndroidPermission(Manifest.permission.BLUETOOTH_SCAN) || !hasAndroidPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
+                aliases.add("bluetooth");
+            }
+        } else if (!hasAndroidPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
+            aliases.add("location");
+        }
+        return aliases.toArray(new String[0]);
+    }
+
+    private boolean isLocationEnabled() {
+        try {
+            LocationManager manager = (LocationManager) getContext().getSystemService(android.content.Context.LOCATION_SERVICE);
+            return manager != null && (manager.isProviderEnabled(LocationManager.GPS_PROVIDER) || manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private Long getHomeId(PluginCall call) {
         Long homeId = null;
         Double homeIdDouble = call.getDouble("homeId");
@@ -785,6 +924,19 @@ public class HeyboTuyaPlugin extends Plugin {
         } else {
             adapter().resetCooking(devId, result -> resolveMapResult(call, result));
         }
+    }
+
+    private Object invokeNoArg(Object target, String methodName) {
+        try {
+            java.lang.reflect.Method method = target.getClass().getMethod(methodName);
+            return method.invoke(target);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void putIfPresent(JSObject target, String key, Object value) {
+        if (value != null) target.put(key, value);
     }
 
     private void publishDpsMap(String devId, Map<String, Object> dps, PluginCall call, String errorPrefix) {

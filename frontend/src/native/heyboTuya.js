@@ -48,6 +48,27 @@ class HeyboTuyaWeb extends WebPlugin {
     };
   }
 
+  async checkPairingPermissions() {
+    return {
+      platform: 'web',
+      androidVersion: 'web',
+      bluetoothGranted: true,
+      locationGranted: true,
+      gpsEnabled: true,
+      missingPermissions: [],
+      canStartBleScan: true,
+      permissions: {
+        BLUETOOTH_SCAN: 'not_required',
+        BLUETOOTH_CONNECT: 'not_required',
+        ACCESS_FINE_LOCATION: 'not_required',
+      },
+    };
+  }
+
+  async requestPairingPermissions() {
+    return this.checkPairingPermissions();
+  }
+
   async init() {
     return { initialized: true, appKey: 'web-demo' };
   }
@@ -207,6 +228,11 @@ class HeyboTuyaWeb extends WebPlugin {
 
   async openBluetoothSettings() {
     console.log('[Web Mock] Opening system Bluetooth settings...');
+    return { success: true };
+  }
+
+  async openAppSettings() {
+    console.log('[Web Mock] Opening app settings...');
     return { success: true };
   }
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/index';
-import { fallbackPetAvatar, resolvePetAvatar } from '../utils/petAvatar';
+import { getPetAvatarUrl, handlePetAvatarError } from '../utils/petAvatar';
 
 const splitIngredients = value => String(value || '').split(/[,，、;；\s\n]+/).map(item => item.trim()).filter(Boolean);
 
@@ -18,7 +18,7 @@ function findBreed(breeds, pet) {
 }
 
 function petAvatar(pet, breeds) {
-  return resolvePetAvatar(pet, breeds);
+  return getPetAvatarUrl(pet, breeds);
 }
 
 function useBreedOptions() {
@@ -40,10 +40,7 @@ function PetAvatar({ pet, breeds }) {
     <img
       src={petAvatar(pet, breeds)}
       alt=""
-      onError={(event) => {
-        event.currentTarget.src = fallbackPetAvatar(pet);
-        event.currentTarget.onerror = null;
-      }}
+      onError={(event) => handlePetAvatarError(event, pet, 'fresh-match')}
     />
   );
 }

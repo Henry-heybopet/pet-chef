@@ -10,6 +10,8 @@ const WIFI_LIST = [
 
 const PAIRING_STEPS = ['正在连接设备', '正在发送 Wi-Fi 信息', '正在连接 Heybo 云端', '正在绑定到当前账号'];
 const START_CHECKS = ['加入食材', '加入适量的水', '盖上鲜食杯盖', '周围没有幼童和宠物'];
+const PET_CHEF_PID = 'ak2kofibhuvdtqip';
+const BLE_SCAN_MS = 60000;
 
 function isActiveCookingDps(dps) {
   return dps?.[107] === 'start' || dps?.[107] === 'pause' || dps?.[107] === 'reset' || dps?.[5] === 'cooking' || dps?.[5] === 'pause';
@@ -79,6 +81,55 @@ function maskId(value) {
   const text = String(value || '');
   if (text.length <= 8) return text || '--';
   return `${text.slice(0, 4)}...${text.slice(-4)}`;
+}
+
+function bleField(device, ...keys) {
+  for (const key of keys) {
+    if (device?.[key] !== undefined && device?.[key] !== null && device?.[key] !== '') return device[key];
+  }
+  return '';
+}
+
+function classifyBleDevice(device) {
+  const name = String(bleField(device, 'name', 'deviceName'));
+  const productId = String(bleField(device, 'productId', 'pid'));
+  const isTuya = Boolean(productId || bleField(device, 'uuid') || bleField(device, 'address', 'mac'));
+  const matchesPid = productId === PET_CHEF_PID;
+  const matchesName = /heybo|pet\s*chef|petchef|鲜食机/i.test(name);
+  const match = matchesPid || (!productId && matchesName);
+  const reason = match ? 'match' : productId && !matchesPid ? 'PID 不匹配' : matchesName ? '缺少 PID' : '名称不匹配';
+  return { isTuya, match, reason, name, productId };
+}
+
+function scanFailureMessage(summary) {
+  if (!summary) return '没有发现可添加设备。';
+  if (summary.cancelled) return '已取消扫描。';
+  if (summary.rawCount === 0) return '未发现附近蓝牙设备，请靠近鲜食机，并确认手机蓝牙已开启。';
+  if (summary.rawCount > 0 && !summary.hasTuya) return '附近有蓝牙设备，但未发现可配网的 Heybo Pet 鲜食机。请确认鲜食机已进入配网模式。';
+  if (summary.rawCount > 0 && summary.hasPidMismatch) return '发现 Tuya 设备，但型号或 PID 不匹配，请检查设备型号或 PID 配置。';
+  return '附近有蓝牙设备，但未发现可添加的 Heybo Pet 鲜食机。';
+}
+
+function listPermissions(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    return Array.from(value);
+  } catch {
+    return [];
+  }
+}
+
+function formatPairingPermissionLog(result) {
+  const permissions = result?.permissions || {};
+  return [
+    `Android=${result?.androidVersion ?? '--'}`,
+    `BLUETOOTH_SCAN=${permissions.BLUETOOTH_SCAN || 'unknown'}`,
+    `BLUETOOTH_CONNECT=${permissions.BLUETOOTH_CONNECT || 'unknown'}`,
+    `ACCESS_FINE_LOCATION=${permissions.ACCESS_FINE_LOCATION || 'unknown'}`,
+    `GPS=${result?.gpsEnabled ? 'enabled' : 'disabled'}`,
+    `canStartBleScan=${result?.canStartBleScan ? 'yes' : 'no'}`,
+  ].join(' ');
 }
 
 function formatDuration(ms) {
@@ -200,25 +251,101 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
   const [empty, setEmpty] = useState(false);
   const [hotspotReady, setHotspotReady] = useState(false);
   const [scanLogs, setScanLogs] = useState([]);
+  const [scanSummary, setScanSummary] = useState(null);
+  const [permissionNotice, setPermissionNotice] = useState('');
+  const [scanEndsAt, setScanEndsAt] = useState(0);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const scanTimerRef = useRef(null);
+  const scanListenerRef = useRef(null);
+  const scanStartedAtRef = useRef(0);
+  const rawDevicesRef = useRef([]);
+  const filteredDevicesRef = useRef([]);
 
   const addScanLog = (message) => {
     const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-    setScanLogs(prev => [...prev.slice(-11), `${time} ${message}`]);
+    setScanLogs(prev => [...prev.slice(-79), `${time} ${message}`]);
+  };
+
+  const stopScan = async (cancelled = false) => {
+    if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
+    scanTimerRef.current = null;
+    await HeyboTuya.stopBleScan().catch(error => addScanLog(`BLE scan stop 失败：${error?.message || String(error)}`));
+    await scanListenerRef.current?.remove?.();
+    scanListenerRef.current = null;
+    const rawCount = rawDevicesRef.current.length;
+    const filteredCount = filteredDevicesRef.current.length;
+    const hasTuya = rawDevicesRef.current.some(device => classifyBleDevice(device).isTuya);
+    const hasPidMismatch = rawDevicesRef.current.some(device => {
+      const info = classifyBleDevice(device);
+      return info.isTuya && !info.match && info.productId;
+    });
+    const endedAt = Date.now();
+    const durationSeconds = Math.round((endedAt - scanStartedAtRef.current) / 1000);
+    setScanSummary({ rawCount, filteredCount, hasTuya, hasPidMismatch, cancelled });
+    addScanLog(`scan end=${new Date(endedAt).toISOString()} duration=${durationSeconds}s rawCount=${rawCount} filteredCount=${filteredCount}`);
+    setScanning(false);
+    setScanEndsAt(0);
+    setRemainingSeconds(0);
+    setEmpty(filteredCount === 0);
   };
 
   async function scan() {
+    if (scanning) return;
     const found = [];
+    rawDevicesRef.current = [];
+    filteredDevicesRef.current = [];
     setFoundDevices([]);
     setEmpty(false);
-    setScanning(true);
-    addScanLog('点击添加鲜食机：开始自动扫描');
+    setScanSummary(null);
+    setPermissionNotice('');
+    const startedAt = Date.now();
+    scanStartedAtRef.current = startedAt;
+    addScanLog(`点击添加鲜食机 scan request=${new Date(startedAt).toISOString()}`);
+    addScanLog(`过滤规则：productId=${PET_CHEF_PID}；名称兜底=Heybo/Pet Chef/鲜食机`);
     let listener;
     try {
       const status = await HeyboTuya.status().catch(error => ({ error: error?.message || String(error) }));
       addScanLog(`Native=${status?.nativeAvailable !== false ? 'yes' : 'no'} SDK=${status?.initialized ? 'initialized' : 'not-ready'}`);
-      if (status?.permBluetoothScan !== undefined || status?.permLocation !== undefined) {
-        addScanLog(`权限 蓝牙=${status?.permBluetoothScan ? 'ok' : 'missing'} 定位=${status?.permLocation ? 'ok' : 'missing'} GPS=${status?.gpsEnabled ? 'on' : 'off'}`);
+
+      let permission = await HeyboTuya.checkPairingPermissions?.().catch(error => ({ error: error?.message || String(error) }));
+      if (!permission || permission.error) {
+        permission = {
+          canStartBleScan: true,
+          missingPermissions: [],
+          permissions: {
+            BLUETOOTH_SCAN: status?.permBluetoothScan === undefined ? 'unknown' : status.permBluetoothScan ? 'granted' : 'denied',
+            BLUETOOTH_CONNECT: status?.permBluetoothConnect === undefined ? 'unknown' : status.permBluetoothConnect ? 'granted' : 'denied',
+            ACCESS_FINE_LOCATION: status?.permLocation === undefined ? 'unknown' : status.permLocation ? 'granted' : 'denied',
+          },
+          gpsEnabled: status?.gpsEnabled,
+          androidVersion: status?.platform || '--',
+        };
       }
+      addScanLog(`permission check result: ${formatPairingPermissionLog(permission)}`);
+      const missingPermissions = listPermissions(permission.missingPermissions);
+      addScanLog(`missing permission list: ${missingPermissions.length ? missingPermissions.join(',') : 'none'}`);
+
+      if (!permission.canStartBleScan) {
+        addScanLog('permission missing: skip BLE scan and request permission');
+        const requested = await HeyboTuya.requestPairingPermissions?.().catch(error => ({ error: error?.message || String(error) }));
+        addScanLog(`permission request result: ${requested?.error ? requested.error : formatPairingPermissionLog(requested)}`);
+        const missingAfterRequest = listPermissions(requested?.missingPermissions);
+        if (!requested?.canStartBleScan) {
+          addScanLog(`permission denied: stop BLE scan, missing=${missingAfterRequest.length ? missingAfterRequest.join(',') : 'unknown'}`);
+          setPermissionNotice('需要蓝牙和定位权限才能搜索鲜食机');
+          setEmpty(true);
+          setScanning(false);
+          setScanEndsAt(0);
+          setRemainingSeconds(0);
+          return;
+        }
+        addScanLog('permission granted: continue BLE scan');
+      }
+
+      setScanning(true);
+      setScanEndsAt(startedAt + BLE_SCAN_MS);
+      setRemainingSeconds(Math.ceil(BLE_SCAN_MS / 1000));
+      addScanLog(`BLE scan preparing start=${new Date(startedAt).toISOString()} duration=${BLE_SCAN_MS / 1000}s`);
       const session = await HeyboTuya.ensureNativeSession();
       addScanLog(`Tuya session ready, homeId=${session?.homeId || '--'}, devices=${session?.deviceCount ?? '--'}`);
       const token = await HeyboTuya.getActivatorToken().catch(error => {
@@ -227,10 +354,18 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
       });
       if (token?.success) addScanLog(`activatorToken ok, homeId=${token.homeId || '--'}`);
       listener = await HeyboTuya.addListener('bleDeviceFound', item => {
+        rawDevicesRef.current = [...rawDevicesRef.current, item];
+        const info = classifyBleDevice(item);
+        const uuid = bleField(item, 'uuid');
+        const mac = bleField(item, 'address', 'mac', 'deviceId', 'devId');
+        addScanLog(`raw BLE name=${info.name || '--'} uuid=${maskId(uuid)} pid=${maskId(info.productId)} mac=${maskId(mac)} rssi=${bleField(item, 'rssi') || '--'} tuya=${info.isTuya ? 'yes' : 'no'} match=${info.match ? 'yes' : 'no'} reason=${info.reason}`);
+        if (!info.match) return;
         if (!found.some(device => device.uuid === item.uuid)) found.push(item);
-        addScanLog(`发现 BLE 设备：${item.name || '--'} pid=${maskId(item.productId)} uuid=${maskId(item.uuid)}`);
+        filteredDevicesRef.current = found;
+        addScanLog(`匹配 Heybo Pet 鲜食机：${item.name || '--'} pid=${maskId(info.productId)} uuid=${maskId(uuid)}`);
         setFoundDevices(prev => prev.some(device => device.uuid === item.uuid) ? prev : [...prev, item]);
       });
+      scanListenerRef.current = listener;
       await HeyboTuya.startBleScan();
       addScanLog('BLE scan start');
     } catch (error) {
@@ -240,18 +375,40 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
       listener?.remove?.();
       return;
     }
-    setTimeout(async () => {
-      await HeyboTuya.stopBleScan().catch(error => addScanLog(`BLE scan stop 失败：${error?.message || String(error)}`));
-      await listener?.remove?.();
-      addScanLog(`BLE scan finished, result=${found.length}`);
-      setScanning(false);
-      setEmpty(found.length === 0);
-    }, 2200);
+    scanTimerRef.current = setTimeout(() => {
+      stopScan(false);
+    }, BLE_SCAN_MS);
   }
 
   useEffect(() => {
     if (open && mode === 'auto' && !device && progress < 0) scan();
   }, [open]);
+
+  useEffect(() => {
+    if (!scanning || !scanEndsAt) return undefined;
+    const timer = setInterval(() => {
+      setRemainingSeconds(Math.max(0, Math.ceil((scanEndsAt - Date.now()) / 1000)));
+    }, 500);
+    return () => clearInterval(timer);
+  }, [scanning, scanEndsAt]);
+
+  useEffect(() => () => {
+    if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
+    HeyboTuya.stopBleScan().catch(() => {});
+    scanListenerRef.current?.remove?.();
+  }, []);
+
+  const closeSheet = () => {
+    if (scanning) stopScan(true);
+    onClose();
+  };
+
+  const openPermissionSettings = async () => {
+    addScanLog('open system settings for pairing permissions');
+    await (HeyboTuya.openAppSettings?.() || HeyboTuya.openBluetoothSettings()).catch(error => {
+      addScanLog(`打开系统设置失败：${error?.message || String(error)}`);
+    });
+  };
 
   if (!open) return null;
 
@@ -279,13 +436,13 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
   };
 
   return (
-    <div className="cooking-sheet-mask" onClick={onClose}>
+    <div className="cooking-sheet-mask" onClick={closeSheet}>
       <div className="cooking-sheet" onClick={event => event.stopPropagation()}>
-        <button className="cooking-sheet-close" onClick={onClose}>×</button>
+        <button className="cooking-sheet-close" onClick={closeSheet}>×</button>
         {!device && progress < 0 && (
           <div className="cooking-sheet-tabs">
-            <button className={mode === 'auto' ? 'is-active' : ''} onClick={() => { setMode('auto'); scan(); }}>自动扫描</button>
-            <button className={mode === 'manual' ? 'is-active' : ''} onClick={() => setMode('manual')}>手动配网</button>
+            <button className={mode === 'auto' ? 'is-active' : ''} disabled={scanning} onClick={() => { setMode('auto'); scan(); }}>自动扫描</button>
+            <button className={mode === 'manual' ? 'is-active' : ''} disabled={scanning} onClick={() => setMode('manual')}>手动配网</button>
           </div>
         )}
 
@@ -299,7 +456,12 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
               <li>指示灯闪烁后点击下一步</li>
             </ol>
             {scanning && <div className="cooking-radar"><span /></div>}
-            {scanning && <p>正在寻找附近可添加的 Heybo Pet 设备…</p>}
+            {scanning && (
+              <div>
+                <p>正在寻找附近可添加的 Heybo Pet 设备… 剩余 {remainingSeconds} 秒</p>
+                <GhostButton onClick={() => stopScan(true)}>取消扫描</GhostButton>
+              </div>
+            )}
             {foundDevices.map(item => (
               <div key={item.uuid} className="cooking-scan-result">
                 <div><strong>Pet Chef S1</strong><span>信号良好｜可绑定</span></div>
@@ -308,15 +470,40 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
             ))}
             {empty && (
               <div>
-                <div className="cooking-warning">没有发现可添加设备。请确认蓝牙、定位/GPS 已开启，手机连接 2.4G Wi-Fi，并长按鲜食机 Wi-Fi 键 3 秒进入配网模式。</div>
-                <div className="cooking-sheet-actions">
-                  <GhostButton onClick={scan}>重新扫描</GhostButton>
-                  <GhostButton onClick={scan}>我已确认设备在配网模式</GhostButton>
-                  <GhostButton onClick={() => setMode('manual')}>手动配网</GhostButton>
-                </div>
+                <div className="cooking-warning">{permissionNotice || scanFailureMessage(scanSummary)}</div>
+                {permissionNotice && (
+                  <div className="cooking-sheet-actions">
+                    <GhostButton onClick={openPermissionSettings}>去系统设置</GhostButton>
+                    <GhostButton disabled={scanning} onClick={scan}>重新申请权限</GhostButton>
+                  </div>
+                )}
+                {!permissionNotice && scanSummary?.rawCount === 0 && (
+                  <ol>
+                    <li>打开鲜食机电源</li>
+                    <li>同时长按转速键和温度键 5 秒</li>
+                    <li>确认指示灯闪烁</li>
+                    <li>不要在手机系统蓝牙设置中直接连接设备</li>
+                    <li>如果设备曾绑定过其它 App 或账号，请先解绑或恢复出厂配网状态</li>
+                    <li>手机靠近鲜食机后重试</li>
+                  </ol>
+                )}
+                {!permissionNotice && (
+                  <div className="cooking-sheet-actions">
+                    <GhostButton disabled={scanning} onClick={scan}>重新扫描</GhostButton>
+                    <GhostButton disabled={scanning} onClick={scan}>我已确认设备在配网模式</GhostButton>
+                    <GhostButton onClick={() => setMode('manual')}>手动配网</GhostButton>
+                  </div>
+                )}
               </div>
             )}
             {!scanning && !foundDevices.length && !empty && <PrimaryButton onClick={scan}>开始扫描</PrimaryButton>}
+            {scanSummary && (
+              <div className="cooking-center-card is-compact" style={{ textAlign: 'left', fontSize: 12 }}>
+                <strong>扫描统计</strong>
+                <span>rawCount={scanSummary.rawCount}｜filteredCount={scanSummary.filteredCount}</span>
+                <span>Tuya设备={scanSummary.hasTuya ? 'yes' : 'no'}｜PID不匹配={scanSummary.hasPidMismatch ? 'yes' : 'no'}</span>
+              </div>
+            )}
             {scanLogs.length > 0 && (
               <div className="cooking-center-card is-compact" style={{ textAlign: 'left', fontSize: 11, lineHeight: 1.6 }}>
                 <strong>添加设备调试日志</strong>

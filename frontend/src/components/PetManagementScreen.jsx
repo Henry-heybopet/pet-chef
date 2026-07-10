@@ -2,7 +2,7 @@ import React from 'react';
 import { useTranslation } from '../i18n/translations';
 import { tData } from '../i18n/dataTranslations';
 import TopBar from './TopBar';
-import { fallbackPetAvatar, resolvePetAvatar } from '../utils/petAvatar';
+import { getPetAvatarUrl, handlePetAvatarError } from '../utils/petAvatar';
 
 export default function PetManagementScreen({ profiles = [], breeds = [], onAddPet, onEditPet, onSelectPet, onBack, lang }) {
   const t = useTranslation(lang);
@@ -56,7 +56,7 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
               : `${pet.age || 0}岁`;
               
             const allergensList = pet.allergensText?.trim() || pet.allergens?.join('/') || (lang === 'zh' ? '无' : 'None');
-            const avatar = resolvePetAvatar(pet, breeds);
+            const avatar = getPetAvatarUrl(pet, breeds);
 
             return (
               <div 
@@ -92,12 +92,9 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                   }}>
                     <img
                       src={avatar}
-                      alt="Avatar"
+                      alt=""
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={(event) => {
-                        event.currentTarget.src = fallbackPetAvatar(pet);
-                        event.currentTarget.onerror = null;
-                      }}
+                      onError={(event) => handlePetAvatarError(event, pet, 'pet-list')}
                     />
                   </div>
                   <button 
