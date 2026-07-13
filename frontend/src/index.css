@@ -1358,7 +1358,9 @@ body {
 .cooking-detail-sheet {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
+  max-height: calc(100dvh - 12px);
+  overflow: hidden;
   background: linear-gradient(180deg, #07131f 0%, #070b18 100%);
 }
 
@@ -1390,7 +1392,7 @@ body {
 }
 
 .cooking-detail-head h2 {
-  margin: 0 0 8px;
+  margin: 0 0 4px;
   color: #fff;
   font-size: 18px;
 }
@@ -1402,27 +1404,27 @@ body {
 .cooking-lux-panel {
   display: grid;
   grid-template-columns: 1fr 1.12fr;
-  gap: 14px;
+  gap: 10px;
   align-items: center;
 }
 
 .cooking-lux-panel img {
   width: 100%;
-  aspect-ratio: 1 / 1.42;
+  aspect-ratio: 1 / 1.18;
   object-fit: cover;
   border-radius: 10px;
 }
 
 .cooking-lux-metrics {
   display: grid;
-  gap: 10px;
+  gap: 7px;
 }
 
 .cooking-lux-metrics div {
   border: 1px solid rgba(0, 229, 255, 0.22);
   border-radius: 10px;
   background: rgba(13, 27, 42, 0.88);
-  padding: 10px 12px;
+  padding: 8px 10px;
 }
 
 .cooking-lux-metrics span,
@@ -1449,7 +1451,7 @@ body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
-  padding-top: 14px;
+  padding-top: 10px;
   border-top: 1px solid rgba(0, 229, 255, 0.18);
 }
 
@@ -1460,7 +1462,7 @@ body {
 .cooking-lux-progress span {
   display: block;
   height: 5px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.16);
 }
@@ -1481,7 +1483,7 @@ body {
 .cooking-lux-steps {
   border: 1px solid rgba(255, 176, 32, 0.36);
   border-radius: 12px;
-  padding: 14px 16px;
+  padding: 10px 12px;
   background: rgba(255, 176, 32, 0.1);
 }
 
@@ -1494,10 +1496,43 @@ body {
 .cooking-lux-steps p,
 .cooking-lux-steps small {
   display: block;
-  margin: 3px 0;
+  margin: 2px 0;
   color: #a9bacb;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.35;
+}
+
+@media (max-height: 760px) {
+  .cooking-detail-sheet {
+    gap: 8px;
+    padding-top: 12px;
+    padding-bottom: calc(12px + var(--safe-bottom));
+  }
+
+  .cooking-detail-head {
+    text-align: left;
+  }
+
+  .cooking-lux-panel img {
+    aspect-ratio: 1 / 0.92;
+  }
+
+  .cooking-lux-metrics strong {
+    font-size: 14px;
+  }
+
+  .cooking-lux-progress em,
+  .cooking-lux-metrics span {
+    font-size: 10px;
+  }
+
+  .cooking-lux-steps h3 {
+    margin-bottom: 4px;
+  }
+
+  .cooking-detail-actions .cooking-center-btn {
+    height: 50px;
+  }
 }
 
 .cooking-option-grid {
