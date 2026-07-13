@@ -237,10 +237,10 @@ function GhostButton({ children, danger, ...props }) {
   return <button className={`cooking-center-btn cooking-center-btn-ghost ${danger ? 'is-danger' : ''}`} {...props}>{children}</button>;
 }
 
-function AddDeviceBottomSheet({ open, onClose, onBound }) {
-  const [mode, setMode] = useState('auto');
+function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
   const [device, setDevice] = useState(null);
   const [wifi, setWifi] = useState(null);
+  const [wifiName, setWifiName] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [progress, setProgress] = useState(-1);
@@ -249,10 +249,10 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
   const [scanning, setScanning] = useState(false);
   const [foundDevices, setFoundDevices] = useState([]);
   const [empty, setEmpty] = useState(false);
-  const [hotspotReady, setHotspotReady] = useState(false);
   const [scanLogs, setScanLogs] = useState([]);
   const [scanSummary, setScanSummary] = useState(null);
   const [permissionNotice, setPermissionNotice] = useState('');
+  const [detectedWifiName, setDetectedWifiName] = useState('');
   const [scanEndsAt, setScanEndsAt] = useState(0);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const scanTimerRef = useRef(null);
@@ -306,6 +306,10 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
     try {
       const status = await HeyboTuya.status().catch(error => ({ error: error?.message || String(error) }));
       addScanLog(`Native=${status?.nativeAvailable !== false ? 'yes' : 'no'} SDK=${status?.initialized ? 'initialized' : 'not-ready'}`);
+      if (status?.wifiSsid) {
+        setDetectedWifiName(status.wifiSsid);
+        setWifiName(prev => prev || status.wifiSsid);
+      }
 
       let permission = await HeyboTuya.checkPairingPermissions?.().catch(error => ({ error: error?.message || String(error) }));
       if (!permission || permission.error) {
@@ -327,8 +331,10 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
 
       if (!permission.canStartBleScan) {
         addScanLog('permission missing: skip BLE scan and request permission');
-        const requested = await HeyboTuya.requestPairingPermissions?.().catch(error => ({ error: error?.message || String(error) }));
-        addScanLog(`permission request result: ${requested?.error ? requested.error : formatPairingPermissionLog(requested)}`);
+        const nativeRequest = await HeyboTuya.requestPermissions?.({ permissions: ['location', 'bluetooth'] }).catch(error => ({ error: error?.message || String(error) }));
+        addScanLog(`native permission request result: ${nativeRequest?.error ? nativeRequest.error : `location=${nativeRequest?.location || '--'} bluetooth=${nativeRequest?.bluetooth || '--'}`}`);
+        const requested = await HeyboTuya.checkPairingPermissions?.().catch(error => ({ error: error?.message || String(error) }));
+        addScanLog(`permission recheck result: ${requested?.error ? requested.error : formatPairingPermissionLog(requested)}`);
         const missingAfterRequest = listPermissions(requested?.missingPermissions);
         if (!requested?.canStartBleScan) {
           addScanLog(`permission denied: stop BLE scan, missing=${missingAfterRequest.length ? missingAfterRequest.join(',') : 'unknown'}`);
@@ -347,8 +353,10 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
       setRemainingSeconds(Math.ceil(BLE_SCAN_MS / 1000));
       addScanLog(`BLE scan preparing start=${new Date(startedAt).toISOString()} duration=${BLE_SCAN_MS / 1000}s`);
       const session = await HeyboTuya.ensureNativeSession();
-      addScanLog(`Tuya session ready, homeId=${session?.homeId || '--'}, devices=${session?.deviceCount ?? '--'}`);
-      const token = await HeyboTuya.getActivatorToken().catch(error => {
+      const activeHomeId = session?.homeId || homeId;
+      if (activeHomeId) onHomeId?.(activeHomeId);
+      addScanLog(`Tuya session ready, homeId=${activeHomeId || '--'}, devices=${session?.deviceCount ?? '--'}`);
+      const token = await HeyboTuya.getActivatorToken({ homeId: activeHomeId }).catch(error => {
         addScanLog(`activatorToken 失败：${error?.message || String(error)}`);
         return null;
       });
@@ -366,6 +374,7 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
         setFoundDevices(prev => prev.some(device => device.uuid === item.uuid) ? prev : [...prev, item]);
       });
       scanListenerRef.current = listener;
+      await HeyboTuya.stopBleScan().catch(error => addScanLog(`pre-scan stop ignored：${error?.message || String(error)}`));
       await HeyboTuya.startBleScan();
       addScanLog('BLE scan start');
     } catch (error) {
@@ -381,7 +390,7 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
   }
 
   useEffect(() => {
-    if (open && mode === 'auto' && !device && progress < 0) scan();
+    if (open && !device && progress < 0) scan();
   }, [open]);
 
   useEffect(() => {
@@ -413,20 +422,36 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
   if (!open) return null;
 
   const bind = async () => {
+    const ssid = wifiName.trim() || wifi?.name || '';
+    if (!ssid) {
+      addScanLog('pairing blocked：missing Wi-Fi SSID');
+      setFailed(true);
+      return;
+    }
     setProgress(0);
     setFailed(false);
     const timer = setInterval(() => setProgress(prev => Math.min(prev + 1, 3)), 650);
     try {
-      addScanLog(`pairing start：${device.uuid === 'manual_ap' ? 'AP' : 'BLE'} ${maskId(device.uuid)}`);
-      const result = device.uuid === 'manual_ap'
-        ? await HeyboTuya.startWifiPairing({ ssid: wifi.name, password, mode: 'AP' })
-        : await HeyboTuya.connectBleDevice({ uuid: device.uuid, address: device.address, productId: device.productId, ssid: wifi.name, password });
+      const session = await HeyboTuya.ensureNativeSession();
+      const activeHomeId = session?.homeId || homeId;
+      if (activeHomeId) onHomeId?.(activeHomeId);
+      addScanLog(`pairing start：BLE ${maskId(device.uuid)} homeId=${activeHomeId || '--'} ssid=${ssid}`);
+      const result = await HeyboTuya.connectBleDevice({
+        uuid: device.uuid,
+        address: device.address,
+        productId: device.productId || device.pid,
+        ssid,
+        password,
+        deviceType: device.deviceType,
+        flag: device.flag,
+        homeId: activeHomeId,
+      });
       clearInterval(timer);
       setProgress(3);
       if (!result?.device) throw new Error('Pairing returned empty device');
       setSuccess(true);
       addScanLog(`pairing success：${maskId(result.device.devId)}`);
-      await onBound(result.device);
+      await onBound({ ...result.device, homeId: result.device.homeId || activeHomeId });
       setTimeout(onClose, 900);
     } catch (error) {
       clearInterval(timer);
@@ -439,14 +464,8 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
     <div className="cooking-sheet-mask" onClick={closeSheet}>
       <div className="cooking-sheet" onClick={event => event.stopPropagation()}>
         <button className="cooking-sheet-close" onClick={closeSheet}>×</button>
-        {!device && progress < 0 && (
-          <div className="cooking-sheet-tabs">
-            <button className={mode === 'auto' ? 'is-active' : ''} disabled={scanning} onClick={() => { setMode('auto'); scan(); }}>自动扫描</button>
-            <button className={mode === 'manual' ? 'is-active' : ''} disabled={scanning} onClick={() => setMode('manual')}>手动配网</button>
-          </div>
-        )}
 
-        {!device && mode === 'auto' && (
+        {!device && (
           <div className="cooking-sheet-flow">
             <h2>添加鲜食机</h2>
             <p>请先让鲜食机进入配网模式：</p>
@@ -491,7 +510,6 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
                   <div className="cooking-sheet-actions">
                     <GhostButton disabled={scanning} onClick={scan}>重新扫描</GhostButton>
                     <GhostButton disabled={scanning} onClick={scan}>我已确认设备在配网模式</GhostButton>
-                    <GhostButton onClick={() => setMode('manual')}>手动配网</GhostButton>
                   </div>
                 )}
               </div>
@@ -513,36 +531,30 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
           </div>
         )}
 
-        {!device && mode === 'manual' && (
-          <div className="cooking-sheet-flow">
-            <h2>手动 AP 配网</h2>
-            <p>请让鲜食机 Wi-Fi 指示灯慢闪，并在系统 Wi-Fi 中连接 Heybo_PetChef 热点。</p>
-            <div className="cooking-center-card is-compact">
-              <strong>{hotspotReady ? '已检测到 Heybo_PetChef 热点' : '等待连接 Heybo_PetChef 热点'}</strong>
-              <span>连接后继续选择家庭 2.4G Wi-Fi。</span>
-            </div>
-            <PrimaryButton onClick={() => setHotspotReady(true)}>我已连接热点</PrimaryButton>
-            {hotspotReady && <PrimaryButton onClick={() => setDevice({ uuid: 'manual_ap', productId: 'ak2kofibhuvdtqip', name: 'Pet Chef S1' })}>下一步</PrimaryButton>}
-          </div>
-        )}
-
         {device && !wifi && progress < 0 && (
           <div className="cooking-sheet-flow">
             <h2>选择 2.4G Wi-Fi</h2>
-            <p>请选择鲜食机要连接的家庭 Wi-Fi。</p>
+            <p>请输入鲜食机要连接的真实家庭 2.4G Wi-Fi 名称。</p>
+            <input
+              className="cooking-wifi-input"
+              value={wifiName}
+              onChange={event => setWifiName(event.target.value)}
+              placeholder={detectedWifiName ? `当前手机 Wi-Fi：${detectedWifiName}` : '例如：Home-2.4G'}
+            />
             {WIFI_LIST.map(item => (
-              <button key={item.name} className={`cooking-wifi-item ${wifi?.name === item.name ? 'is-active' : ''}`} disabled={item.type === '5G'} onClick={() => setWifi(item)}>
+              <button key={item.name} className={`cooking-wifi-item ${wifi?.name === item.name ? 'is-active' : ''}`} disabled={item.type === '5G'} onClick={() => { setWifi(item); setWifiName(item.name); }}>
                 <strong>{item.name}</strong>
                 <span>{item.desc}</span>
               </button>
             ))}
+            <PrimaryButton disabled={!wifiName.trim()} onClick={() => setWifi({ name: wifiName.trim(), type: 'manual', desc: '手动输入' })}>下一步</PrimaryButton>
           </div>
         )}
 
         {device && wifi && progress < 0 && (
           <div className="cooking-sheet-flow">
             <h2>输入 Wi-Fi 密码</h2>
-            <p>{wifi.name}</p>
+            <p>{wifiName.trim() || wifi.name}</p>
             {wifi.type === 'dual' && <div className="cooking-warning">双频同名 Wi-Fi 可绑定，但建议优先使用明确的 2.4G 网络。</div>}
             <div className="cooking-password-row">
               <input type={showPassword ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} placeholder="请输入 Wi-Fi 密码" />
@@ -574,8 +586,7 @@ function AddDeviceBottomSheet({ open, onClose, onBound }) {
         {failed && (
           <div className="cooking-sheet-actions">
             <GhostButton onClick={() => { setProgress(-1); setFailed(false); setPassword(''); }}>重新输入密码</GhostButton>
-            <GhostButton onClick={() => { setProgress(-1); setFailed(false); setDevice(null); setMode('manual'); }}>重新连接设备热点</GhostButton>
-            <GhostButton onClick={() => { setProgress(-1); setFailed(false); setDevice(null); setMode('auto'); }}>返回自动扫描</GhostButton>
+            <GhostButton onClick={() => { setProgress(-1); setFailed(false); setDevice(null); }}>返回自动扫描</GhostButton>
           </div>
         )}
       </div>
@@ -754,6 +765,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const [runStartedAt, setRunStartedAt] = useState(0);
   const [runElapsedMs, setRunElapsedMs] = useState(0);
   const [nowTick, setNowTick] = useState(Date.now());
+  const [tuyaHomeId, setTuyaHomeId] = useState('');
 
   const selectedDevice = useMemo(() => {
     const device = devices.find(item => item.devId === selectedDevId) || devices[0];
@@ -811,9 +823,10 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
 
   const registerBoundDevice = async (device) => {
     if (!authToken || !device?.devId) return refreshData();
+    const homeId = device.homeId || tuyaHomeId;
     await api.registerDevice({
       tuya_device_id: device.devId,
-      tuya_home_id: String(device.homeId || ''),
+      tuya_home_id: String(homeId || ''),
       tuya_pid: device.productId,
       product_type: device.productId === 'ak2kofibhuvdtqip' || device.isPetChef ? 'pet_chef' : 'other',
       device_name: device.name || '厨房鲜食机',
@@ -829,6 +842,17 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   };
 
   useEffect(() => { refreshData(); }, [authToken]);
+
+  useEffect(() => {
+    if (!authToken) return undefined;
+    let alive = true;
+    HeyboTuya.ensureNativeSession()
+      .then(session => {
+        if (alive && session?.homeId) setTuyaHomeId(session.homeId);
+      })
+      .catch(error => setLiveStatusError(error?.message || 'Tuya 会话初始化失败'));
+    return () => { alive = false; };
+  }, [authToken]);
 
   useEffect(() => {
     if (!authToken) return undefined;
@@ -1025,7 +1049,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       </section>
 
       {message && <div className="cooking-toast">{message}</div>}
-      <AddDeviceBottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)} onBound={registerBoundDevice} />
+      <AddDeviceBottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)} onBound={registerBoundDevice} homeId={tuyaHomeId} onHomeId={setTuyaHomeId} />
 
       {detailDevice && (
         <DeviceDetail

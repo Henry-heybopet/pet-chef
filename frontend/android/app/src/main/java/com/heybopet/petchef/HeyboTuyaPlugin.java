@@ -819,7 +819,7 @@ public class HeyboTuyaPlugin extends Plugin {
 
     private JSObject pairingPermissionResult() {
         boolean bluetoothRequired = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S;
-        boolean locationRequired = Build.VERSION.SDK_INT < Build.VERSION_CODES.S;
+        boolean locationRequired = true;
         boolean bluetoothScanGranted = !bluetoothRequired || hasAndroidPermission(Manifest.permission.BLUETOOTH_SCAN);
         boolean bluetoothConnectGranted = !bluetoothRequired || hasAndroidPermission(Manifest.permission.BLUETOOTH_CONNECT);
         boolean locationGranted = !locationRequired || hasAndroidPermission(Manifest.permission.ACCESS_FINE_LOCATION);
@@ -873,7 +873,8 @@ public class HeyboTuyaPlugin extends Plugin {
                 && !ActivityCompat.shouldShowRequestPermissionRationale(getActivity(), Manifest.permission.BLUETOOTH_SCAN)) return true;
             if (!hasAndroidPermission(Manifest.permission.BLUETOOTH_CONNECT)
                 && !ActivityCompat.shouldShowRequestPermissionRationale(getActivity(), Manifest.permission.BLUETOOTH_CONNECT)) return true;
-        } else if (!hasAndroidPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        if (!hasAndroidPermission(Manifest.permission.ACCESS_FINE_LOCATION)
             && !ActivityCompat.shouldShowRequestPermissionRationale(getActivity(), Manifest.permission.ACCESS_FINE_LOCATION)) {
             return true;
         }
@@ -886,7 +887,8 @@ public class HeyboTuyaPlugin extends Plugin {
             if (!hasAndroidPermission(Manifest.permission.BLUETOOTH_SCAN) || !hasAndroidPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
                 aliases.add("bluetooth");
             }
-        } else if (!hasAndroidPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
+        }
+        if (!hasAndroidPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
             aliases.add("location");
         }
         return aliases.toArray(new String[0]);
