@@ -2,12 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/index';
 import { HeyboTuya } from '../native/heyboTuya';
 
-const WIFI_LIST = [
-  { name: 'Heybo-Home-2.4G', type: '2.4G', desc: '信号良好' },
-  { name: 'Heybo-Home-5G', type: '5G', desc: '纯 5G 网络不可选，鲜食机仅支持 2.4G' },
-  { name: 'HomeSmart', type: 'dual', desc: '双频同名 Wi-Fi 可选，但如果路由器强制 5G 可能失败' },
-];
-
 const PAIRING_STEPS = ['正在连接设备', '正在发送 Wi-Fi 信息', '正在连接 Heybo 云端', '正在绑定到当前账号'];
 const START_CHECKS = ['加入食材', '加入适量的水', '盖上鲜食杯盖', '周围没有幼童和宠物'];
 const PET_CHEF_PID = 'ak2kofibhuvdtqip';
@@ -63,6 +57,15 @@ function getFaultInfo(value) {
   if (value === undefined || value === null || value === '' || Number(value) === 0) return { code: '', label: '无' };
   const fault = Number(value);
   return { code: `DP12=${value}`, label: FAULT_LABELS[fault] || `未知故障 ${value}` };
+}
+
+function isLidOpenFault(dps) {
+  return Number(dps?.[12] ?? dps?.fault_code ?? 0) === 1;
+}
+
+function cleanWifiSsid(value) {
+  const ssid = String(value || '').replace(/^"|"$/g, '').trim();
+  return ssid && !/^<?unknown ssid>?$/i.test(ssid) && ssid !== '0x' ? ssid : '';
 }
 
 function formatRemainTime(value) {
@@ -306,9 +309,10 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
     try {
       const status = await HeyboTuya.status().catch(error => ({ error: error?.message || String(error) }));
       addScanLog(`Native=${status?.nativeAvailable !== false ? 'yes' : 'no'} SDK=${status?.initialized ? 'initialized' : 'not-ready'}`);
-      if (status?.wifiSsid) {
-        setDetectedWifiName(status.wifiSsid);
-        setWifiName(prev => prev || status.wifiSsid);
+      const currentSsid = cleanWifiSsid(status?.wifiSsid);
+      if (currentSsid) {
+        setDetectedWifiName(currentSsid);
+        setWifiName(prev => prev || currentSsid);
       }
 
       let permission = await HeyboTuya.checkPairingPermissions?.().catch(error => ({ error: error?.message || String(error) }));
@@ -534,19 +538,19 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
         {device && !wifi && progress < 0 && (
           <div className="cooking-sheet-flow">
             <h2>选择 2.4G Wi-Fi</h2>
-            <p>请输入鲜食机要连接的真实家庭 2.4G Wi-Fi 名称。</p>
+            <p>当前手机连接的 Wi-Fi 会作为鲜食机配网 Wi-Fi。</p>
             <input
               className="cooking-wifi-input"
               value={wifiName}
               onChange={event => setWifiName(event.target.value)}
-              placeholder={detectedWifiName ? `当前手机 Wi-Fi：${detectedWifiName}` : '例如：Home-2.4G'}
+              placeholder={detectedWifiName || '未获取到当前 Wi-Fi 名称，请确认定位权限后重试'}
             />
-            {WIFI_LIST.map(item => (
-              <button key={item.name} className={`cooking-wifi-item ${wifi?.name === item.name ? 'is-active' : ''}`} disabled={item.type === '5G'} onClick={() => { setWifi(item); setWifiName(item.name); }}>
-                <strong>{item.name}</strong>
-                <span>{item.desc}</span>
-              </button>
-            ))}
+            {detectedWifiName && (
+              <div className="cooking-wifi-current">
+                <strong>{detectedWifiName}</strong>
+                <span>当前手机 Wi-Fi</span>
+              </div>
+            )}
             <PrimaryButton disabled={!wifiName.trim()} onClick={() => setWifi({ name: wifiName.trim(), type: 'manual', desc: '手动输入' })}>下一步</PrimaryButton>
           </div>
         )}
@@ -631,7 +635,7 @@ function FeedbackModal({ record, onCancel, onConfirm }) {
   );
 }
 
-function SafetyStartModal({ onCancel, onConfirm }) {
+function SafetyStartModal({ lidOpen, onCancel, onConfirm }) {
   const [checked, setChecked] = useState({});
   const allChecked = START_CHECKS.every(item => checked[item]);
 
@@ -642,14 +646,20 @@ function SafetyStartModal({ onCancel, onConfirm }) {
         <div className="cooking-check-list">
           {START_CHECKS.map(item => (
             <label key={item} className="cooking-check-item">
-              <input type="checkbox" checked={Boolean(checked[item])} onChange={event => setChecked({ ...checked, [item]: event.target.checked })} />
+              <input
+                type="checkbox"
+                disabled={lidOpen && item === '盖上鲜食杯盖'}
+                checked={Boolean(checked[item])}
+                onChange={event => setChecked({ ...checked, [item]: event.target.checked })}
+              />
               <span>{item}</span>
             </label>
           ))}
         </div>
+        {lidOpen && <div className="cooking-warning">鲜食杯盖未盖好，请盖好杯盖后再启动。</div>}
         <div className="cooking-start-actions">
           <GhostButton onClick={onCancel}>取消</GhostButton>
-          <PrimaryButton disabled={!allChecked} onClick={onConfirm}>启动一键烹饪</PrimaryButton>
+          <PrimaryButton disabled={!allChecked || lidOpen} onClick={onConfirm}>启动一键烹饪</PrimaryButton>
         </div>
       </div>
     </div>
@@ -674,7 +684,8 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
     if (stopTimer.current) clearTimeout(stopTimer.current);
     stopTimer.current = null;
   };
-  const startStopTimer = () => {
+  const startStopTimer = (event) => {
+    event?.preventDefault?.();
     if (!isPaused) return;
     longPressed.current = false;
     stopTimer.current = setTimeout(() => {
@@ -726,7 +737,7 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
           <p>4. 烹饪功率：{hasRecipe ? formatPower(cooking.power) : '--'}</p>
           {!hasRecipe && <small>请先选择食谱后再启动烹饪。</small>}
         </div>
-        {view.faultCode && (
+        {view.faultCode && (!isLidOpenFault(parseDps(device)) || isActive) && (
           <div className="cooking-warning">{view.faultCode}｜{view.fault}</div>
         )}
         <div className="cooking-detail-actions">
@@ -738,6 +749,7 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
             onPointerUp={clearStopTimer}
             onPointerLeave={clearStopTimer}
             onPointerCancel={clearStopTimer}
+            onContextMenu={event => event.preventDefault()}
             onClick={runMainAction}
           >
             {mainLabel}
@@ -766,6 +778,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const [runElapsedMs, setRunElapsedMs] = useState(0);
   const [nowTick, setNowTick] = useState(Date.now());
   const [tuyaHomeId, setTuyaHomeId] = useState('');
+  const stirTimerRef = useRef(null);
 
   const selectedDevice = useMemo(() => {
     const device = devices.find(item => item.devId === selectedDevId) || devices[0];
@@ -865,6 +878,11 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => () => {
+    if (stirTimerRef.current) clearTimeout(stirTimerRef.current);
+    stirTimerRef.current = null;
+  }, []);
+
   useEffect(() => {
     const devId = selectedDevice?.devId;
     if (!devId) return undefined;
@@ -896,21 +914,48 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       setMessage('请先选择食谱。');
       return;
     }
-    await HeyboTuya.startDiyCooking({
+    const currentDps = parseDps(selectedDevice);
+    if (isLidOpenFault(currentDps)) {
+      setMessage('鲜食杯盖未盖好，请盖好杯盖后再启动。');
+      return;
+    }
+    if (stirTimerRef.current) clearTimeout(stirTimerRef.current);
+    const temperature = cooking.temperature ?? 85;
+    const cookTime = cooking.cookTime ?? 12 * 60;
+    const power = cooking.power ?? 8;
+    const speed = String(cooking.speed ?? 1);
+    const preheatSeconds = Number(cooking.params?.preheat_seconds || 0);
+    await HeyboTuya.publishDps({
       devId: selectedDevice.devId,
-      temperature: cooking.temperature ?? 85,
-      cookTime: cooking.cookTime ?? 12 * 60,
-      power: cooking.power ?? 8,
-      speed: String(cooking.speed ?? 1),
-      // TODO: native SDK 接入 DP11 多步骤下发后，在这里传入 cooking.steps。
+      dps: {
+        1: true,
+        3: 'diy',
+        7: cookTime,
+        9: temperature,
+        102: power,
+        107: 'start',
+      },
     });
+    const scheduleStir = () => {
+      stirTimerRef.current = null;
+      HeyboTuya.publishDps({ devId: selectedDevice.devId, dps: { 108: speed } }).catch(error => {
+        setMessage(`预热完成后下发转速失败：${error?.message || String(error)}`);
+      });
+      setDevices(prev => prev.map(device => {
+        const devId = device.devId || device.tuya_device_id;
+        return devId === selectedDevice.devId
+          ? { ...device, dps: { ...parseDps(device), 108: speed } }
+          : device;
+      }));
+    };
+    stirTimerRef.current = setTimeout(scheduleStir, Math.max(0, preheatSeconds) * 1000);
     const startedAt = Date.now();
     setRunElapsedMs(0);
     setRunStartedAt(startedAt);
     setDevices(prev => prev.map(device => {
       const devId = device.devId || device.tuya_device_id;
       return devId === selectedDevice.devId
-        ? { ...device, dps: { ...parseDps(device), 5: 'cooking', 9: cooking.temperature ?? 85, 102: cooking.power ?? 8, 107: 'start', 108: String(cooking.speed ?? 1) } }
+        ? { ...device, dps: { ...parseDps(device), 5: 'cooking', 9: temperature, 102: power, 107: 'start', 108: '0' } }
         : device;
     }));
     await api.recordCookingOperation({
@@ -926,12 +971,14 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       started_at: new Date().toISOString(),
       cooking_params_snapshot: cooking.params,
     }, authToken);
-    setMessage('已下发制作指令，鲜食机正在启动。');
+    setMessage(preheatSeconds > 0 ? `已启动预加热，${preheatSeconds}秒后开始搅拌。` : '已下发制作指令，鲜食机正在启动。');
     setStartConfirmOpen(false);
   };
 
   const handlePauseCooking = async () => {
     if (!selectedDevice?.devId) return;
+    if (stirTimerRef.current) clearTimeout(stirTimerRef.current);
+    stirTimerRef.current = null;
     await HeyboTuya.pauseCooking({ devId: selectedDevice.devId });
     const pausedAt = Date.now();
     setRunElapsedMs(prev => prev + (runStartedAt ? pausedAt - runStartedAt : 0));
@@ -960,6 +1007,8 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
 
   const handleStopCooking = async () => {
     if (!selectedDevice?.devId) return;
+    if (stirTimerRef.current) clearTimeout(stirTimerRef.current);
+    stirTimerRef.current = null;
     await HeyboTuya.resetCooking({ devId: selectedDevice.devId });
     setRunStartedAt(0);
     setRunElapsedMs(0);
@@ -1075,7 +1124,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         />
       )}
       {feedbackRecord && <FeedbackModal record={feedbackRecord} onCancel={() => setFeedbackRecord(null)} onConfirm={handleFeedbackSave} />}
-      {startConfirmOpen && <SafetyStartModal onCancel={() => setStartConfirmOpen(false)} onConfirm={handleStartCooking} />}
+      {startConfirmOpen && <SafetyStartModal lidOpen={isLidOpenFault(parseDps(selectedDevice))} onCancel={() => setStartConfirmOpen(false)} onConfirm={handleStartCooking} />}
 
       {unbindTarget && (
         <div className="cooking-sheet-mask">

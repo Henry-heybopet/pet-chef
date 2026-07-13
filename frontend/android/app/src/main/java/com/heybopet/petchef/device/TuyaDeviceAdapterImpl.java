@@ -388,12 +388,13 @@ public class TuyaDeviceAdapterImpl implements TuyaDeviceAdapter {
 
     private String wifiSsid() {
         WifiInfo info = wifiInfo();
-        if (info == null) return "Unknown";
+        if (info == null) return "";
         String ssid = info.getSSID();
         if (ssid != null && ssid.startsWith("\"") && ssid.endsWith("\"")) {
-            return ssid.substring(1, ssid.length() - 1);
+            ssid = ssid.substring(1, ssid.length() - 1);
         }
-        return ssid == null ? "Unknown" : ssid;
+        if (ssid == null || ssid.trim().isEmpty() || "<unknown ssid>".equalsIgnoreCase(ssid.trim())) return "";
+        return ssid;
     }
 
     private String wifiFreq() {
