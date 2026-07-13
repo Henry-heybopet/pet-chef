@@ -157,12 +157,17 @@ export function FreshMatchScreen({ profiles, authToken, onBack, onAddPet, onResu
 
 function toCookingContext(recipe, result) {
   const total = Number(recipe.total_weight_g || result?.feeding_plan?.per_meal_grams || 0);
+  const profile = recipe.cooking_profile || recipe.cookingProfile || {};
+  const preheatMinutes = total <= 100 ? 2 : total <= 200 ? 3 : 4;
+  const cookMinutes = profile.cook_minutes ?? profile.cookMinutes ?? Math.max(8, Math.round(total / 25));
   const cookParams = {
-    ...(recipe.cooking_profile || recipe.cookingProfile || {}),
-    temperature: recipe.cooking_profile?.temperature ?? recipe.cookingProfile?.temperature ?? 85,
-    cookTime: recipe.cooking_profile?.cookTime ?? recipe.cookingProfile?.cookTime ?? Math.max(12 * 60, Math.round(total * 2.4)),
-    speed: recipe.cooking_profile?.speed ?? recipe.cookingProfile?.speed ?? 1,
-    power: recipe.cooking_profile?.power ?? recipe.cookingProfile?.power ?? 8,
+    ...profile,
+    temperature: profile.temperature ?? 85,
+    cookMinutes,
+    preheatMinutes,
+    cookTime: profile.total_seconds ?? profile.cookTime ?? ((preheatMinutes + cookMinutes) * 60),
+    speed: profile.speed ?? 1,
+    power: profile.power ?? 8,
   };
   return {
     recipe: { ...recipe, id: recipe.id || recipe.name },

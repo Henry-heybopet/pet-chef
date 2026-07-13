@@ -15,6 +15,18 @@ function calcWaterContent(ingredients) {
   return totalWeight > 0 ? totalWater / totalWeight : 0.70;
 }
 
+function recipeCookingProfile(ingredients) {
+  const names = Object.keys(ingredients || {}).join('、');
+  const hasBeefOrRabbit = /牛肉|牛心|兔肉|兔里脊/.test(names);
+  const hasChickenOrDuck = /鸡肉|鸡小胸|鸡胸|鸭肉|鸭小胸/.test(names);
+  const hasFish = /鱼|金枪鱼|鳕鱼|三文鱼|鲈鱼/.test(names);
+
+  if (hasBeefOrRabbit) return { protein_group: 'beef_rabbit', temperature: 85, power: 8, speed: '1', cook_minutes: 8 };
+  if (hasChickenOrDuck) return { protein_group: 'chicken_duck', temperature: 81, power: 8, speed: '1', cook_minutes: 10 };
+  if (hasFish) return { protein_group: 'fish', temperature: 78, power: 7, speed: '1', cook_minutes: 8 };
+  return { protein_group: 'default', temperature: 81, power: 8, speed: '1', cook_minutes: 10 };
+}
+
 // 本地图片映射（食谱名 -> 本地路径）
 const imgMap = {
   "鸡肉轻盈餐": "/鸡肉轻盈餐.png",
@@ -950,11 +962,7 @@ const recipesDb = rawRecipes.map(r => {
     else addPct += pct;
   });
 
-  // 烹饪基准（100g食材）
-  // 基于实测数据推导：纯肉(60%水) 45s预热/9min烹饪；混合(75%水) 30s预热/8min烹饪
-  const waterFactor = Math.max(0, (waterContent - 0.60));
-  const preheat_seconds = Math.round((22.5 - waterFactor * 60) * 2); // per 100g extrapolation
-  const cook_seconds = Math.round((320 - waterFactor * 300) * 1.0); // per 100g, full cook
+  const cookingProfile = recipeCookingProfile(r.ingredients);
 
   const ossBaseUrl = process.env.OSS_BASE_URL || '';
   return {
@@ -973,12 +981,16 @@ const recipesDb = rawRecipes.map(r => {
     // 烹饪基准（100g食材）
     cooking_base: {
       mode: 'diy',
-      temperature: 85,
-      power: 8,
-      speed: '1',
+      protein_group: cookingProfile.protein_group,
+      temperature: cookingProfile.temperature,
+      power: cookingProfile.power,
+      speed: cookingProfile.speed,
+      cook_minutes: cookingProfile.cook_minutes,
+      cook_weight_grams: 200,
+      cook_time_unit: 'minutes',
       water_ratio: 0.15,
-      preheat_seconds_per_100g: Math.max(15, preheat_seconds),
-      cook_seconds_per_100g: Math.max(240, cook_seconds),
+      stir_delay_policy: 'timer_by_total_grams',
+      stir_delay_minutes: { "100": 2, "200": 3, "300_plus": 4 },
     },
   };
 });

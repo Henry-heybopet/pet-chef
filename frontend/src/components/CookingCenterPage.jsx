@@ -68,6 +68,18 @@ function cleanWifiSsid(value) {
   return ssid && !/^<?unknown ssid>?$/i.test(ssid) && ssid !== '0x' ? ssid : '';
 }
 
+function stirDelayMinutes(totalGrams) {
+  const grams = Number(totalGrams || 0);
+  if (grams <= 100) return 2;
+  if (grams <= 200) return 3;
+  return 4;
+}
+
+function formatCookMinutes(cooking) {
+  const minutes = cooking?.cookMinutes ?? Math.ceil(Number(cooking?.cookTime || 0) / 60);
+  return minutes ? `${minutes}分钟` : '--';
+}
+
 function formatRemainTime(value) {
   const seconds = Number(value || 0);
   if (!seconds) return '';
@@ -176,11 +188,14 @@ function getRecipeCookingParams(context) {
   const recipe = context?.recipe || context;
   const params = context?.cookParams || recipe?.cooking_profile || recipe?.cookingProfile || recipe?.cooking_base || recipe?.cookingBase || {};
   const temperature = params.temperature ?? params.cook_temperature ?? params.cooking_temperature ?? params.dp9;
-  const cookTime = params.cook_time ?? params.cookTime ?? params.total_seconds ?? params.time_seconds ?? params.duration_seconds ?? params.dp7;
+  const cookMinutes = params.cook_minutes ?? params.cookMinutes;
+  const preheatMinutes = params.preheat_minutes ?? params.preheatMinutes ?? (params.preheat_seconds ? Math.ceil(Number(params.preheat_seconds) / 60) : undefined);
+  const cookTime = params.total_seconds ?? params.cook_time ?? params.cookTime ?? params.time_seconds ?? params.duration_seconds ?? params.dp7
+    ?? (cookMinutes ? (Number(cookMinutes) + Number(preheatMinutes || 0)) * 60 : undefined);
   const speed = params.speed ?? params.cook_mode_speed ?? params.dp108;
   const power = params.power ?? params.cook_mode_power ?? params.dp102;
   const steps = params.steps ?? params.stages ?? params.cooking_steps ?? params.dp11;
-  return { recipe, params, temperature, cookTime, speed, power, steps };
+  return { recipe, params, temperature, cookTime, cookMinutes, preheatMinutes, speed, power, steps };
 }
 
 function formatDate(value) {
@@ -674,7 +689,7 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
   const isCooking = view.status === '低温烹饪中';
   const isActive = isCooking || isPaused;
   const elapsedMs = runElapsedMs + (isCooking && runStartedAt ? nowTick - runStartedAt : 0);
-  const preheatMs = Number(cooking.params?.preheat_seconds || 0) * 1000;
+  const preheatMs = Number(cooking.preheatMinutes || 0) * 60 * 1000;
   const totalMs = Number(cooking.cookTime || 0) * 1000;
   const activeStep = !isActive ? 0 : totalMs && elapsedMs >= totalMs ? 3 : preheatMs && elapsedMs >= preheatMs ? 2 : 1;
   const stepLabels = ['放入食材', '预加热', '低温烹饪', '烹饪完成'];
@@ -732,7 +747,7 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
         <div className="cooking-lux-steps">
           <h3>📋 烹饪步骤</h3>
           <p>1. 烹饪温度：{hasRecipe ? `${cooking.temperature ?? '--'}℃` : '--'}</p>
-          <p>2. 烹饪时间：{hasRecipe ? `${cooking.cookTime ?? '--'}秒` : '--'}</p>
+          <p>2. 烹饪时间：{hasRecipe ? formatCookMinutes(cooking) : '--'}</p>
           <p>3. 烹饪转速：{hasRecipe ? formatSpeed(cooking.speed) : '--'}</p>
           <p>4. 烹饪功率：{hasRecipe ? formatPower(cooking.power) : '--'}</p>
           {!hasRecipe && <small>请先选择食谱后再启动烹饪。</small>}
@@ -779,7 +794,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const [nowTick, setNowTick] = useState(Date.now());
   const [tuyaHomeId, setTuyaHomeId] = useState('');
   const stirTimerRef = useRef(null);
-  const safetyRef = useRef({ lidStopped: false, heatCut: false });
+  const safetyRef = useRef({ lidAlerted: false });
   const cookingRef = useRef(null);
   cookingRef.current = getRecipeCookingParams(recipeContext);
 
@@ -884,8 +899,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   useEffect(() => () => {
     if (stirTimerRef.current) clearTimeout(stirTimerRef.current);
     stirTimerRef.current = null;
-    safetyRef.current = { lidStopped: false, heatCut: false };
-    stirTimerRef.current = null;
+    safetyRef.current = { lidAlerted: false };
   }, []);
 
   useEffect(() => {
@@ -907,42 +921,13 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       setLastStatusAt(new Date().toISOString());
       const active = mergedDps[107] === 'start' || mergedDps[5] === 'cooking';
       if (!active) {
-        safetyRef.current = { lidStopped: false, heatCut: false };
+        safetyRef.current = { lidAlerted: false };
         return;
       }
-      if (isLidOpenFault(mergedDps) && !safetyRef.current.lidStopped) {
-        safetyRef.current.lidStopped = true;
-        if (stirTimerRef.current) clearTimeout(stirTimerRef.current);
-        stirTimerRef.current = null;
-        HeyboTuya.publishDps({ devId, dps: { 102: 0, 107: 'pause', 108: '0' } }).catch(() => {});
-        setRunStartedAt(0);
-        setDevices(prev => prev.map(device => {
-          const itemDevId = device.devId || device.tuya_device_id;
-          return itemDevId === devId ? { ...device, dps: { ...parseDps(device), 5: 'pause', 102: 0, 107: 'pause', 108: '0' } } : device;
-        }));
-        setMessage('鲜食杯盖未盖好，已停止加热。');
+      if (isLidOpenFault(mergedDps) && !safetyRef.current.lidAlerted) {
+        safetyRef.current.lidAlerted = true;
+        setMessage('鲜食杯盖未盖好，请检查杯盖。');
         return;
-      }
-      const cooking = cookingRef.current || {};
-      const targetTemp = Number(cooking.temperature);
-      const currentTemp = Number(mergedDps[10]);
-      const targetPower = Number(cooking.power ?? mergedDps[102] ?? 8);
-      if (!Number.isFinite(targetTemp) || !Number.isFinite(currentTemp)) return;
-      if (currentTemp > targetTemp + 1 && !safetyRef.current.heatCut) {
-        safetyRef.current.heatCut = true;
-        HeyboTuya.publishDps({ devId, dps: { 102: 0 } }).catch(() => {});
-        setDevices(prev => prev.map(device => {
-          const itemDevId = device.devId || device.tuya_device_id;
-          return itemDevId === devId ? { ...device, dps: { ...parseDps(device), 102: 0 } } : device;
-        }));
-        setMessage(`当前温度 ${currentTemp}℃ 已超过设定 ${targetTemp}℃，已停止加热。`);
-      } else if (currentTemp < targetTemp - 1 && safetyRef.current.heatCut) {
-        safetyRef.current.heatCut = false;
-        HeyboTuya.publishDps({ devId, dps: { 102: targetPower } }).catch(() => {});
-        setDevices(prev => prev.map(device => {
-          const itemDevId = device.devId || device.tuya_device_id;
-          return itemDevId === devId ? { ...device, dps: { ...parseDps(device), 102: targetPower } } : device;
-        }));
       }
     }).then(result => { listener = result; });
     HeyboTuya.subscribeDevice({ devId }).catch(() => {});
@@ -965,11 +950,15 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       return;
     }
     if (stirTimerRef.current) clearTimeout(stirTimerRef.current);
+    stirTimerRef.current = null;
+    safetyRef.current = { lidAlerted: false };
     const temperature = cooking.temperature ?? 85;
-    const cookTime = cooking.cookTime ?? 12 * 60;
+    const preheatMinutes = Number(cooking.preheatMinutes ?? stirDelayMinutes(recipeContext?.displayGrams));
+    const cookMinutes = Number(cooking.cookMinutes ?? Math.ceil(Number(cooking.cookTime || 12 * 60) / 60));
+    const cookTime = Number(cooking.cookTime || ((preheatMinutes + cookMinutes) * 60));
     const power = cooking.power ?? 8;
     const speed = String(cooking.speed ?? 1);
-    const preheatSeconds = Number(cooking.params?.preheat_seconds || 0);
+    const preheatSeconds = preheatMinutes * 60;
     await HeyboTuya.publishDps({
       devId: selectedDevice.devId,
       dps: {
@@ -1016,7 +1005,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       started_at: new Date().toISOString(),
       cooking_params_snapshot: cooking.params,
     }, authToken);
-    setMessage(preheatSeconds > 0 ? `已启动预加热，${preheatSeconds}秒后开始搅拌。` : '已下发制作指令，鲜食机正在启动。');
+    setMessage(`已启动预加热，${preheatMinutes}分钟后开始搅拌。`);
     setStartConfirmOpen(false);
   };
 
@@ -1024,7 +1013,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     if (!selectedDevice?.devId) return;
     if (stirTimerRef.current) clearTimeout(stirTimerRef.current);
     stirTimerRef.current = null;
-    safetyRef.current = { lidStopped: false, heatCut: false };
+    safetyRef.current = { lidAlerted: false };
     await HeyboTuya.pauseCooking({ devId: selectedDevice.devId });
     const pausedAt = Date.now();
     setRunElapsedMs(prev => prev + (runStartedAt ? pausedAt - runStartedAt : 0));
@@ -1044,7 +1033,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       setMessage('鲜食杯盖未盖好，请盖好杯盖后再恢复烹饪。');
       return;
     }
-    safetyRef.current = { lidStopped: false, heatCut: false };
+    safetyRef.current = { lidAlerted: false };
     await HeyboTuya.publishDps({ devId: selectedDevice.devId, dps: { 107: 'start' } });
     setRunStartedAt(Date.now());
     setDevices(prev => prev.map(device => {
@@ -1060,7 +1049,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     if (!selectedDevice?.devId) return;
     if (stirTimerRef.current) clearTimeout(stirTimerRef.current);
     stirTimerRef.current = null;
-    safetyRef.current = { lidStopped: false, heatCut: false };
+    safetyRef.current = { lidAlerted: false };
     await HeyboTuya.resetCooking({ devId: selectedDevice.devId });
     setRunStartedAt(0);
     setRunElapsedMs(0);
