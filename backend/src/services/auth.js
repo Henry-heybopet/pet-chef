@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const { getEnvironment } = require('../config/region_config');
 
 const JWT_SECRET = process.env.JWT_SECRET || (getEnvironment() === 'production' ? '' : 'dev-only-jwt-secret');
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15d';
 
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET is required in production');

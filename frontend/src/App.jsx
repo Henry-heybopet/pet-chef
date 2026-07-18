@@ -475,6 +475,13 @@ function AppInner() {
     localStorage.setItem('sessionExpiresAt', expiresAt);
     localStorage.removeItem('petchef_auth_token');
     localStorage.removeItem('petchef_auth_user');
+    HeyboTuya.syncAuthState({
+      token,
+      userId: user?.id || '',
+      nickname: user?.display_name || '',
+      tuyaUid: result.tuyaMapping?.tuya_uid || (user?.id ? `heybo_${user.id}` : ''),
+      tuyaPassword: result.tuyaMapping?.tuya_test_password || (user?.id ? `heybo_${user.id}` : ''),
+    }).catch(error => console.warn('Sync native auth failed:', error));
   };
 
   const clearAuthSession = () => {
@@ -486,6 +493,7 @@ function AppInner() {
     localStorage.removeItem('sessionExpiresAt');
     localStorage.removeItem('petchef_auth_token');
     localStorage.removeItem('petchef_auth_user');
+    HeyboTuya.clearAuthState().catch(error => console.warn('Clear native auth failed:', error));
   };
 
   const handleAuthLogin = (result) => {
@@ -542,7 +550,7 @@ function AppInner() {
         requireAuth(() => setScreen('pet_management'));
         break;
       case 'cook':
-        requireAuth(() => setScreen(cookingData ? 'cooking' : 'device_flow'));
+        requireAuth(() => setScreen('device_flow'));
         break;
       case 'mall':
         setScreen('mall_placeholder');
@@ -580,7 +588,8 @@ function AppInner() {
       (breedName && (breedName.includes(item.name) || item.name.includes(breedName)))
     );
     const ageMonths = pet.age_months ?? pet.ageMonths;
-    return {
+    const avatarUrl = pet.avatar_url || pet.avatarUrl || pet.photoUrl || pet.profileImage || pet.imageUrl || pet.photo || pet.avatar || '';
+    const mapped = {
       ...pet,
       birthDate: toDateInput(pet.birth_date || pet.birthDate),
       breedId: pet.breedId || breed?.id || (breedName ? 'custom' : ''),
@@ -597,18 +606,29 @@ function AppInner() {
       allergySymptoms: pet.allergy_symptoms || pet.allergySymptoms || [],
       allergySeverity: pet.allergy_severity || pet.allergySeverity,
       specialPeriod: pet.special_period || pet.specialPeriod,
-      avatar: pet.avatar_url || pet.avatar,
+      avatar: avatarUrl,
+      avatar_url: avatarUrl,
+      avatarUpdatedAt: pet.avatar_updated_at || pet.updated_at || pet.updatedAt || '',
       gender: pet.sex || pet.gender,
       age: ageMonths ? Number((Number(ageMonths) / 12).toFixed(1)) : pet.age,
     };
+    return mapped;
+  };
+
+  const reloadPets = async (reason = 'manual') => {
+    if (!authToken) return [];
+    const result = await api.listPets(authToken);
+    if (result?.success) {
+      const mapped = (result.pets || []).map(toUiPet);
+      replaceProfiles(mapped);
+      return mapped;
+    }
+    return [];
   };
 
   useEffect(() => {
     if (!authToken) return;
-    api.listPets(authToken)
-      .then(result => {
-        if (result?.success) replaceProfiles((result.pets || []).map(toUiPet));
-      })
+    reloadPets('auth-or-breed-change')
       .catch(error => console.error('Load DB pets failed:', error));
   }, [authToken, breedOptions]);
 
@@ -712,6 +732,11 @@ function AppInner() {
     } else {
       addProfile(savedPet);
     }
+    try {
+      await reloadPets('after-save');
+    } catch (error) {
+      console.warn('Reload pets after save failed:', error);
+    }
     setScreen('pet_management');
   };
 
@@ -787,7 +812,7 @@ function AppInner() {
   const handleSelectRecipe = (recipe) => { setSelectedRecipe(recipe); setScreen('recipe_make'); };
   const handleStartCooking = (data) => {
     setCookingData(data);
-    setScreen('cooking');
+    setScreen('device_flow');
     // 首次烹饪时标记引导完成和已烹饪
     if (!hasCookedBefore) {
       markHasCooked();
@@ -874,6 +899,7 @@ function AppInner() {
       {screen === 'pet_management' && (
         <PetManagementScreen
           profiles={profiles}
+          breeds={breedOptions}
           onAddPet={handleAddPet}
           onEditPet={handleEditPet}
           onSelectPet={handleSelectPet}
@@ -899,13 +925,24 @@ function AppInner() {
           onResult={(result) => { setFreshMatchResult(result); setScreen('fresh_match_result'); }}
         />
       )}
-      {screen === 'fresh_match_result' && <FreshMatchResultScreen result={freshMatchResult} onBack={() => setScreen('fresh_match')} />}
+      {screen === 'fresh_match_result' && <FreshMatchResultScreen result={freshMatchResult} onBack={() => setScreen('fresh_match')} onStartCooking={handleStartCooking} />}
       {screen === 'dog_setup' && <DogSetup onBack={goHome} profile={editingPet} onSave={handleProfileSave} onSelectCategory={handleSelectCategory} onShowAnalysis={handleShowAnalysis} lang={lang} />}
       {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} onSelectRecipe={handleSelectRecipe} lang={lang} authToken={authToken} />}
       {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={profile} onSelectRecipe={handleSelectRecipe} lang={lang} />}
       {screen === 'recipe_make' && <RecipeMake onBack={goBack} recipe={selectedRecipe} profile={profile} onStartCooking={handleStartCooking} lang={lang} />}
       {screen === 'cooking' && <CookingScreen onBack={goHome} cookingData={cookingData} lang={lang} />}
-      {screen === 'device_flow' && <CookingCenterPage onBack={goHome} authToken={authToken} authUser={authUser} />}
+      {screen === 'device_flow' && (
+        <CookingCenterPage
+          onBack={goHome}
+          authToken={authToken}
+          recipeContext={cookingData}
+          onChooseRecipe={() => {
+            setSelectedCategory(null);
+            setEntrySource('catalog');
+            setScreen('recipe_catalog');
+          }}
+        />
+      )}
       {screen === 'mall_placeholder' && (
         <div className="animate-fade flex-col" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: '40px 20px', color: 'var(--gray)', textAlign: 'center', background: 'var(--dark)' }}>
           <span style={{ fontSize: '48px', marginBottom: '16px' }}>🛒</span>

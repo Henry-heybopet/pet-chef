@@ -4,9 +4,11 @@ import TopBar from './TopBar';
 import { api } from '../api/index';
 import { useTranslation } from '../i18n/translations';
 import { tData } from '../i18n/dataTranslations';
+import { getPetAvatarUrl, handlePetAvatarError } from '../utils/petAvatar';
 
 export default function DogSetup({ onBack, profile, onSave, onSelectCategory, onShowAnalysis, lang }) {
   const t = useTranslation(lang);
+  const initialAvatar = profile?.avatar_url || profile?.avatar || '';
   
   // Navigation State
   const [activeTab, setActiveTab] = useState(1); // 1 = Basic, 2 = Health
@@ -14,7 +16,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
   // Page 1: Basic Profile States
   const [name, setName] = useState(profile?.name || '');
   const [sex, setSex] = useState(profile?.sex || 'male');
-  const [avatar, setAvatar] = useState(profile?.avatar || '');
+  const [avatar, setAvatar] = useState(initialAvatar);
   const [birthDate, setBirthDate] = useState(profile?.birthDate || '2023-01-01');
   const [breedId, setBreedId] = useState(profile?.breedId || '');
   const [customBreed, setCustomBreed] = useState(profile?.customBreed || '');
@@ -62,6 +64,10 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
   const dropdownRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  useEffect(() => {
+    setAvatar(profile?.avatar_url || profile?.avatar || '');
+  }, [profile?.id, profile?.avatar_url, profile?.avatar]);
+
   // Load breeds on mount
   useEffect(() => {
     api.getBreeds().then(d => {
@@ -90,6 +96,15 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
   }, [profile]);
 
   const selectedBreed = breeds.find(b => b.id === breedId);
+  const avatarPreview = getPetAvatarUrl({
+    ...profile,
+    species: profile?.species || 'dog',
+    breedId,
+    breedName: selectedBreed?.name || customBreed || profile?.breedName,
+    customBreed,
+    avatar_url: avatar,
+    avatar,
+  }, breeds);
 
   // Helper for local growth calculations (used as default and fallback)
   const getExpectedWeightForAge = (adultWeight, ageMonths) => {
@@ -493,7 +508,12 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
               <div className="avatar-upload-circle" style={{ margin: 0, width: 70, height: 70, flexShrink: 0 }} onClick={() => fileInputRef.current?.click()}>
                 {avatar ? (
                   <>
-                    <img src={avatar} alt="Avatar" className="avatar-upload-preview" />
+                    <img
+                      src={avatarPreview}
+                      alt=""
+                      className="avatar-upload-preview"
+                      onError={(event) => handlePetAvatarError(event, profile || { species: 'dog' }, 'pet-edit')}
+                    />
                     <div className="avatar-upload-overlay" style={{ fontSize: 8, padding: '2px 0' }}>换照片</div>
                   </>
                 ) : (

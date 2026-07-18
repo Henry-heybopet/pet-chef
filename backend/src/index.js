@@ -15,18 +15,21 @@ const { startCooking, pauseCooking, stopCooking, getDeviceStatus } = require('./
 const { calcCookingParams, calcDailyIntake, calcIngredientGrams } = require('./services/cooking_engine');
 const heyboRoutes = require('./routes/heybo');
 const { getCorsOrigins, printRegionSummary, getEnvironment } = require('./config/region_config');
-const { listRecipes, listAdminRecipes, getRecipeById, getRecipeNames, updateRecipe, buildRecipeIndexByName } = require('./services/nutrition_repository');
+const { listRecipes, listAdminRecipes, getRecipeById, getRecipeNames, createRecipe, updateRecipe, buildRecipeIndexByName } = require('./services/nutrition_repository');
 const store = require('./services/heybo_store');
-const { verifyToken } = require('./services/auth');
+const { generateToken, verifyToken } = require('./services/auth');
 const petRepository = require('./services/pet_repository');
 const userRepository = require('./services/user_repository');
+const adminAccounts = require('./services/admin_accounts');
 
 const app = express();
 app.set('trust proxy', 1);
 const uploadsDir = path.resolve(__dirname, '../public/uploads');
+const recipeUploadsDir = path.join(uploadsDir, 'recipes');
 const runtimeDataDir = path.resolve(__dirname, '../.data');
 const AI_RECOMMENDATION_CACHE_VERSION = 8;
 fs.mkdirSync(uploadsDir, { recursive: true });
+fs.mkdirSync(recipeUploadsDir, { recursive: true });
 fs.mkdirSync(runtimeDataDir, { recursive: true });
 
 // 路由兼容性中间件：自动将 /api/xxx 转发至 /api/v1/xxx （防止生产环境 Nginx 或 Capacitor 容器导致 404）
@@ -47,7 +50,7 @@ app.use(cors({
 app.use('/uploads', express.static(uploadsDir));
 
 app.use(express.json({
-  limit: '5mb',
+  limit: '8mb',
   verify: (req, res, buffer) => {
     req.rawBody = Buffer.from(buffer);
   },
@@ -153,12 +156,136 @@ app.get('/api/v1/recipes/:id', async (req, res) => {
   res.json({ success: true, recipe, source });
 });
 
+const ADMIN_ROUTE_MODULES = [
+  ['/recipes', 'recipes'],
+  ['/pets', 'pets'],
+  ['/users', 'users'],
+  ['/devices', 'devices'],
+  ['/subadmins', 'subadmins'],
+];
+
+function adminAuthMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  if (!authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, error: 'Admin authorization is required' });
+  }
+  const decoded = verifyToken(authHeader.slice('Bearer '.length));
+  if (!decoded?.admin) {
+    return res.status(401).json({ success: false, error: 'Invalid or expired admin token' });
+  }
+  const profile = adminAccounts.getAdminProfile(decoded.sub);
+  if (!profile) {
+    return res.status(401).json({ success: false, error: 'Admin account is disabled or deleted' });
+  }
+  req.admin = profile;
+  next();
+}
+
+function adminPermissionMiddleware(req, res, next) {
+  if (req.admin?.role === 'superadmin') return next();
+  const matched = ADMIN_ROUTE_MODULES.find(([prefix]) => req.path === prefix || req.path.startsWith(`${prefix}/`));
+  const requiredModule = matched?.[1];
+  if (!requiredModule || !req.admin?.modules?.includes(requiredModule)) {
+    return res.status(403).json({ success: false, error: 'Admin permission denied' });
+  }
+  next();
+}
+
+app.post('/api/v1/admin/auth/login', sensitiveLimiter, (req, res) => {
+  const profile = adminAccounts.authenticateAdmin(req.body?.username, req.body?.password);
+  if (!profile) return res.status(401).json({ success: false, error: '管理员账号或密码错误' });
+  const token = generateToken(profile.username, { admin: true, admin_role: profile.role });
+  res.json({ success: true, token, profile });
+});
+
+app.get('/api/v1/admin/auth/session', adminAuthMiddleware, (req, res) => {
+  res.json({ success: true, profile: req.admin });
+});
+
+app.use('/api/v1/admin', adminAuthMiddleware, adminPermissionMiddleware);
+
+app.get('/api/v1/admin/subadmins', (req, res) => {
+  if (req.admin?.role !== 'superadmin') return res.status(403).json({ success: false, error: 'Super admin only' });
+  res.json({
+    success: true,
+    subadmins: adminAccounts.listSubadmins(),
+    regions: adminAccounts.REGIONS,
+    modules: adminAccounts.MODULES,
+  });
+});
+
+app.post('/api/v1/admin/subadmins', sensitiveLimiter, (req, res) => {
+  if (req.admin?.role !== 'superadmin') return res.status(403).json({ success: false, error: 'Super admin only' });
+  try {
+    const account = adminAccounts.createSubadmin(req.body || {});
+    res.status(201).json({ success: true, subadmin: account });
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ success: false, error: err.message });
+  }
+});
+
+app.patch('/api/v1/admin/subadmins/:username', sensitiveLimiter, (req, res) => {
+  if (req.admin?.role !== 'superadmin') return res.status(403).json({ success: false, error: 'Super admin only' });
+  const account = adminAccounts.updateSubadmin(req.params.username, req.body || {});
+  if (!account) return res.status(404).json({ success: false, error: 'Subadmin not found' });
+  res.json({ success: true, subadmin: account });
+});
+
+app.delete('/api/v1/admin/subadmins/:username', sensitiveLimiter, (req, res) => {
+  if (req.admin?.role !== 'superadmin') return res.status(403).json({ success: false, error: 'Super admin only' });
+  const deleted = adminAccounts.deleteSubadmin(req.params.username);
+  if (!deleted) return res.status(404).json({ success: false, error: 'Subadmin not found' });
+  res.json({ success: true });
+});
+
 // ============================================================
 // Admin recipes — 管理正式 recipes 表
 // ============================================================
 app.get('/api/v1/admin/recipes', async (req, res) => {
   const { recipes, source } = await listAdminRecipes();
   res.json({ success: true, recipes, count: recipes.length, source });
+});
+
+app.post('/api/v1/admin/recipes', async (req, res) => {
+  try {
+    const { recipe, source } = await createRecipe(req.body || {});
+    res.status(201).json({ success: true, recipe, source });
+  } catch (err) {
+    if (err.code === 'DB_UNAVAILABLE') {
+      return res.status(503).json({ success: false, error: 'recipes table unavailable; cannot create admin recipe' });
+    }
+    console.error('Admin recipe create error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/v1/admin/recipes/:id/image', async (req, res) => {
+  try {
+    const imageData = String(req.body?.image_data || '');
+    const match = imageData.match(/^data:image\/(png|jpe?g|webp);base64,(.+)$/i);
+    if (!match) return res.status(400).json({ success: false, error: 'Invalid image data' });
+
+    const ext = match[1].toLowerCase().replace('jpeg', 'jpg');
+    const buffer = Buffer.from(match[2], 'base64');
+    if (!buffer.length) return res.status(400).json({ success: false, error: 'Empty image data' });
+    if (buffer.length > 4 * 1024 * 1024) {
+      return res.status(413).json({ success: false, error: 'Image too large; max 4MB' });
+    }
+
+    const safeId = req.params.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `${safeId}-${Date.now()}.${ext}`;
+    fs.writeFileSync(path.join(recipeUploadsDir, filename), buffer);
+
+    const { recipe, source } = await updateRecipe(req.params.id, { img: `/uploads/recipes/${filename}` });
+    if (!recipe) return res.status(404).json({ success: false, error: 'Recipe not found' });
+    res.json({ success: true, recipe, source });
+  } catch (err) {
+    if (err.code === 'DB_UNAVAILABLE') {
+      return res.status(503).json({ success: false, error: 'recipes table unavailable; cannot save recipe image' });
+    }
+    console.error('Admin recipe image upload error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.patch('/api/v1/admin/recipes/:id', async (req, res) => {

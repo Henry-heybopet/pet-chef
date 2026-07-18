@@ -2,13 +2,14 @@ import React from 'react';
 import { useTranslation } from '../i18n/translations';
 import { tData } from '../i18n/dataTranslations';
 import TopBar from './TopBar';
+import { getPetAvatarUrl, handlePetAvatarError } from '../utils/petAvatar';
 
-export default function PetManagementScreen({ profiles = [], onAddPet, onEditPet, onSelectPet, lang }) {
+export default function PetManagementScreen({ profiles = [], breeds = [], onAddPet, onEditPet, onSelectPet, onBack, lang }) {
   const t = useTranslation(lang);
 
   return (
     <div className="animate-fade flex-col" style={{ flex: 1, padding: '0 24px 32px' }}>
-      <TopBar onBack={() => window.history.back()} title={lang === 'zh' ? '宠物管理主页' : 'Pet Management'} hideBackButton={true} />
+      <TopBar onBack={onBack} title={lang === 'zh' ? '宠物管理主页' : 'Pet Management'} />
       
       {/* A Segment: Add Pet Entry */}
       <div 
@@ -55,6 +56,7 @@ export default function PetManagementScreen({ profiles = [], onAddPet, onEditPet
               : `${pet.age || 0}岁`;
               
             const allergensList = pet.allergensText?.trim() || pet.allergens?.join('/') || (lang === 'zh' ? '无' : 'None');
+            const avatar = getPetAvatarUrl(pet, breeds);
 
             return (
               <div 
@@ -88,26 +90,12 @@ export default function PetManagementScreen({ profiles = [], onAddPet, onEditPet
                     marginBottom: '8px',
                     position: 'relative'
                   }}>
-                    {pet.avatar ? (
-                      <img 
-                        src={pet.avatar} 
-                        alt="Avatar" 
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                          const parent = e.target.parentElement;
-                          if (parent && !parent.querySelector('.fallback-emoji')) {
-                            const span = document.createElement('span');
-                            span.className = 'fallback-emoji';
-                            span.style.fontSize = '28px';
-                            span.innerText = '🐕';
-                            parent.appendChild(span);
-                          }
-                        }}
-                      />
-                    ) : (
-                      <span style={{ fontSize: '28px' }}>🐕</span>
-                    )}
+                    <img
+                      src={avatar}
+                      alt=""
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={(event) => handlePetAvatarError(event, pet, 'pet-list')}
+                    />
                   </div>
                   <button 
                     onClick={(e) => {

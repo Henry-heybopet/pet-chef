@@ -7,13 +7,15 @@ const { createAnalyticsEvent } = require('../services/analytics_events');
 const paymentService = require('../services/payment');
 const { authMiddleware, generateToken, verifyToken } = require('../services/auth');
 const { getEnvironment } = require('../config/region_config');
-const { phoneLogin } = require('../services/phone_auth');
+const { accountLogin, completePhoneSignup } = require('../services/phone_auth');
 const { getUserById, getDefaultHouseholdForUser, publicUser } = require('../services/user_repository');
 const petRepository = require('../services/pet_repository');
+const { buildFreshMatchAnalysis } = require('../services/fresh_match');
 
 const router = express.Router();
 const avatarDir = path.resolve(__dirname, '../../public/uploads/avatars');
 const imageTypes = { png: 'png', jpeg: 'jpg', jpg: 'jpg', webp: 'webp' };
+const maxAvatarBytes = 5 * 1024 * 1024;
 
 function asyncHandler(fn) {
   return (req, res) => Promise.resolve(fn(req, res)).catch(error => {
@@ -77,11 +79,28 @@ router.post('/auth/mock-login', asyncHandler(async (req, res) => {
 }));
 
 router.post('/auth/phone-login', asyncHandler(async (req, res) => {
-  const result = await phoneLogin(req.body || {});
+  const result = await accountLogin(req.body || {});
+  if (result.needsUsername) {
+    return res.json({
+      success: true,
+      needsUsername: true,
+      phone: result.phone,
+      maskedPhone: result.maskedPhone,
+    });
+  }
   res.json({
     success: true,
     user: result.user,
     household: result.household,
+    token: generateToken(result.user.id),
+  });
+}));
+
+router.post('/auth/phone-signup', asyncHandler(async (req, res) => {
+  const result = await completePhoneSignup(req.body || {});
+  res.json({
+    success: true,
+    user: result.user,
     token: generateToken(result.user.id),
   });
 }));
@@ -94,6 +113,7 @@ router.get('/users/me', authMiddleware, asyncHandler(async (req, res) => {
     user: publicUser(user),
     household: household || store.ensureDefaultHousehold(user.id),
     tuyaMapping: store.ensureTuyaMapping(user.id),
+    token: generateToken(user.id),
   });
 }));
 
@@ -104,7 +124,7 @@ router.post('/uploads/avatar', authMiddleware, asyncHandler(async (req, res) => 
   if (!match) return res.status(400).json({ success: false, error: 'Invalid avatar image' });
 
   const buffer = Buffer.from(match[2], 'base64');
-  if (buffer.length > 2 * 1024 * 1024) {
+  if (buffer.length > maxAvatarBytes) {
     return res.status(413).json({ success: false, error: 'Avatar image is too large' });
   }
 
@@ -134,6 +154,15 @@ router.get('/pets/:id', authMiddleware, asyncHandler(async (req, res) => {
   res.json({ success: true, pet, source: 'pg' });
 }));
 
+router.post('/fresh-match/analyze', authMiddleware, asyncHandler(async (req, res) => {
+  const user = await requireUser(req);
+  const pet = await petRepository.getPetForUser(user.id, req.body?.pet_id);
+  if (!pet) return res.status(404).json({ success: false, error: 'Pet not found' });
+  if (pet.species && pet.species !== 'dog') return res.status(400).json({ success: false, error: 'Fresh Match 仅支持犬类宠物档案' });
+  const result = await buildFreshMatchAnalysis({ pet, ingredients: req.body?.ingredients || {} });
+  res.json({ success: true, ...result });
+}));
+
 router.post('/pets', authMiddleware, asyncHandler(async (req, res) => {
   const user = await requireUser(req);
   const pet = await petRepository.createPetForUser(user.id, req.body || {});
@@ -160,6 +189,18 @@ router.get('/devices', authMiddleware, asyncHandler(async (req, res) => {
 router.post('/devices', authMiddleware, asyncHandler(async (req, res) => {
   const user = await requireUser(req);
   const device = store.upsertDevice(user.id, req.body || {});
+  res.json({ success: true, device });
+}));
+
+router.post('/devices/:id/dp-sync', authMiddleware, asyncHandler(async (req, res) => {
+  const user = await requireUser(req);
+  const device = store.syncDeviceDp(user.id, req.params.id, req.body || {});
+  res.json({ success: true, device });
+}));
+
+router.delete('/devices/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const user = await requireUser(req);
+  const device = store.unbindDevice(user.id, req.params.id);
   res.json({ success: true, device });
 }));
 

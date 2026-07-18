@@ -36,6 +36,59 @@ a {
   min-height: 100vh;
 }
 
+.admin-login-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #eef5f8;
+}
+
+.admin-login-card {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.admin-login-card h1 {
+  margin: 0;
+}
+
+.admin-login-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.admin-login-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.admin-login-card input {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px 12px;
+  font: inherit;
+  color: var(--text);
+}
+
+.login-error {
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-weight: 800;
+}
+
 .sidebar {
   position: sticky;
   top: 0;
@@ -101,8 +154,10 @@ a {
 }
 
 .workspace {
-  width: min(1180px, 100%);
-  padding: 36px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  padding: 32px 24px;
 }
 
 .page-header,
@@ -398,6 +453,18 @@ a {
   color: #4a5560 !important;
 }
 
+.logout-btn {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fbfc;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .workspace-header {
   display: flex;
   align-items: center;
@@ -491,6 +558,7 @@ a {
 
 /* 模块常规容器 */
 .module-section {
+  min-width: 0;
   animation: fadeIn 0.3s ease;
 }
 
@@ -500,6 +568,10 @@ a {
 }
 
 .table-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 20px;
 }
 
@@ -512,6 +584,37 @@ a {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.table-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.recipe-search-box {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 320px) auto;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.recipe-search-box input {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--ink);
+  background: white;
+}
+
+.recipe-search-box em {
+  font-style: normal;
+  color: var(--accent-dark);
 }
 
 .grid-list {
@@ -1034,6 +1137,22 @@ a {
   background: #b91c1c;
 }
 
+.action-btn.unsaved {
+  background: #dc2626;
+}
+
+.action-btn.unsaved:hover {
+  background: #b91c1c;
+}
+
+.action-btn.secondary {
+  background: #155e75;
+}
+
+.action-btn.secondary:hover {
+  background: #164e63;
+}
+
 .telemetry-table {
   width: 100%;
   border-collapse: collapse;
@@ -1058,18 +1177,227 @@ a {
 }
 
 /* 食谱模块 */
-.recipe-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
+.recipe-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-bottom: 10px;
+  scrollbar-gutter: stable;
 }
 
-.recipe-card-v2 {
+.recipe-edit-table {
+  min-width: 1360px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recipe-edit-head,
+.recipe-edit-row {
+  display: grid;
+  grid-template-columns: 135px 230px 215px 215px 250px 265px;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.recipe-edit-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #eef5f8;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--muted);
+}
+
+.recipe-edit-row {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 20px;
+  padding: 10px;
   box-shadow: var(--shadow);
+}
+
+.recipe-photo-cell,
+.recipe-detail-cell,
+.recipe-list-cell,
+.recipe-nutrition-cell,
+.recipe-cooking-cell {
+  min-width: 0;
+}
+
+.recipe-photo-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recipe-photo-cell img,
+.recipe-image-placeholder {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  object-fit: cover;
+  background: var(--panel-soft);
+}
+
+.recipe-image-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.upload-btn {
+  text-align: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.upload-btn input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.recipe-photo-save {
+  width: 100%;
+}
+
+.recipe-detail-cell {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px 10px;
+  align-content: start;
+}
+
+.recipe-detail-cell label {
+  display: contents;
+}
+
+.recipe-detail-cell span {
+  padding-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.recipe-detail-cell code {
+  align-self: center;
+  background: var(--panel-soft);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 12px;
+  color: var(--accent-dark);
+  overflow-wrap: anywhere;
+}
+
+.recipe-detail-cell input,
+.recipe-detail-cell select,
+.ratio-row input,
+.recipe-nutrition-cell input,
+.recipe-cooking-cell input,
+.recipe-cooking-cell select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: white;
+}
+
+.recipe-list-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.ratio-total {
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ratio-total.error {
+  color: #b91c1c;
+}
+
+.ratio-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 62px 26px;
+  gap: 6px;
+}
+
+.ratio-row button {
+  border: 1px solid var(--line);
+  background: white;
+  border-radius: 6px;
+  color: #b91c1c;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.recipe-nutrition-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recipe-nutrition-cell label {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr) 30px;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.recipe-nutrition-cell span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.recipe-nutrition-cell em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.recipe-cooking-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recipe-cooking-cell label {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.recipe-cooking-cell span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.unit-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  gap: 4px;
+  align-items: center;
+}
+
+.unit-input em {
+  color: var(--muted);
+  font-style: normal;
 }
 
 .recipe-header {
@@ -1692,6 +2020,100 @@ a {
   color: #ef4444;
   font-weight: 700;
   cursor: pointer;
+}
+
+/* 子管理员管理 */
+.subadmin-table {
+  display: flex;
+  min-width: 1180px;
+  flex-direction: column;
+  gap: 10px;
+  overflow-x: auto;
+}
+
+.subadmin-head,
+.subadmin-row {
+  display: grid;
+  grid-template-columns: 200px 260px 260px minmax(320px, 1fr) 120px;
+  gap: 10px;
+  align-items: start;
+}
+
+.subadmin-head {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #eef5f8;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.subadmin-row,
+.empty-row {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.empty-row {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.subadmin-account-cell input,
+.password-cell input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.password-cell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px;
+  gap: 6px;
+}
+
+.password-cell button {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  color: var(--accent-dark);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.checkbox-group {
+  display: grid;
+  gap: 8px;
+}
+
+.module-checkboxes {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.checkbox-group label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.checkbox-group input {
+  width: 16px;
+  height: 16px;
+}
+
+.subadmin-save-cell {
+  display: grid;
+  gap: 8px;
 }
 
 /* 故障模块文本框 */

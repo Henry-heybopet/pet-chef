@@ -15,7 +15,67 @@ function calcWaterContent(ingredients) {
   return totalWeight > 0 ? totalWater / totalWeight : 0.70;
 }
 
-// 本地图片映射（食谱名 -> 本地路径）
+function recipeCookingProfile(ingredients) {
+  const names = Object.keys(ingredients || {}).join('、');
+  const hasBeef = /牛肉|牛心/.test(names);
+  const hasRabbit = /兔肉|兔里脊/.test(names);
+  const hasChicken = /鸡肉|鸡小胸|鸡胸/.test(names);
+  const hasDuck = /鸭肉|鸭小胸/.test(names);
+  const hasFish = /鱼|金枪鱼|鳕鱼|三文鱼|鲈鱼/.test(names);
+
+  if (hasBeef) return { protein_group: 'beef', temperature: 85, power: 8, speed: '1', cook_minutes: 8 };
+  if (hasRabbit) return { protein_group: 'rabbit', temperature: 85, power: 8, speed: '1', cook_minutes: 8 };
+  if (hasChicken) return { protein_group: 'chicken', temperature: 81, power: 8, speed: '1', cook_minutes: 10 };
+  if (hasDuck) return { protein_group: 'duck', temperature: 81, power: 8, speed: '1', cook_minutes: 10 };
+  if (hasFish) return { protein_group: 'fish', temperature: 78, power: 7, speed: '1', cook_minutes: 8 };
+  return { protein_group: 'other', temperature: 81, power: 8, speed: '1', cook_minutes: 10 };
+}
+
+// 本地图片映射（recipe_id 优先，避免食谱改名后丢图）
+const imgByRecipeId = {
+  "dog_recipe_001": "/鸡肉轻盈餐.png",
+  "dog_recipe_002": "/鸡肉燕麦经典.png",
+  "dog_recipe_003": "/金枪鱼均衡餐.png",
+  "dog_recipe_004": "/牛肉能量餐.png",
+  "dog_recipe_005": "/兔肉低脂餐.png",
+  "dog_recipe_006": "/护关节低脂.png",
+  "dog_recipe_007": "/鸡肉高纤.png",
+  "dog_recipe_008": "/金枪鱼护心.png",
+  "dog_recipe_009": "/牛肉补能.png",
+  "dog_recipe_010": "/易消化温和.png",
+  "dog_recipe_011": "/金枪鱼单一低敏.png",
+  "dog_recipe_012": "/兔肉菠菜单一低敏.png",
+  "dog_recipe_013": "/兔肉红薯单一低敏.png",
+  "dog_recipe_014": "/鸭肉胡萝卜单一低敏.png",
+  "dog_recipe_015": "/鸭肉南瓜单一低敏.png",
+  "dog_recipe_016": "/鸡肉姜黄.png",
+  "dog_recipe_017": "/鸡肉南瓜.png",
+  "dog_recipe_018": "/金枪鱼抗氧.png",
+  "dog_recipe_019": "/牛肉轻负担.png",
+  "dog_recipe_020": "/兔肉低脂.png",
+  "dog_recipe_021": "/鸡肉美毛.png",
+  "dog_recipe_022": "/金枪鱼抗炎.png",
+  "dog_recipe_023": "/金枪鱼亮毛.png",
+  "dog_recipe_024": "/牛肉护肤.png",
+  "dog_recipe_025": "/兔肉抗敏.png",
+  "dog_recipe_026": "/鸡肉蔬菜成长.png",
+  "dog_recipe_027": "/鸡肉稳生长.png",
+  "dog_recipe_028": "/金枪鱼缓生长.png",
+  "dog_recipe_029": "/牛肉控制成长.png",
+  "dog_recipe_030": "/兔肉低钙成长.png",
+  "dog_recipe_031": "/鸡肉燕麦均衡.png",
+  "dog_recipe_032": "/鸡肉藜麦免疫餐.png",
+  "dog_recipe_033": "/鸡肉苹果成长餐.png",
+  "dog_recipe_034": "/鸡肉土豆成长.png",
+  "dog_recipe_035": "/金枪鱼南瓜脑发育.png",
+  "dog_recipe_036": "/金枪鱼燕麦成长.png",
+  "dog_recipe_037": "/牛肉高蛋白成长.png",
+  "dog_recipe_038": "/牛肉红薯活力餐.png",
+  "dog_recipe_039": "/兔肉南瓜肠胃餐.png",
+  "dog_recipe_040": "/鸭肉红薯成长.png"
+};
+
+// 兼容旧名称映射
 const imgMap = {
   "鸡肉轻盈餐": "/鸡肉轻盈餐.png",
   "鸡肉燕麦经典": "/鸡肉燕麦经典.png",
@@ -47,6 +107,7 @@ const imgMap = {
   "金枪鱼缓生长": "/金枪鱼缓生长.png",
   "牛肉控制成长": "/牛肉控制成长.png",
   "兔肉低钙成长": "/兔肉低钙成长.png",
+  "鸡肉燕麦均衡": "/鸡肉燕麦均衡.png",
   "鸡肉藜麦均衡": "/鸡肉藜麦均衡.png",
   "鸡肉藜麦免疫餐": "/鸡肉藜麦免疫餐.png",
   "鸡肉苹果成长餐": "/鸡肉苹果成长餐.png",
@@ -99,7 +160,7 @@ const rawRecipes = [
       "胡萝卜": 10.1,
       "西兰花": 10.1,
       "菠菜": 10.1,
-      "苹果": 5.0
+      "苹果": 5
     },
     "b_pack": "成犬维护营养包B：成犬维矿预混料 1.7 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.3",
     "c_pack": "无"
@@ -121,7 +182,7 @@ const rawRecipes = [
       "菠菜": 15.2,
       "全熟燕麦片": 15.2,
       "西兰花": 10.1,
-      "蓝莓": 5.0
+      "蓝莓": 5
     },
     "b_pack": "成犬维护营养包B：成犬维矿预混料 1.7 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.3",
     "c_pack": "无"
@@ -139,12 +200,12 @@ const rawRecipes = [
     ],
     "ingredients": {
       "牛肉": 29.4,
-      "牛心": 6.0,
+      "牛心": 6,
       "红薯": 20.2,
       "胡萝卜": 10.1,
       "西兰花": 10.1,
       "全熟燕麦片": 15.2,
-      "苹果": 5.0
+      "苹果": 5
     },
     "b_pack": "成犬维护营养包B：成犬维矿预混料 1.7 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.3",
     "c_pack": "无"
@@ -211,7 +272,7 @@ const rawRecipes = [
       "西兰花": 19.8,
       "全熟燕麦片": 9.9,
       "胡萝卜": 9.9,
-      "蓝莓": 2.0
+      "蓝莓": 2
     },
     "b_pack": "老年犬轻负担营养包B：老年犬维矿预混料（抗氧化支持）1.9 / 低磷钙源或钙磷维护矿物粉 0.8 / EPA-DHA鱼油或藻油 1.3",
     "c_pack": "无"
@@ -228,11 +289,11 @@ const rawRecipes = [
       "护心"
     ],
     "ingredients": {
-      "金枪鱼白肉": 30.0,
-      "红薯": 20.0,
-      "菠菜": 20.0,
-      "全熟燕麦片": 15.0,
-      "蓝莓": 10.0
+      "金枪鱼白肉": 30,
+      "红薯": 20,
+      "菠菜": 20,
+      "全熟燕麦片": 15,
+      "蓝莓": 10
     },
     "b_pack": "老年犬轻负担营养包B：老年犬维矿预混料（抗氧化支持）1.9 / 低磷钙源或钙磷维护矿物粉 0.8 / EPA-DHA鱼油或藻油 1.3",
     "c_pack": "心脏健康支持功能包C：牛磺酸/L-肉碱/辅酶Q10 1.0"
@@ -250,12 +311,12 @@ const rawRecipes = [
     ],
     "ingredients": {
       "牛肉": 24.3,
-      "牛心": 6.0,
+      "牛心": 6,
       "红薯": 25.3,
       "胡萝卜": 15.2,
       "西兰花": 10.1,
       "全熟燕麦片": 10.1,
-      "蓝莓": 5.0
+      "蓝莓": 5
     },
     "b_pack": "老年犬轻负担营养包B：老年犬维矿预混料（抗氧化支持）1.9 / 低磷钙源或钙磷维护矿物粉 0.8 / EPA-DHA鱼油或藻油 1.3",
     "c_pack": "无"
@@ -294,10 +355,10 @@ const rawRecipes = [
       "低敏"
     ],
     "ingredients": {
-      "金枪鱼白肉": 45.0,
-      "红薯": 25.0,
-      "冬瓜丁": 15.0,
-      "全熟燕麦片": 10.0
+      "金枪鱼白肉": 45,
+      "红薯": 25,
+      "冬瓜丁": 15,
+      "全熟燕麦片": 10
     },
     "b_pack": "低敏单一蛋白营养包B：低敏维矿预混料 2.0 / 低敏钙源矿物粉（不含动物蛋白载体）1.2 / 藻油或高度精炼低敏油脂 0.8",
     "c_pack": "肠胃健康支持功能包C（低敏版）：FOS/MOS益生元/后生元/低敏载体 1.0"
@@ -314,10 +375,10 @@ const rawRecipes = [
       "低敏"
     ],
     "ingredients": {
-      "兔里脊": 45.0,
-      "红薯": 25.0,
-      "菠菜": 15.0,
-      "全熟燕麦片": 10.0
+      "兔里脊": 45,
+      "红薯": 25,
+      "菠菜": 15,
+      "全熟燕麦片": 10
     },
     "b_pack": "低敏单一蛋白营养包B：低敏维矿预混料 2.0 / 低敏钙源矿物粉（不含动物蛋白载体）1.2 / 藻油或高度精炼低敏油脂 0.8",
     "c_pack": "肠胃健康支持功能包C（低敏版）：FOS/MOS益生元/后生元/低敏载体 1.0"
@@ -335,7 +396,7 @@ const rawRecipes = [
       "低敏"
     ],
     "ingredients": {
-      "兔里脊": 49.0,
+      "兔里脊": 49,
       "红薯": 24.5,
       "冬瓜丁": 14.7,
       "蓝莓": 6.8
@@ -355,10 +416,10 @@ const rawRecipes = [
       "低敏"
     ],
     "ingredients": {
-      "鸭小胸": 45.0,
-      "南瓜": 25.0,
-      "胡萝卜": 15.0,
-      "全熟燕麦片": 10.0
+      "鸭小胸": 45,
+      "南瓜": 25,
+      "胡萝卜": 15,
+      "全熟燕麦片": 10
     },
     "b_pack": "低敏单一蛋白营养包B：低敏维矿预混料 2.0 / 低敏钙源矿物粉（不含动物蛋白载体）1.2 / 藻油或高度精炼低敏油脂 0.8",
     "c_pack": "肠胃健康支持功能包C（低敏版）：FOS/MOS益生元/后生元/低敏载体 1.0"
@@ -375,10 +436,10 @@ const rawRecipes = [
       "低敏"
     ],
     "ingredients": {
-      "鸭小胸": 45.0,
-      "南瓜": 25.0,
-      "冬瓜丁": 15.0,
-      "全熟燕麦片": 10.0
+      "鸭小胸": 45,
+      "南瓜": 25,
+      "冬瓜丁": 15,
+      "全熟燕麦片": 10
     },
     "b_pack": "低敏单一蛋白营养包B：低敏维矿预混料 2.0 / 低敏钙源矿物粉（不含动物蛋白载体）1.2 / 藻油或高度精炼低敏油脂 0.8",
     "c_pack": "肠胃健康支持功能包C（低敏版）：FOS/MOS益生元/后生元/低敏载体 1.0"
@@ -420,7 +481,7 @@ const rawRecipes = [
       "胡萝卜": 9.7,
       "全熟燕麦片": 14.5,
       "西兰花": 9.7,
-      "蓝莓": 2.0
+      "蓝莓": 2
     },
     "b_pack": "成犬/护肝基础营养包B：成犬维矿预混料 1.8 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.2",
     "c_pack": "护肝支持功能包C：水飞蓟素/胆碱/牛磺酸 2.0"
@@ -464,7 +525,7 @@ const rawRecipes = [
       "南瓜": 24.7,
       "西兰花": 14.8,
       "全熟燕麦片": 14.8,
-      "蓝莓": 10.0
+      "蓝莓": 10
     },
     "b_pack": "成犬/护肝基础营养包B：成犬维矿预混料 1.8 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.2",
     "c_pack": "护肝支持功能包C：水飞蓟素/胆碱/牛磺酸 2.0"
@@ -507,7 +568,7 @@ const rawRecipes = [
       "南瓜": 19.8,
       "菠菜": 14.8,
       "全熟燕麦片": 14.8,
-      "蓝莓": 10.0
+      "蓝莓": 10
     },
     "b_pack": "成犬/美毛基础营养包B：成犬维矿预混料 1.6 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）0.9 / Omega-3鱼油或藻油 1.5",
     "c_pack": "美毛护肤支持功能包C：卵磷脂/生物素/有机锌 2.0"
@@ -529,7 +590,7 @@ const rawRecipes = [
       "红薯": 19.8,
       "菠菜": 14.8,
       "全熟燕麦片": 14.8,
-      "蓝莓": 7.0
+      "蓝莓": 7
     },
     "b_pack": "成犬/美毛基础营养包B：成犬维矿预混料 1.6 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）0.9 / Omega-3鱼油或藻油 1.5",
     "c_pack": "抗炎免疫支持功能包C：酵母β-葡聚糖/天然维生素E/多酚或姜黄素 2.0"
@@ -551,7 +612,7 @@ const rawRecipes = [
       "胡萝卜": 10.8,
       "蓝莓": 10.8,
       "全熟燕麦片": 16.2,
-      "菠菜": 13.0
+      "菠菜": 13
     },
     "b_pack": "成犬/美毛基础营养包B：成犬维矿预混料 1.6 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）0.9 / Omega-3鱼油或藻油 1.5",
     "c_pack": "美毛护肤支持功能包C：卵磷脂/生物素/有机锌 2.0"
@@ -595,7 +656,7 @@ const rawRecipes = [
       "南瓜": 19.8,
       "西兰花": 14.8,
       "全熟燕麦片": 14.8,
-      "蓝莓": 10.0
+      "蓝莓": 10
     },
     "b_pack": "成犬/美毛基础营养包B：成犬维矿预混料 1.6 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）0.9 / Omega-3鱼油或藻油 1.5",
     "c_pack": "美毛护肤支持功能包C：卵磷脂/生物素/有机锌 2.0"
@@ -659,7 +720,7 @@ const rawRecipes = [
       "红薯": 20.2,
       "菠菜": 15.2,
       "全熟燕麦片": 15.2,
-      "冬瓜丁": 10.0
+      "冬瓜丁": 10
     },
     "b_pack": "大型幼犬稳骨控钙营养包B：大型幼犬低钙维矿预混料 1.8 / 控钙钙磷矿物粉（低钙，Ca:P≈1.2:1）0.9 / DHA-EPA鱼油或藻油 1.3",
     "c_pack": "无"
@@ -713,7 +774,7 @@ const rawRecipes = [
     "category_type": "life_stage_size",
     "life_stage": "幼犬",
     "dog_size": null,
-    "name": "鸡肉藜麦均衡",
+    "name": "鸡肉燕麦均衡",
     "tags": [
       "均衡"
     ],
@@ -723,7 +784,7 @@ const rawRecipes = [
       "全熟燕麦片": 20.2,
       "西兰花": 10.1,
       "红薯": 15.2,
-      "蓝莓": 5.0
+      "蓝莓": 5
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
     "c_pack": "无"
@@ -740,12 +801,12 @@ const rawRecipes = [
       "免疫增强"
     ],
     "ingredients": {
-      "鸡小胸": 35.0,
-      "鸡心": 10.0,
-      "全熟燕麦片": 20.0,
-      "西兰花": 10.0,
-      "红薯": 15.0,
-      "蓝莓": 5.0
+      "鸡小胸": 35,
+      "鸡心": 10,
+      "藜麦": 20,
+      "西兰花": 10,
+      "南瓜": 15,
+      "蓝莓": 5
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
     "c_pack": "抗炎免疫支持功能包C：酵母β-葡聚糖/可溶性膳食纤维/天然抗氧化物 1.0"
@@ -763,7 +824,7 @@ const rawRecipes = [
       "易消化"
     ],
     "ingredients": {
-      "鸡小胸": 31.0,
+      "鸡小胸": 31,
       "鸡肝": 9.7,
       "鸡心": 12.6,
       "苹果": 8.7,
@@ -811,12 +872,12 @@ const rawRecipes = [
     ],
     "ingredients": {
       "金枪鱼白肉": 34.8,
-      "鸡肝": 8.0,
+      "鸡肝": 8,
       "全熟燕麦片": 14.9,
       "南瓜": 14.9,
       "胡萝卜": 9.9,
-      "西兰花": 7.0,
-      "蓝莓": 5.0
+      "西兰花": 7,
+      "蓝莓": 5
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
     "c_pack": "脑发育支持功能包C：DHA藻油/牛磺酸/胆碱 1.5"
@@ -835,7 +896,7 @@ const rawRecipes = [
     "ingredients": {
       "金枪鱼白肉": 37.3,
       "全熟燕麦片": 21.3,
-      "南瓜": 16.0,
+      "南瓜": 16,
       "胡萝卜": 10.7,
       "菠菜": 10.7
     },
@@ -855,12 +916,12 @@ const rawRecipes = [
     ],
     "ingredients": {
       "牛肉": 34.4,
-      "牛心": 6.0,
+      "牛心": 6,
       "牛肝": 8.1,
       "全熟燕麦片": 15.2,
       "南瓜": 15.2,
       "胡萝卜": 10.1,
-      "菠菜": 7.0
+      "菠菜": 7
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
     "c_pack": "无"
@@ -878,13 +939,13 @@ const rawRecipes = [
     ],
     "ingredients": {
       "牛肉": 30.4,
-      "牛心": 5.0,
+      "牛心": 5,
       "牛肝": 8.1,
       "红薯": 20.2,
       "胡萝卜": 10.1,
       "西兰花": 10.1,
       "全熟燕麦片": 10.1,
-      "蓝莓": 2.0
+      "蓝莓": 2
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
     "c_pack": "无"
@@ -901,12 +962,12 @@ const rawRecipes = [
       "肠胃友好"
     ],
     "ingredients": {
-      "兔里脊": 35.0,
-      "南瓜": 20.0,
-      "全熟燕麦片": 20.0,
-      "胡萝卜": 10.0,
-      "菠菜": 8.0,
-      "苹果": 2.0
+      "兔里脊": 35,
+      "南瓜": 20,
+      "全熟燕麦片": 20,
+      "胡萝卜": 10,
+      "菠菜": 8,
+      "苹果": 2
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
     "c_pack": "肠胃健康支持功能包C：FOS/MOS益生元/益生菌或后生元/低敏载体 1.0"
@@ -950,16 +1011,13 @@ const recipesDb = rawRecipes.map(r => {
     else addPct += pct;
   });
 
-  // 烹饪基准（100g食材）
-  // 基于实测数据推导：纯肉(60%水) 45s预热/9min烹饪；混合(75%水) 30s预热/8min烹饪
-  const waterFactor = Math.max(0, (waterContent - 0.60));
-  const preheat_seconds = Math.round((22.5 - waterFactor * 60) * 2); // per 100g extrapolation
-  const cook_seconds = Math.round((320 - waterFactor * 300) * 1.0); // per 100g, full cook
+  const cookingProfile = recipeCookingProfile(r.ingredients);
 
   const ossBaseUrl = process.env.OSS_BASE_URL || '';
+  const imagePath = imgByRecipeId[r.id] || imgMap[r.name];
   return {
     ...r,
-    img: imgMap[r.name] ? `${ossBaseUrl}${imgMap[r.name]}` : `https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&h=400&q=80`,
+    img: imagePath ? `${ossBaseUrl}${imagePath}` : `https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&h=400&q=80`,
     water_content_pct: Math.round(waterContent * 100),
     protein_pct: Math.round(proteinPct),
     carb_pct: Math.round(carbPct),
@@ -973,12 +1031,18 @@ const recipesDb = rawRecipes.map(r => {
     // 烹饪基准（100g食材）
     cooking_base: {
       mode: 'diy',
-      temperature: 85,
-      power: 8,
-      speed: '1',
+      protein_group: cookingProfile.protein_group,
+      temperature: cookingProfile.temperature,
+      power: cookingProfile.power,
+      speed: cookingProfile.speed,
+      preheat_minutes: 3,
+      cook_minutes: cookingProfile.cook_minutes,
+      cook_weight_grams: 200,
+      cook_time_unit: 'minutes',
+      texture_profile: '软烩饭 / 湿润软烂型',
       water_ratio: 0.15,
-      preheat_seconds_per_100g: Math.max(15, preheat_seconds),
-      cook_seconds_per_100g: Math.max(240, cook_seconds),
+      stir_delay_policy: 'timer_by_total_grams',
+      stir_delay_minutes: { "100": 2, "200": 3, "300_plus": 4 },
     },
   };
 });

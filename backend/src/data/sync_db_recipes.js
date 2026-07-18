@@ -21,11 +21,11 @@ async function run() {
       const sql = `
         INSERT INTO recipes (
           id, name, species, category, life_stage, 
-          health_tags, ingredients, cooking_profile, nutrition_snapshot, 
+          health_tags, ingredients, cooking_profile, nutrition_snapshot, img,
           status, version, created_at, updated_at
         ) VALUES (
           $1, $2, 'dog', $3, $4, 
-          $5, $6, $7, $8, 
+          $5, $6, $7, $8, $9,
           'active', 1, NOW(), NOW()
         )
       `;
@@ -47,7 +47,8 @@ async function run() {
         JSON.stringify(r.tags || []),
         JSON.stringify(r.ingredients || {}),
         JSON.stringify(r.cooking_base || {}),
-        JSON.stringify(nutritionSnapshot)
+        JSON.stringify(nutritionSnapshot),
+        r.img || ''
       ];
       await query(sql, params);
     }

@@ -7,6 +7,10 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Copy built frontend static files
 COPY frontend/dist/ /usr/share/nginx/html/
 
+# Copy built admin static files and Basic Auth user file
+COPY admin/dist/ /usr/share/nginx/html/admin/
+COPY nginx/admin.htpasswd /etc/nginx/admin.htpasswd
+
 # Install curl for healthcheck (use Aliyun mirror for speed in China)
 RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories && \
     apk add --no-cache curl

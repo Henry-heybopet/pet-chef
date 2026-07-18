@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import TopBar from './TopBar';
 import { useTranslation } from '../i18n/translations';
 import { tData, tBreedDesc } from '../i18n/dataTranslations';
+import { getPetAvatarUrl, handlePetAvatarError } from '../utils/petAvatar';
 
 export default function PetProfileDetails({ profile, onEdit, onSelectCategory, onSaveHealthHistory, onShowAnalysis, lang }) {
   const t = useTranslation(lang);
@@ -15,8 +16,8 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
   // Extract metadata values
   const name = profile?.name || '爱宠';
   const sex = profile?.sex || 'male';
-  const avatar = profile?.avatar || '';
   const breed = profile?.breed;
+  const avatar = getPetAvatarUrl(profile || {}, breed ? [breed] : []);
   const breedName = profile?.breedName || '未知犬种';
   const bodySize = profile?.bodySize || 'medium';
   const activityLevel = profile?.activityLevel || 'medium';
@@ -275,13 +276,12 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
         {/* Profile Card */}
         <div className="card glass" style={styles.profileCard}>
           <div style={styles.avatarRow}>
-            {avatar ? (
-              <img src={avatar} alt="" style={styles.avatar} />
-            ) : breed?.img ? (
-              <img src={breed.img} alt="" style={styles.avatar} />
-            ) : (
-              <div style={styles.avatarPlaceholder}>🐕</div>
-            )}
+            <img
+              src={avatar}
+              alt=""
+              style={styles.avatar}
+              onError={(event) => handlePetAvatarError(event, profile || {}, 'pet-detail')}
+            />
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={styles.dogName}>{name}</span>

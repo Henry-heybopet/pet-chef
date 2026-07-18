@@ -52,6 +52,13 @@ async function authedPatch(path, body, token) {
   });
 }
 
+async function authedDelete(path, token) {
+  return requestJson(path, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  });
+}
+
 async function createPayment(body, token, idempotencyKey) {
   const res = await fetch(`${BASE}/api/payments`, {
     method: 'POST',
@@ -70,6 +77,7 @@ async function createPayment(body, token, idempotencyKey) {
 export const api = {
   heyboMockLogin: (body) => post('/api/auth/mock-login', body),
   phoneLogin: (body) => post('/api/auth/phone-login', body),
+  phoneSignup: (body) => post('/api/auth/phone-signup', body),
   heyboMe: (token) => authedGet('/api/users/me', token),
   uploadAvatar: (dataUrl, token) => authedPost('/api/uploads/avatar', { data_url: dataUrl }, token),
   createPet: (body, token) => authedPost('/api/pets', body, token),
@@ -78,6 +86,8 @@ export const api = {
   updatePet: (petId, body, token) => authedPatch(`/api/pets/${petId}`, body, token),
   registerDevice: (body, token) => authedPost('/api/devices', body, token),
   listDevices: (token) => authedGet('/api/devices', token),
+  unbindDevice: (deviceId, token) => authedDelete(`/api/devices/${encodeURIComponent(deviceId)}`, token),
+  syncDeviceDp: (deviceId, body, token) => authedPost(`/api/devices/${encodeURIComponent(deviceId)}/dp-sync`, body, token),
   recordCookingOperation: (body, token) => authedPost('/api/operations/cooking', body, token),
   listCookingOperations: (token) => authedGet('/api/operations/cooking', token),
   createFeedingRecord: (body, token) => authedPost('/api/feeding-records', body, token),
@@ -103,6 +113,7 @@ export const api = {
   compareSelection: (body, token) => authedPost('/api/recommend/compare', body, token),
   aiAnalysis: (petId, lang, token) => authedPost('/api/ai-analysis', { pet_id: petId, lang }, token),
   aiAnalysisByPet: (petId, lang, token) => authedPost('/api/ai-analysis', { pet_id: petId, lang }, token),
+  freshMatchAnalyze: (body, token) => authedPost('/api/fresh-match/analyze', body, token),
   aiRecipe: async (body) => {
     return post('/api/ai-recipe', body);
   },
@@ -118,7 +129,7 @@ export const api = {
   tuyaStop: async () => {
     return post('/api/tuya/stop', {});
   },
-  tuyaStatus: async () => {
-    return get('/api/tuya/status');
+  tuyaStatus: async (devId) => {
+    return get(`/api/tuya/status${devId ? `?devId=${encodeURIComponent(devId)}` : ''}`);
   },
 };

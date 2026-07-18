@@ -92,6 +92,7 @@ function tFallbackAnalysis(text, breedName, age, weight, analysis, lang) {
 }
 
 function getRecipeScore(recipe, comparisons) {
+  if (!recipe || !comparisons) return null;
   const score = Number(comparisons?.[recipe.name]?.a_comparison?.proposed_score);
   return Number.isFinite(score) ? score : null;
 }
@@ -104,6 +105,257 @@ function getBestScoredRecipeId(recipes, comparisons) {
     return current;
   }, null);
   return best?.id || recipes[0]?.id || '';
+}
+
+function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack }) {
+  if (!recipe) return null;
+
+  const perMealGrams = analysis?.per_meal_grams || 100;
+  const score = Number(comparison?.proposed_score);
+  const hasScore = Number.isFinite(score);
+  const tags = recipe.tags || [];
+  const ingredients = Object.entries(recipe.ingredients || {});
+  const benefits = Object.entries(recipe.ingredient_benefits || {});
+
+  return (
+    <div className="animate-fade flex-col" style={{ flex: 1, minHeight: 0 }}>
+      <TopBar onBack={onBack} title="食谱详情" />
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          padding: '0 20px calc(24px + env(safe-area-inset-bottom))'
+        }}
+      >
+        <div
+          className="card glass"
+        style={{
+          width: '100%',
+          overflow: 'hidden',
+          padding: 0,
+          border: '1px solid rgba(0,230,255,0.28)',
+          borderRadius: 22,
+          background: 'linear-gradient(180deg, rgba(10,17,28,0.98), rgba(5,11,20,0.98))',
+          boxShadow: '0 0 34px rgba(0,230,255,0.12)'
+        }}
+      >
+        <div style={{ width: '100%', height: 'min(22dvh, 190px)', background: 'rgba(0,230,255,0.05)' }}>
+          {recipe.img ? (
+            <img
+              src={recipe.img}
+              alt=""
+              style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
+            />
+          ) : (
+            <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: 'var(--gray)', fontSize: 13 }}>
+              鲜食配方
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding: '18px 16px 4px' }}>
+          <div style={{ marginBottom: 14 }}>
+            <h2 style={{ color: 'var(--primary)', margin: '0 0 6px', fontSize: 24, lineHeight: 1.18, fontWeight: 900 }}>
+              {recipe.name}
+            </h2>
+            {tags.length > 0 && (
+              <div style={{ color: 'var(--gray)', fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>
+                {tags.join(' · ')}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {hasScore && (
+                <span style={{ fontSize: 12, color: 'var(--primary)', background: 'rgba(0,230,255,0.12)', border: '1px solid rgba(0,230,255,0.28)', borderRadius: 999, padding: '5px 10px', fontWeight: 800 }}>
+                  {score}% 适配
+                </span>
+              )}
+              {isRecommended && (
+                <span style={{ fontSize: 12, color: '#00FFA3', background: 'rgba(0,255,163,0.10)', border: '1px solid rgba(0,255,163,0.24)', borderRadius: 999, padding: '5px 10px', fontWeight: 800 }}>
+                  推荐
+                </span>
+              )}
+              <span style={{ fontSize: 12, color: '#fff', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 999, padding: '5px 10px', fontWeight: 700 }}>
+                A 鲜食基础包
+              </span>
+            </div>
+          </div>
+
+          <section style={{ marginBottom: 18 }}>
+            <h3 style={{ color: '#fff', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>配方食材组成</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+              {ingredients.map(([ing, pct]) => {
+                const grams = Math.round((Number(pct) / 100) * perMealGrams);
+                return (
+                  <div key={ing} style={{ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.06)', padding: '10px 12px', borderRadius: 10, minWidth: 0 }}>
+                    <div style={{ color: '#fff', fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ing}</div>
+                    <div style={{ color: 'var(--primary)', fontSize: 14, fontWeight: 900, marginTop: 4 }}>{pct}% ({grams}g)</div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {benefits.length > 0 && (
+            <section style={{ marginBottom: 18 }}>
+              <h3 style={{ color: '#fff', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>食材功效营养解析</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {benefits.map(([name, ben]) => (
+                  <div key={name} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '10px 12px' }}>
+                    <div style={{ color: 'var(--text)', fontSize: 13, fontWeight: 800, marginBottom: 4 }}>{name}</div>
+                    <div style={{ color: 'var(--gray)', fontSize: 12, lineHeight: 1.55 }}>{ben}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {comparison?.comparison_details && (
+            <section style={{ marginBottom: 18 }}>
+              <h3 style={{ color: '#fff', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>AI 推荐原因</h3>
+              <div style={{ color: 'var(--gray)', fontSize: 12, lineHeight: 1.65, background: 'rgba(0,230,255,0.06)', border: '1px solid rgba(0,230,255,0.15)', borderRadius: 12, padding: 12 }}>
+                {comparison.comparison_details}
+              </div>
+            </section>
+          )}
+
+          {analysis?.cautions?.length > 0 && (
+            <section style={{ marginBottom: 18 }}>
+              <h3 style={{ color: '#FFB020', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>注意事项</h3>
+              <div style={{ background: 'rgba(255,150,0,0.08)', borderLeft: '3px solid #FF9600', borderRadius: 10, padding: '10px 12px' }}>
+                {analysis.cautions.map((item, index) => (
+                  <div key={index} style={{ color: 'var(--gray)', fontSize: 12, lineHeight: 1.55 }}>· {item}</div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section style={{ marginBottom: 12 }}>
+            <h3 style={{ color: '#fff', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>搭配建议</h3>
+            <div style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.65, padding: 12, background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(0,230,255,0.22)', borderRadius: 12 }}>
+              <div style={{ marginBottom: 6 }}><strong style={{ color: 'var(--secondary)' }}>推荐 B 包：</strong>{recipe.b_pack || '无'}</div>
+              <div><strong style={{ color: '#00FFA3' }}>推荐 C 包：</strong>{recipe.c_pack || '无'}</div>
+            </div>
+          </section>
+        </div>
+
+        <div style={{ padding: '12px 16px 16px', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(5,10,18,0.96)' }}>
+          <button
+            className="btn"
+            style={{
+              width: '100%',
+              borderRadius: 999,
+              border: '1px solid rgba(0, 230, 255, 0.45)',
+              background: 'rgba(0, 230, 255, 0.13)',
+              color: 'var(--primary)',
+              fontWeight: 900,
+              boxShadow: '0 0 18px rgba(0, 230, 255, 0.12)'
+            }}
+            onClick={onBack}
+          >
+            返回推荐列表
+          </button>
+        </div>
+      </div>
+      </div>
+    </div>
+  );
+}
+
+function ComparisonSheet({ data, hoveredCard, setHoveredCard, onClose }) {
+  if (!data) return null;
+
+  const scoreCard = (kind, title, name, score, color, onClick) => (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHoveredCard(kind)}
+      onMouseLeave={() => setHoveredCard(null)}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        padding: '14px 10px',
+        background: 'rgba(255,255,255,0.035)',
+        borderRadius: 14,
+        border: hoveredCard === kind ? `1.5px solid ${color}` : '1px dashed rgba(255,255,255,0.18)',
+        cursor: 'pointer',
+        boxShadow: hoveredCard === kind ? `0 0 16px ${color}33` : 'none',
+        textAlign: 'center'
+      }}
+    >
+      <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+      <div style={{ fontSize: 34, lineHeight: 1, fontWeight: 900, color }}>{score}%</div>
+      <div style={{ fontSize: 11, color, marginTop: 6 }}>适配得分</div>
+    </button>
+  );
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 3000,
+        background: 'rgba(0,0,0,0.62)',
+        backdropFilter: 'blur(6px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '12px 10px calc(12px + env(safe-area-inset-bottom))'
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="card glass animate-fade"
+        style={{
+          width: '100%',
+          maxWidth: 480,
+          height: '72dvh',
+          maxHeight: '72dvh',
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          padding: 0,
+          border: '1px solid rgba(0,230,255,0.38)',
+          borderRadius: 22,
+          background: 'linear-gradient(180deg, rgba(10,17,28,0.98), rgba(5,11,20,0.98))',
+          boxShadow: '0 -18px 50px rgba(0,0,0,0.45), 0 0 34px rgba(0,230,255,0.12)'
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '22px 18px 12px' }}>
+          <div style={{ width: 42, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.22)', margin: '0 auto 18px' }} />
+          <div style={{ textAlign: 'center', marginBottom: 18 }}>
+            <div style={{ fontSize: 34, marginBottom: 8 }}>📊</div>
+            <h3 style={{ color: 'var(--primary)', margin: 0, fontSize: 22, lineHeight: 1.2, fontWeight: 900 }}>AI 营养配方对比报告</h3>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+            {scoreCard('current', '当前推荐（点击保持）', data.currentName, data.currentScore, '#4CAF50', onClose)}
+            {scoreCard('proposed', '计划更换（点击更换）', data.proposedName, data.proposedScore, 'var(--primary)', data.onConfirm)}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 12 }}>
+            <div style={{ padding: 12, background: 'rgba(255,255,255,0.035)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 800, marginBottom: 6 }}>营养特性对比</div>
+              <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{data.details}</div>
+            </div>
+            <div style={{ padding: 12, background: 'rgba(255,255,255,0.035)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ fontSize: 12, color: '#4CAF50', fontWeight: 800, marginBottom: 6 }}>评分差异解释</div>
+              <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{data.reason}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ flexShrink: 0, display: 'flex', gap: 10, padding: '12px 16px calc(12px + env(safe-area-inset-bottom))', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(5,10,18,0.96)' }}>
+          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>保持推荐</button>
+          <button className="btn" style={{ flex: 1, background: 'var(--primary)', color: '#000', border: '1px solid var(--primary)', fontWeight: 900 }} onClick={data.onConfirm}>确认更换</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang, authToken }) {
@@ -287,7 +539,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
 
   // 检测食谱是否包含宠物的过敏原
   const checkRecipeAllergen = React.useCallback((recipe) => {
-    return findMatchedAllergen(Object.keys(recipe.ingredients || {}));
+    return findMatchedAllergen(Object.keys(recipe?.ingredients || {}));
   }, [findMatchedAllergen]);
 
   const checkCPackAllergen = React.useCallback((pack) => {
@@ -483,7 +735,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
             )}
           </div>
           <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
-            {Object.keys(r.ingredients).slice(0, 4).join('/')}...
+            {Object.keys(r.ingredients || {}).slice(0, 4).join('/')}...
           </div>
         </div>
         <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 11, height: 'fit-content' }} onClick={(e) => { e.stopPropagation(); setShowDetailRecipe(r); }}>
@@ -496,6 +748,18 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
   const activeRecipeObj = React.useMemo(() => {
     return demoRecipes.find(r => r.id === selectedAId) || categoryRecipes[0];
   }, [selectedAId, categoryRecipes]);
+
+  if (showDetailRecipe) {
+    return (
+      <RecipeDetailPage
+        recipe={showDetailRecipe}
+        analysis={analysis}
+        comparison={comparisonsCache[showDetailRecipe.name]?.a_comparison}
+        isRecommended={Boolean(defaultRecommendedA.some(item => item.id === showDetailRecipe.id))}
+        onBack={() => setShowDetailRecipe(null)}
+      />
+    );
+  }
 
   return (
     <div className="animate-fade flex-col" style={{ flex: 1 }}>
@@ -721,78 +985,6 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
         </div>
       )}
 
-      {/* A 食谱详情弹窗 */}
-      {showDetailRecipe && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div className="card glass animate-fade" style={{ width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto', padding: 24, border: '1px solid var(--border)', position: 'relative' }}>
-            <button style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--gray)', fontSize: 24, cursor: 'pointer' }} onClick={() => setShowDetailRecipe(null)}>×</button>
-            
-            {showDetailRecipe.img && (
-              <img src={showDetailRecipe.img} alt={showDetailRecipe.name} style={{ width: '100%', height: 180, objectFit: 'cover', borderRadius: 12, marginBottom: 16 }} />
-            )}
-            
-            <h2 style={{ color: 'var(--primary)', margin: '0 0 4px 0', fontSize: 18, fontWeight: 700 }}>{showDetailRecipe.name}</h2>
-            <p style={{ color: 'var(--gray)', fontSize: 12, margin: '0 0 16px 0' }}>{showDetailRecipe.tags?.join(' · ')}</p>
-            
-            {/* 食材明细与克重 */}
-            <div style={{ marginBottom: 16 }}>
-              <h4 style={{ color: '#fff', fontSize: 13, margin: '0 0 8px 0', fontWeight: 600 }}>配方食材组成 (A鲜食基础包)</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {Object.entries(showDetailRecipe.ingredients).map(([ing, pct]) => {
-                  const perMealGrams = analysis?.per_meal_grams || 100;
-                  const grams = Math.round((pct / 100) * perMealGrams);
-                  return (
-                    <div key={ing} style={{ background: 'rgba(255,255,255,0.03)', padding: '8px 10px', borderRadius: 8, fontSize: 12, display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text)' }}>{ing}</span>
-                      <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{pct}% ({grams}g)</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* 食材主要功效 */}
-            {showDetailRecipe.ingredient_benefits && (
-              <div style={{ marginBottom: 16 }}>
-                <h4 style={{ color: '#fff', fontSize: 13, margin: '0 0 8px 0', fontWeight: 600 }}>食材功效营养解析</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {Object.entries(showDetailRecipe.ingredient_benefits).map(([name, ben]) => (
-                    <div key={name} style={{ fontSize: 11, lineHeight: 1.4, color: 'var(--gray)' }}>
-                      <strong style={{ color: 'var(--text)' }}>{name}: </strong>{ben}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {/* B包及C包建议 */}
-            <div style={{ marginBottom: 20, padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px dashed var(--border)' }}>
-              <h4 style={{ color: '#fff', fontSize: 13, margin: '0 0 8px 0', fontWeight: 600 }}>全价营养配比</h4>
-              <div style={{ fontSize: 11, color: 'var(--gray)', lineHeight: 1.5 }}>
-                <div style={{ marginBottom: 4 }}><strong style={{ color: 'var(--secondary)' }}>推荐B包:</strong> {showDetailRecipe.b_pack}</div>
-                <div><strong style={{ color: '#00FFA3' }}>推荐C包:</strong> {showDetailRecipe.c_pack}</div>
-              </div>
-            </div>
-            
-            <button
-              className="btn"
-              style={{
-                width: '100%',
-                borderRadius: 999,
-                border: '1px solid rgba(0, 230, 255, 0.35)',
-                background: 'rgba(0, 230, 255, 0.12)',
-                color: 'var(--primary)',
-                fontWeight: 700,
-                boxShadow: '0 0 18px rgba(0, 230, 255, 0.12)'
-              }}
-              onClick={() => setShowDetailRecipe(null)}
-            >
-              确认
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* 调整配方安全警告确认弹窗 */}
       {warningData && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
@@ -817,90 +1009,12 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
         </div>
       )}
 
-      {/* AI 营养配方对比报告弹窗 */}
-      {aComparisonData && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div className="card glass animate-fade" style={{ width: '100%', maxWidth: 450, padding: 24, border: '1px solid var(--primary)', textAlign: 'center', boxShadow: '0 8px 32px rgba(0,230,255,0.15)' }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
-            <h3 style={{ color: 'var(--primary)', margin: '0 0 16px 0', fontSize: 16, fontWeight: 700 }}>AI 营养配方对比报告</h3>
-            
-            {/* 打分对比排版 */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}>
-              {/* 当前推荐 */}
-              <div 
-                onClick={() => setAComparisonData(null)}
-                onMouseEnter={() => setHoveredCard('current')}
-                onMouseLeave={() => setHoveredCard(null)}
-                style={{ 
-                  flex: 1, 
-                  padding: 12, 
-                  background: 'rgba(255,255,255,0.03)', 
-                  borderRadius: 12, 
-                  border: hoveredCard === 'current' ? '1.5px solid #4CAF50' : '1px dashed rgba(255,255,255,0.15)',
-                  cursor: 'pointer',
-                  transform: hoveredCard === 'current' ? 'scale(1.03)' : 'none',
-                  transition: 'all 0.25s ease',
-                  boxShadow: hoveredCard === 'current' ? '0 0 16px rgba(76,175,80,0.25)' : 'none'
-                }}
-              >
-                <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 4 }}>当前推荐 (点击保持)</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aComparisonData.currentName}</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: '#4CAF50' }}>{aComparisonData.currentScore}%</div>
-                <div style={{ fontSize: 10, color: '#4CAF50' }}>适配得分</div>
-              </div>
-              
-              {/* 更换配方 */}
-              <div 
-                onClick={aComparisonData.onConfirm}
-                onMouseEnter={() => setHoveredCard('proposed')}
-                onMouseLeave={() => setHoveredCard(null)}
-                style={{ 
-                  flex: 1, 
-                  padding: 12, 
-                  background: 'rgba(255,255,255,0.03)', 
-                  borderRadius: 12, 
-                  border: hoveredCard === 'proposed' ? '1.5px solid var(--primary)' : '1px dashed rgba(255,255,255,0.15)',
-                  cursor: 'pointer',
-                  transform: hoveredCard === 'proposed' ? 'scale(1.03)' : 'none',
-                  transition: 'all 0.25s ease',
-                  boxShadow: hoveredCard === 'proposed' ? '0 0 16px rgba(0,230,255,0.25)' : 'none'
-                }}
-              >
-                <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 4 }}>计划更换 (点击更换)</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aComparisonData.proposedName}</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--primary)' }}>{aComparisonData.proposedScore}%</div>
-                <div style={{ fontSize: 10, color: 'var(--primary)' }}>适配得分</div>
-              </div>
-            </div>
-
-            {/* 对比详情与打分原因 */}
-            <div style={{ textAlign: 'left', marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8 }}>
-                <div style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, marginBottom: 4 }}>⚖️ 营养特性对比</div>
-                <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>{aComparisonData.details}</div>
-              </div>
-              <div style={{ padding: 12, background: 'rgba(255,255,255,0.02)', borderRadius: 8 }}>
-                <div style={{ fontSize: 11, color: '#4CAF50', fontWeight: 600, marginBottom: 4 }}>🎯 评分差异解释</div>
-                <div style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.5 }}>{aComparisonData.reason}</div>
-              </div>
-            </div>
-
-            {/* 操作按钮 */}
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button 
-                className="btn btn-secondary" 
-                style={{ flex: 1, background: 'var(--primary)', color: '#000', border: '1px solid var(--primary)', fontWeight: 700 }} 
-                onClick={aComparisonData.onConfirm}
-              >
-                确认更换
-              </button>
-              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setAComparisonData(null)}>
-                保持推荐
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ComparisonSheet
+        data={aComparisonData}
+        hoveredCard={hoveredCard}
+        setHoveredCard={setHoveredCard}
+        onClose={() => setAComparisonData(null)}
+      />
     </div>
   );
 }

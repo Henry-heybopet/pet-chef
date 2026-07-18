@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/index';
+import { getPetAvatarUrl, handlePetAvatarError } from '../utils/petAvatar';
 
 const splitIngredients = value => String(value || '').split(/[,，、;；\s\n]+/).map(item => item.trim()).filter(Boolean);
 
@@ -17,7 +18,7 @@ function findBreed(breeds, pet) {
 }
 
 function petAvatar(pet, breeds) {
-  return pet.avatar || pet.avatar_url || findBreed(breeds, pet)?.img || '/dog.png';
+  return getPetAvatarUrl(pet, breeds);
 }
 
 function useBreedOptions() {
@@ -35,7 +36,13 @@ function useBreedOptions() {
 }
 
 function PetAvatar({ pet, breeds }) {
-  return <img src={petAvatar(pet, breeds)} alt="" />;
+  return (
+    <img
+      src={petAvatar(pet, breeds)}
+      alt=""
+      onError={(event) => handlePetAvatarError(event, pet, 'fresh-match')}
+    />
+  );
 }
 
 export function FreshMatchScreen({ profiles, authToken, onBack, onAddPet, onResult }) {
@@ -148,7 +155,31 @@ export function FreshMatchScreen({ profiles, authToken, onBack, onAddPet, onResu
   );
 }
 
-export function FreshMatchResultScreen({ result, onBack }) {
+function toCookingContext(recipe, result) {
+  const total = Number(recipe.total_weight_g || result?.feeding_plan?.per_meal_grams || 0);
+  const profile = recipe.cooking_profile || recipe.cookingProfile || {};
+  const preheatMinutes = total <= 100 ? 2 : total <= 200 ? 3 : 4;
+  const cookMinutes = profile.cook_minutes ?? profile.cookMinutes ?? Math.max(8, Math.round(total / 25));
+  const cookParams = {
+    ...profile,
+    temperature: profile.temperature ?? 85,
+    cookMinutes,
+    preheatMinutes,
+    cookTime: profile.total_seconds ?? profile.cookTime ?? ((preheatMinutes + cookMinutes) * 60),
+    speed: profile.speed ?? 1,
+    power: profile.power ?? 8,
+  };
+  return {
+    recipe: { ...recipe, id: recipe.id || recipe.name },
+    profile: result.pet,
+    intake: result.feeding_plan,
+    cookParams,
+    displayGrams: total,
+    displayIngredients: (recipe.ingredients || []).map(item => ({ ...item, grams: item.weight_g })),
+  };
+}
+
+export function FreshMatchResultScreen({ result, onBack, onStartCooking }) {
   const breeds = useBreedOptions();
   const [openRecipe, setOpenRecipe] = useState(result?.recipes?.[0]?.id || '');
   if (!result) return null;
@@ -206,7 +237,10 @@ export function FreshMatchResultScreen({ result, onBack }) {
                   <strong>{recipe.name}</strong>
                   <span>{recipe.total_weight_g}g · {recipe.reason}</span>
                 </div>
-                <em>{open ? '收起' : '展开'}</em>
+                <span className="fresh-recipe-actions">
+                  <em>{open ? '收起' : '展开'}</em>
+                  <b onClick={event => { event.stopPropagation(); onStartCooking?.(toCookingContext(recipe, result)); }}>一键启动烹饪</b>
+                </span>
               </button>
               <div className="fresh-ingredient-preview">
                 {(recipe.ingredients || []).map(item => <span key={`${recipe.id}-${item.name}`}>{item.name} {item.weight_g}g</span>)}

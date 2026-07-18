@@ -5,6 +5,8 @@ node_modules
 .env.*
 dist
 *.log
+.data/
+uploads/
 backend/.data/
 backend/public/uploads/
 backend/src/data/compare_cache*.json
@@ -26,3 +28,4 @@ frontend/ios/ios_core_sdk.tar.gz
 graphify-out/
 business-graphify/
 scratch/
+nginx/admin.htpasswd

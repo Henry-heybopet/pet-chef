@@ -509,6 +509,54 @@ function upsertDevice(userId, payload) {
   return device;
 }
 
+function syncDeviceDp(userId, deviceId, payload = {}) {
+  const device = db.devices.find(item =>
+    (item.id === deviceId || item.tuya_device_id === deviceId || item.tuya_device_id === payload.tuya_device_id) &&
+    userOwnsHousehold(userId, item.household_id)
+  );
+  if (!device) {
+    const error = new Error('Device not found');
+    error.status = 404;
+    throw error;
+  }
+  if (!payload.dps || typeof payload.dps !== 'object' || Array.isArray(payload.dps)) {
+    const error = new Error('dps object is required');
+    error.status = 400;
+    throw error;
+  }
+
+  const dps = { ...(device.dps || {}), ...payload.dps };
+  const online = firstDefined(payload.online, payload.isOnline);
+  Object.assign(device, {
+    dps,
+    online_status: online === undefined ? device.online_status : Boolean(online),
+    status: online === false ? 'offline' : online === true ? 'online' : device.status,
+    last_online_at: online === true ? now() : device.last_online_at,
+    last_dp_reported_at: payload.reported_at || now(),
+    fault_code: firstDefined(dps[12], dps.fault, device.fault_code),
+    updated_at: now(),
+  });
+
+  saveDb();
+  return device;
+}
+
+function unbindDevice(userId, deviceId) {
+  const index = db.devices.findIndex(item =>
+    (item.id === deviceId || item.tuya_device_id === deviceId) &&
+    userOwnsHousehold(userId, item.household_id)
+  );
+  if (index < 0) {
+    const error = new Error('Device not found');
+    error.status = 404;
+    throw error;
+  }
+  const [device] = db.devices.splice(index, 1);
+  db.device_pet_bindings = db.device_pet_bindings.filter(item => item.device_id !== device.id);
+  saveDb();
+  return device;
+}
+
 function bindDevicePet(deviceId, petId, isDefault = false) {
   if (!db.device_pet_bindings.some(item => item.device_id === deviceId && item.pet_id === petId)) {
     db.device_pet_bindings.push({
@@ -707,6 +755,8 @@ module.exports = {
   getPetForUser,
   petToDogProfile,
   upsertDevice,
+  syncDeviceDp,
+  unbindDevice,
   bindDevicePet,
   createRecord,
   createCookingOperation,
