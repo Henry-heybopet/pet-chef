@@ -17,6 +17,7 @@ RUN npm ci --omit=dev 2>/dev/null || npm install --omit=dev
 # Copy application code
 COPY backend/src/ ./src/
 COPY backend/prisma/ ./prisma/
+RUN mkdir -p /app/public/uploads
 
 # Generate Prisma client during build so it is baked into the read-only image
 RUN npx prisma generate

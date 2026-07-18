@@ -18,8 +18,7 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
   const t = useTranslation(lang);
   const CAT_LABELS = { protein: t('protein'), carb: t('carb'), veg: t('veg'), addition: t('addition') };
   const [cookData, setCookData] = useState(null);
-  const [selectedMeal, setSelectedMeal] = useState('per_meal');
-  const [customGrams, setCustomGrams] = useState(200);
+  const [packCount, setPackCount] = useState(1);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,10 +42,8 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
   if (!cookData) return null;
 
   const { intake, ingredientList, cookParams } = cookData;
-  let displayGrams;
-  if (selectedMeal === 'daily') displayGrams = intake.daily_grams;
-  else if (selectedMeal === 'per_meal') displayGrams = intake.per_meal_grams;
-  else displayGrams = customGrams;
+  const displayGrams = packCount * 200;
+  const packOptions = [1, 2, 3];
 
   const displayIngredients = ingredientList.map(ing => ({
     ...ing, grams: ing.pct ? Math.round((ing.pct / 100) * displayGrams) : null,
@@ -69,28 +66,44 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
             { key: 'daily', label: t('dailyTotalG', { n: intake.daily_grams }), sub: t('splitMeals', { n: intake.meals_per_day }) },
             { key: 'per_meal', label: t('perMealG', { n: intake.per_meal_grams }), sub: t('mealsDay', { n: intake.meals_per_day }) },
           ].map(opt => (
-            <button key={opt.key} onClick={() => setSelectedMeal(opt.key)}
-              style={{ flex: 1, padding: '12px 8px', border: `1px solid ${selectedMeal === opt.key ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 'var(--radius-sm)', background: selectedMeal === opt.key ? 'rgba(0,230,255,0.1)' : 'transparent', cursor: 'pointer', textAlign: 'center' }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: selectedMeal === opt.key ? 'var(--primary)' : 'var(--text-main)' }}>{opt.label}</div>
+            <div key={opt.key}
+              style={{ flex: 1, padding: '12px 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'rgba(255,255,255,0.02)', textAlign: 'center' }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-main)' }}>{opt.label}</div>
               <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 2 }}>{opt.sub}</div>
-            </button>
+            </div>
           ))}
         </div>
-        <button onClick={() => setSelectedMeal('custom')}
-          style={{ width: '100%', padding: '12px 16px', border: `1px solid ${selectedMeal === 'custom' ? '#FFB800' : 'var(--border)'}`, borderRadius: 'var(--radius-sm)', background: selectedMeal === 'custom' ? 'rgba(255,184,0,0.1)' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 12 }}>
-          <span style={{ fontWeight: 700, fontSize: 13, color: selectedMeal === 'custom' ? '#FFB800' : 'var(--text-main)' }}>{t('customAmount')}</span>
-          {selectedMeal === 'custom' ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={e => e.stopPropagation()}>
-              <button onClick={e => { e.stopPropagation(); setCustomGrams(Math.max(10, customGrams - 10)); }} style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(255,184,0,0.2)', border: 'none', color: '#FFB800', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-              <input type="number" value={customGrams} onChange={e => setCustomGrams(Math.max(10, Math.min(2000, parseInt(e.target.value) || 10)))} onClick={e => e.stopPropagation()}
-                style={{ width: 60, textAlign: 'center', padding: '4px 6px', background: 'rgba(255,184,0,0.08)', border: '1px solid rgba(255,184,0,0.3)', borderRadius: 8, color: '#FFB800', fontSize: 18, fontWeight: 800, outline: 'none' }} />
-              <span style={{ color: '#FFB800', fontWeight: 600, fontSize: 13 }}>g</span>
-              <button onClick={e => { e.stopPropagation(); setCustomGrams(Math.min(2000, customGrams + 10)); }} style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(255,184,0,0.2)', border: 'none', color: '#FFB800', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-            </div>
-          ) : (
-            <span style={{ fontSize: 12, color: 'var(--gray)' }}>{t('freezeExtra')}</span>
-          )}
-        </button>
+        <div
+          style={{ width: '100%', padding: '12px 14px', border: '1px solid #FFB800', borderRadius: 'var(--radius-sm)', background: 'rgba(255,184,0,0.08)', marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', marginBottom: 10 }}>
+            <span style={{ fontWeight: 800, fontSize: 14, color: '#FFB800' }}>{t('customAmount')}</span>
+            <span style={{ fontSize: 12, color: 'var(--gray)' }}>{t('freshPackDesc')}</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {packOptions.map(count => {
+              const active = packCount === count;
+              return (
+                <button
+                  key={count}
+                  type="button"
+                  onClick={() => setPackCount(count)}
+                  style={{
+                    padding: '10px 6px',
+                    borderRadius: 10,
+                    border: `1px solid ${active ? '#FFB800' : 'rgba(255,184,0,0.28)'}`,
+                    background: active ? 'rgba(255,184,0,0.18)' : 'rgba(255,255,255,0.03)',
+                    color: active ? '#FFB800' : 'var(--text-main)',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div>{count}{t('packUnit')}</div>
+                  <div style={{ fontSize: 11, color: active ? '#FFD56A' : 'var(--gray)', marginTop: 2 }}>{count * 200}g</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div style={{ padding: '8px 12px', background: 'rgba(0,230,255,0.05)', border: '1px solid rgba(0,230,255,0.15)', borderRadius: 10, fontSize: 12, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
           💧 {t('addWater')} <strong>{Math.round(displayGrams * 0.15)}g</strong> {t('clearWater')}
         </div>
@@ -123,7 +136,7 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
       <div className="glass" style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, padding: '16px 24px', display: 'flex', gap: 12, zIndex: 100, background: 'rgba(10,13,20,0.95)', borderTop: '1px solid var(--border)' }}>
         <button className="btn-secondary" style={{ flex: 1 }} onClick={onBack}>{t('back')}</button>
         <button className="btn-primary" style={{ flex: 2, boxShadow: '0 0 24px rgba(0,230,255,0.35)' }}
-          onClick={() => onStartCooking({ recipe, profile, intake, cookParams, displayGrams, displayIngredients })}>
+          onClick={() => onStartCooking({ recipe, profile, intake, cookParams, displayGrams, displayIngredients, packCount, packGrams: 200 })}>
           {t('startCook')}
         </button>
       </div>
