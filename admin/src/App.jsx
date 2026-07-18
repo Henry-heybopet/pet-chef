@@ -50,6 +50,224 @@ function asArray(value) {
   return [];
 }
 
+const STATUS_OPTIONS = [
+  { label: 'Active', value: 'active' },
+  { label: 'Draft', value: 'draft' },
+  { label: 'Archived', value: 'archived' },
+];
+
+const CATEGORY_OPTIONS = ['幼犬通用', '控钙幼犬（大型幼犬）', '成犬通用', '老年犬通用', '美毛护肤', '低敏单一蛋白', '护肝'];
+const LIFE_STAGE_OPTIONS = ['幼犬', '成年犬', '老年犬'];
+const PROTEIN_GROUP_OPTIONS = [
+  { label: '鸡肉', value: 'chicken' },
+  { label: '鸭肉', value: 'duck' },
+  { label: '牛肉', value: 'beef' },
+  { label: '鱼肉', value: 'fish' },
+  { label: '兔肉', value: 'rabbit' },
+  { label: '其它肉', value: 'other' },
+];
+const POWER_OPTIONS = Array.from({ length: 11 }, (_, index) => ({ label: `${index * 100}瓦`, value: String(index * 100) }));
+const SPEED_OPTIONS = Array.from({ length: 11 }, (_, index) => ({ label: `${index}档`, value: String(index) }));
+const WATER_RATIO_OPTIONS = [
+  { label: '10%', value: '10' },
+  { label: '15%', value: '15' },
+  { label: '20%', value: '20' },
+];
+const PACKAGE_WEIGHT_OPTIONS = [100, 200, 300, 400, 500].map(value => ({ label: `${value}克`, value: String(value) }));
+const TEXTURE_OPTIONS = [
+  '原切块状 / 清晰颗粒感',
+  '软烩饭 / 湿润软烂型',
+  '颗粒饭团型 / 松散成团型',
+  '肉泥慕斯型 / 细腻糊状',
+  '炒饭 / 偏干香颗粒型',
+];
+
+const ADMIN_TOKEN_KEY = 'heybo_admin_token';
+const ADMIN_MODULES = [
+  { key: 'dashboard', label: '📊 运行大盘 Dashboard' },
+  { key: 'users', label: '👤 用户管理 Users' },
+  { key: 'pets', label: '🐶 宠物档案 Pets' },
+  { key: 'devices', label: '🔌 智能设备 Devices' },
+  { key: 'recipes', label: '🍲 食谱配方 Recipes' },
+  { key: 'products', label: '🛒 商品 & 溯源 Mall' },
+  { key: 'orders', label: '📦 订单对账 Orders' },
+  { key: 'medical', label: '🏥 医疗病例 Medical' },
+  { key: 'doctors', label: '🩺 医生 & 处方 Doctors' },
+  { key: 'faults', label: '⚠️ 故障诊断 Fault Logs' },
+  { key: 'subadmins', label: '🔐 子管理员管理' },
+];
+
+const NUTRITION_FIELDS = [
+  ['protein_pct', '粗蛋白：≥', '%'],
+  ['fat_pct', '粗脂肪：≥', '%'],
+  ['fiber_pct', '粗纤维：≤', '%'],
+  ['water_content_pct', '水分：≤', '%'],
+  ['ash_pct', '粗灰分：≤', '%'],
+  ['calcium_pct', '钙：≥', '%'],
+  ['phosphorus_pct', '总磷：≥', '%'],
+  ['chloride_pct', '水溶性氯化物：≥', '%'],
+  ['lysine_pct', '赖氨酸：≥', '%'],
+  ['calories_per_100g', '100克能量密度', '千卡'],
+];
+
+const NUTRITION_FALLBACK_KEYS = {
+  protein_pct: ['protein_pct', 'protein'],
+  fat_pct: ['fat_pct', 'fat'],
+  fiber_pct: ['fiber_pct', 'fiber'],
+  water_content_pct: ['water_content_pct', 'moisture'],
+  calories_per_100g: ['calories_per_100g', 'caloric_density'],
+};
+
+function objectToRows(value) {
+  return Object.entries(value || {}).map(([name, percent]) => ({ name, percent: String(percent ?? '') }));
+}
+
+function bPackToRows(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return objectToRows(value);
+  if (typeof value !== 'string') return [];
+  return value.split('/').map((part, index) => {
+    const clean = part.trim();
+    const match = clean.match(/^(.*?)(\d+(?:\.\d+)?)\s*$/);
+    if (!match) return { name: clean, percent: '' };
+    const rawName = match[1].trim().replace(/^[^：:]+[：:]\s*/, index === 0 ? '' : '');
+    return { name: rawName || clean, percent: match[2] };
+  }).filter(row => row.name);
+}
+
+function rowsToObject(rows) {
+  return rows.reduce((acc, row) => {
+    const name = row.name.trim();
+    if (name) acc[name] = Number(row.percent) || 0;
+    return acc;
+  }, {});
+}
+
+function sumRows(rows) {
+  return rows.reduce((sum, row) => sum + (Number(row.percent) || 0), 0);
+}
+
+function sortRecipesById(items) {
+  return [...items].sort((a, b) => String(a.id).localeCompare(String(b.id), 'en', { numeric: true }));
+}
+
+function normalizeSearchText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isRecipeDraftDirty(recipe, draft) {
+  return JSON.stringify(draft) !== JSON.stringify(toRecipeDraft(recipe));
+}
+
+function toSubadminDraft(account = {}) {
+  return {
+    username: account.username || '',
+    password: account.password || '',
+    regions: Array.isArray(account.regions) ? account.regions : [],
+    modules: Array.isArray(account.modules) ? account.modules : [],
+    isNew: Boolean(account.isNew),
+  };
+}
+
+function isSubadminDraftDirty(account, draft) {
+  return JSON.stringify(toSubadminDraft(account)) !== JSON.stringify(draft);
+}
+
+function getNutritionValue(recipe, nutrition, key) {
+  const keys = NUTRITION_FALLBACK_KEYS[key] || [key];
+  for (const candidate of keys) {
+    if (nutrition?.[candidate] !== undefined && nutrition?.[candidate] !== null) return nutrition[candidate];
+    if (recipe?.[candidate] !== undefined && recipe?.[candidate] !== null) return recipe[candidate];
+  }
+  return '';
+}
+
+function normalizePowerWatts(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '800';
+  return String(num <= 10 ? num * 100 : num);
+}
+
+function normalizeWaterRatioPercent(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '15';
+  return String(num <= 1 ? Math.round(num * 100) : num);
+}
+
+function toRecipeDraft(recipe) {
+  const nutrition = recipe.nutrition_snapshot || {};
+  const cookingProfile = recipeCookingProfile(recipe);
+  const bPackValue = nutrition.b_pack || recipe.b_pack || {};
+  const nutritionFields = NUTRITION_FIELDS.reduce((acc, [key]) => {
+    acc[key] = String(getNutritionValue(recipe, nutrition, key) ?? '');
+    return acc;
+  }, {});
+
+  return {
+    img: recipe.img || '',
+    name: recipe.name || '',
+    category: recipe.category || CATEGORY_OPTIONS[0],
+    life_stage: recipe.life_stage || LIFE_STAGE_OPTIONS[1],
+    status: recipe.status || 'active',
+    version: recipe.version || 1,
+    health_tags: asArray(recipe.health_tags || recipe.tags).join('、'),
+    ingredientsRows: objectToRows(recipe.ingredients || {}),
+    bPackRows: bPackToRows(bPackValue),
+    nutritionFields,
+    nutritionSnapshot: nutrition,
+    cookingProfile,
+    cookingParams: {
+      protein_group: cookingProfile.protein_group || 'other',
+      temperature: String(cookingProfile.temperature ?? 85),
+      powerWatts: normalizePowerWatts(cookingProfile.power),
+      speed: String(cookingProfile.speed ?? 1),
+      waterRatioPercent: normalizeWaterRatioPercent(cookingProfile.water_ratio),
+      preheatMinutes: String(cookingProfile.preheat_minutes ?? 3),
+      cookMinutes: String(cookingProfile.cook_minutes ?? 8),
+      packageWeightGrams: String(cookingProfile.cook_weight_grams ?? cookingProfile.package_weight_grams ?? 200),
+      textureProfile: cookingProfile.texture_profile || TEXTURE_OPTIONS[0],
+    },
+  };
+}
+
+function buildRecipePayload(draft) {
+  const bPackObject = rowsToObject(draft.bPackRows);
+  const nutritionValues = Object.fromEntries(
+    Object.entries(draft.nutritionFields).map(([key, value]) => [key, value === '' ? null : Number(value)])
+  );
+  const nutritionSnapshot = {
+    ...(draft.nutritionSnapshot || {}),
+    ...nutritionValues,
+    b_pack: bPackObject,
+  };
+  const cookingProfile = {
+    ...(draft.cookingProfile || {}),
+    mode: draft.cookingProfile?.mode || 'diy',
+    protein_group: draft.cookingParams.protein_group,
+    temperature: Number(draft.cookingParams.temperature) || 85,
+    power: Math.round((Number(draft.cookingParams.powerWatts) || 0) / 100),
+    speed: String(draft.cookingParams.speed ?? '1'),
+    water_ratio: (Number(draft.cookingParams.waterRatioPercent) || 15) / 100,
+    preheat_minutes: Number(draft.cookingParams.preheatMinutes) || 0,
+    cook_minutes: Number(draft.cookingParams.cookMinutes) || 0,
+    cook_weight_grams: Number(draft.cookingParams.packageWeightGrams) || 200,
+    texture_profile: draft.cookingParams.textureProfile || TEXTURE_OPTIONS[0],
+  };
+
+  return {
+    name: draft.name.trim(),
+    category: draft.category,
+    life_stage: draft.life_stage,
+    status: draft.status,
+    version: Number(draft.version) || 1,
+    health_tags: draft.health_tags.split(/[、,，;；\s]+/).map(item => item.trim()).filter(Boolean),
+    ingredients: rowsToObject(draft.ingredientsRows),
+    b_pack: Object.entries(bPackObject).map(([name, percent]) => `${name} ${percent}`).join(' / '),
+    ...nutritionValues,
+    nutrition_snapshot: nutritionSnapshot,
+    cooking_profile: cookingProfile,
+  };
+}
+
 function normalizePet(pet) {
   return {
     ...pet,
@@ -94,6 +312,16 @@ function App() {
   // 1. 全局状态
   const [activeRegion, setActiveRegion] = useState('CN'); // CN, US, EU
   const [activeTab, setActiveTab] = useState('dashboard'); // dashboard, users, pets, devices, recipes, products, orders, medical, doctors, faults
+  const [adminToken, setAdminToken] = useState(() => localStorage.getItem(ADMIN_TOKEN_KEY) || '');
+  const [adminSession, setAdminSession] = useState(null);
+  const [adminAuthLoading, setAdminAuthLoading] = useState(Boolean(adminToken));
+  const [adminLoginError, setAdminLoginError] = useState('');
+  const [adminLoginForm, setAdminLoginForm] = useState({ username: 'Heybopetadmin', password: '' });
+  const [subadmins, setSubadmins] = useState([]);
+  const [subadminDrafts, setSubadminDrafts] = useState({});
+  const [subadminError, setSubadminError] = useState('');
+  const [savingSubadmin, setSavingSubadmin] = useState('');
+  const [visiblePasswords, setVisiblePasswords] = useState({});
   
   // 详情模态框/侧边抽屉状态
   const [selectedUser, setSelectedUser] = useState(null);
@@ -108,6 +336,10 @@ function App() {
   const [recipesLoading, setRecipesLoading] = useState(false);
   const [recipeError, setRecipeError] = useState('');
   const [savingRecipe, setSavingRecipe] = useState(false);
+  const [recipeDrafts, setRecipeDrafts] = useState({});
+  const [recipeRowErrors, setRecipeRowErrors] = useState({});
+  const [recipeSearch, setRecipeSearch] = useState('');
+  const [uploadingRecipeId, setUploadingRecipeId] = useState('');
   const [pets, setPets] = useState([]);
   const [petSource, setPetSource] = useState('loading');
   const [petError, setPetError] = useState('');
@@ -126,6 +358,79 @@ function App() {
 
   // 医生审核处理
   const [doctors, setDoctors] = useState(mockDoctorReviews);
+
+  const canAccessModule = (key) => adminSession?.role === 'superadmin' || adminSession?.modules?.includes(key);
+  const canAccessRegion = (code) => adminSession?.role === 'superadmin' || adminSession?.regions?.includes(code);
+  const allowedRegions = useMemo(() => REGIONS.filter(region => canAccessRegion(region.code)), [adminSession]);
+  const visibleModules = useMemo(() => ADMIN_MODULES.filter(module => canAccessModule(module.key)), [adminSession]);
+
+  const adminFetch = async (path, options = {}) => {
+    const token = adminToken || localStorage.getItem(ADMIN_TOKEN_KEY) || '';
+    const headers = {
+      ...(options.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+    return fetch(`${API_BASE}${path}`, {
+      ...options,
+      credentials: 'same-origin',
+      headers,
+    });
+  };
+
+  const clearAdminSession = () => {
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    setAdminToken('');
+    setAdminSession(null);
+  };
+
+  const loadAdminSession = async (token = adminToken) => {
+    if (!token) {
+      setAdminAuthLoading(false);
+      return;
+    }
+    setAdminAuthLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/auth/session`, {
+        credentials: 'same-origin',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '登录已失效');
+      setAdminSession(data.profile);
+      setAdminToken(token);
+      localStorage.setItem(ADMIN_TOKEN_KEY, token);
+      setAdminLoginError('');
+    } catch (error) {
+      clearAdminSession();
+      setAdminLoginError(error.message);
+    } finally {
+      setAdminAuthLoading(false);
+    }
+  };
+
+  const handleAdminLogin = async (event) => {
+    event.preventDefault();
+    setAdminAuthLoading(true);
+    setAdminLoginError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/auth/login`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(adminLoginForm),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '登录失败');
+      setAdminToken(data.token);
+      setAdminSession(data.profile);
+      localStorage.setItem(ADMIN_TOKEN_KEY, data.token);
+    } catch (error) {
+      clearAdminSession();
+      setAdminLoginError(error.message);
+    } finally {
+      setAdminAuthLoading(false);
+    }
+  };
 
   // 当前区域的配置信息
   const currentRegionConfig = useMemo(() => {
@@ -155,6 +460,20 @@ function App() {
   const filteredOrders = useMemo(() => {
     return mockOrders.filter(o => o.region === activeRegion);
   }, [activeRegion]);
+
+  const filteredRecipes = useMemo(() => {
+    const query = normalizeSearchText(recipeSearch);
+    if (!query) return recipes;
+    return recipes.filter(recipe => {
+      const draft = recipeDrafts[recipe.id] || toRecipeDraft(recipe);
+      return [
+        draft.name,
+        draft.category,
+        draft.health_tags,
+        draft.life_stage,
+      ].some(value => normalizeSearchText(value).includes(query));
+    });
+  }, [recipes, recipeDrafts, recipeSearch]);
 
   const filteredMedical = useMemo(() => {
     const petIds = new Set(filteredPets.map(p => p.id));
@@ -188,10 +507,12 @@ function App() {
     setRecipesLoading(true);
     setRecipeError('');
     try {
-      const res = await fetch(`${API_BASE}/api/admin/recipes`);
+      const res = await adminFetch('/api/admin/recipes');
       const data = await res.json();
       if (!data?.success) throw new Error(data?.error || '加载食谱失败');
-      setRecipes(data.recipes || []);
+      const nextRecipes = sortRecipesById(data.recipes || []);
+      setRecipes(nextRecipes);
+      setRecipeDrafts(Object.fromEntries(nextRecipes.map(recipe => [recipe.id, toRecipeDraft(recipe)])));
       setRecipeSource(data.source || 'pg');
     } catch (error) {
       setRecipes([]);
@@ -205,7 +526,7 @@ function App() {
   const loadPets = async () => {
     setPetError('');
     try {
-      const res = await fetch(`${API_BASE}/api/admin/pets`);
+      const res = await adminFetch('/api/admin/pets');
       const data = await res.json();
       if (!data?.success) throw new Error(data?.error || '加载宠物档案失败');
       setPets((data.pets || []).map(normalizePet));
@@ -220,7 +541,7 @@ function App() {
   const loadUsers = async () => {
     setUserError('');
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users`);
+      const res = await adminFetch('/api/admin/users');
       const data = await res.json();
       if (!data?.success) throw new Error(data?.error || '加载用户失败');
       setUsers((data.users || []).map(normalizeUser));
@@ -235,7 +556,7 @@ function App() {
   const loadDevices = async () => {
     setDeviceError('');
     try {
-      const res = await fetch(`${API_BASE}/api/admin/devices`);
+      const res = await adminFetch('/api/admin/devices');
       const data = await res.json();
       if (!data?.success) throw new Error(data?.error || '加载设备失败');
       setDevices(data.devices || []);
@@ -247,12 +568,43 @@ function App() {
     }
   };
 
+  const loadSubadmins = async () => {
+    if (!canAccessModule('subadmins')) return;
+    setSubadminError('');
+    try {
+      const res = await adminFetch('/api/admin/subadmins');
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '加载子管理员失败');
+      const rows = data.subadmins || [];
+      setSubadmins(rows);
+      setSubadminDrafts(Object.fromEntries(rows.map(account => [account.username, toSubadminDraft(account)])));
+    } catch (error) {
+      setSubadminError(error.message);
+    }
+  };
+
   useEffect(() => {
-    loadUsers();
-    loadRecipes();
-    loadPets();
-    loadDevices();
+    loadAdminSession(adminToken);
   }, []);
+
+  useEffect(() => {
+    if (!adminSession) return;
+    if (!allowedRegions.some(region => region.code === activeRegion)) {
+      setActiveRegion(allowedRegions[0]?.code || 'CN');
+    }
+    if (!visibleModules.some(module => module.key === activeTab)) {
+      setActiveTab(visibleModules[0]?.key || 'dashboard');
+    }
+  }, [adminSession, allowedRegions, activeRegion, visibleModules, activeTab]);
+
+  useEffect(() => {
+    if (!adminSession) return;
+    if (canAccessModule('users')) loadUsers();
+    if (canAccessModule('recipes')) loadRecipes();
+    if (canAccessModule('pets')) loadPets();
+    if (canAccessModule('devices')) loadDevices();
+    if (canAccessModule('subadmins')) loadSubadmins();
+  }, [adminSession]);
 
   const openRecipeEditor = (recipe) => {
     const cookingProfile = recipeCookingProfile(recipe);
@@ -291,14 +643,14 @@ function App() {
         nutrition_snapshot: parseJsonField('营养快照', recipeForm.nutrition_snapshot),
         cooking_profile: parseJsonField('鲜食机控制参数', recipeForm.cooking_profile),
       };
-      const res = await fetch(`${API_BASE}/api/admin/recipes/${selectedRecipe.id}`, {
+      const res = await adminFetch(`/api/admin/recipes/${selectedRecipe.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || '保存失败');
-      setRecipes(prev => prev.map(recipe => recipe.id === data.recipe.id ? data.recipe : recipe));
+      setRecipes(prev => sortRecipesById(prev.map(recipe => recipe.id === data.recipe.id ? data.recipe : recipe)));
       setRecipeSource(data.source || 'pg');
       setSelectedRecipe(null);
       setRecipeForm(null);
@@ -306,6 +658,229 @@ function App() {
       setRecipeError(error.message);
     } finally {
       setSavingRecipe(false);
+    }
+  };
+
+  const resolveRecipeImage = (img) => {
+    if (!img) return '';
+    if (/^https?:\/\//i.test(img) || img.startsWith('data:')) return img;
+    return `${API_BASE}${img.startsWith('/') ? img : `/${img}`}`;
+  };
+
+  const updateRecipeDraft = (recipeId, updater) => {
+    setRecipeDrafts(prev => {
+      const current = prev[recipeId] || toRecipeDraft(recipes.find(recipe => recipe.id === recipeId) || {});
+      return {
+        ...prev,
+        [recipeId]: typeof updater === 'function' ? updater(current) : { ...current, ...updater },
+      };
+    });
+  };
+
+  const updateRecipeRow = (recipeId, listKey, index, field, value) => {
+    updateRecipeDraft(recipeId, draft => ({
+      ...draft,
+      [listKey]: draft[listKey].map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row),
+    }));
+  };
+
+  const addRecipeRow = (recipeId, listKey) => {
+    updateRecipeDraft(recipeId, draft => ({
+      ...draft,
+      [listKey]: [...draft[listKey], { name: '', percent: '' }],
+    }));
+  };
+
+  const removeRecipeRow = (recipeId, listKey, index) => {
+    updateRecipeDraft(recipeId, draft => ({
+      ...draft,
+      [listKey]: draft[listKey].filter((_, rowIndex) => rowIndex !== index),
+    }));
+  };
+
+  const validateRecipeDraft = (draft) => {
+    if (!draft.name.trim()) return '食谱名字不能为空';
+    return '';
+  };
+
+  const saveRecipeRow = async (recipe) => {
+    const draft = recipeDrafts[recipe.id] || toRecipeDraft(recipe);
+    const validationError = validateRecipeDraft(draft);
+    setRecipeRowErrors(prev => ({ ...prev, [recipe.id]: validationError }));
+    if (validationError) return;
+
+    setSavingRecipe(recipe.id);
+    setRecipeError('');
+    try {
+      const res = await adminFetch(`/api/admin/recipes/${recipe.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildRecipePayload(draft)),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '保存失败');
+      setRecipes(prev => sortRecipesById(prev.map(item => item.id === data.recipe.id ? data.recipe : item)));
+      setRecipeDrafts(prev => ({ ...prev, [data.recipe.id]: toRecipeDraft(data.recipe) }));
+      setRecipeSource(data.source || 'pg');
+      setRecipeRowErrors(prev => ({ ...prev, [recipe.id]: '' }));
+    } catch (error) {
+      setRecipeRowErrors(prev => ({ ...prev, [recipe.id]: error.message }));
+    } finally {
+      setSavingRecipe(false);
+    }
+  };
+
+  const uploadRecipeImage = async (recipe, file) => {
+    if (!file) return;
+    setUploadingRecipeId(recipe.id);
+    setRecipeRowErrors(prev => ({ ...prev, [recipe.id]: '' }));
+    try {
+      const imageData = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('读取图片失败'));
+        reader.readAsDataURL(file);
+      });
+      const res = await adminFetch(`/api/admin/recipes/${recipe.id}/image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_data: imageData, filename: file.name }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '上传图片失败');
+      setRecipes(prev => sortRecipesById(prev.map(item => item.id === data.recipe.id ? data.recipe : item)));
+      setRecipeDrafts(prev => ({ ...prev, [data.recipe.id]: toRecipeDraft(data.recipe) }));
+    } catch (error) {
+      setRecipeRowErrors(prev => ({ ...prev, [recipe.id]: error.message }));
+    } finally {
+      setUploadingRecipeId('');
+    }
+  };
+
+  const addRecipe = async () => {
+    setSavingRecipe('new');
+    setRecipeError('');
+    try {
+      const res = await adminFetch('/api/admin/recipes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '新增食谱失败');
+      setRecipes(prev => sortRecipesById([...prev, data.recipe]));
+      setRecipeDrafts(prev => ({ ...prev, [data.recipe.id]: toRecipeDraft(data.recipe) }));
+      setRecipeSource(data.source || 'pg');
+    } catch (error) {
+      setRecipeError(error.message);
+    } finally {
+      setSavingRecipe(false);
+    }
+  };
+
+  const addSubadminDraft = () => {
+    const tempId = `new_${Date.now()}`;
+    const draft = toSubadminDraft({
+      username: '',
+      password: '',
+      regions: ['CN'],
+      modules: ['dashboard'],
+      isNew: true,
+    });
+    setSubadmins(prev => [...prev, { ...draft, username: tempId, displayUsername: '', isNew: true }]);
+    setSubadminDrafts(prev => ({ ...prev, [tempId]: draft }));
+  };
+
+  const updateSubadminDraft = (key, updater) => {
+    setSubadminDrafts(prev => {
+      const current = prev[key] || toSubadminDraft(subadmins.find(item => item.username === key) || {});
+      return {
+        ...prev,
+        [key]: typeof updater === 'function' ? updater(current) : { ...current, ...updater },
+      };
+    });
+  };
+
+  const toggleSubadminListValue = (key, listKey, value) => {
+    updateSubadminDraft(key, draft => {
+      const current = new Set(draft[listKey] || []);
+      if (current.has(value)) current.delete(value);
+      else current.add(value);
+      return { ...draft, [listKey]: [...current] };
+    });
+  };
+
+  const saveSubadminRow = async (account) => {
+    const key = account.username;
+    const draft = subadminDrafts[key] || toSubadminDraft(account);
+    const username = draft.username.trim();
+    if (!username) {
+      setSubadminError('子管理员帐号不能为空');
+      return;
+    }
+    if (!draft.password) {
+      setSubadminError('子管理员密码不能为空');
+      return;
+    }
+    if (!draft.regions.length || !draft.modules.length) {
+      setSubadminError('区域和板块权限至少各选择一项');
+      return;
+    }
+    setSavingSubadmin(key);
+    setSubadminError('');
+    try {
+      const res = await adminFetch(account.isNew ? '/api/admin/subadmins' : `/api/admin/subadmins/${encodeURIComponent(account.username)}`, {
+        method: account.isNew ? 'POST' : 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(draft),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '保存子管理员失败');
+      const saved = data.subadmin;
+      setSubadmins(prev => {
+        const withoutCurrent = prev.filter(item => item.username !== key);
+        return [...withoutCurrent, saved].sort((a, b) => a.username.localeCompare(b.username));
+      });
+      setSubadminDrafts(prev => {
+        const next = { ...prev };
+        delete next[key];
+        next[saved.username] = toSubadminDraft(saved);
+        return next;
+      });
+    } catch (error) {
+      setSubadminError(error.message);
+    } finally {
+      setSavingSubadmin('');
+    }
+  };
+
+  const deleteSubadminRow = async (account) => {
+    if (account.isNew) {
+      setSubadmins(prev => prev.filter(item => item.username !== account.username));
+      setSubadminDrafts(prev => {
+        const next = { ...prev };
+        delete next[account.username];
+        return next;
+      });
+      return;
+    }
+    if (!window.confirm(`确认删除子管理员 ${account.username}？`)) return;
+    setSavingSubadmin(account.username);
+    setSubadminError('');
+    try {
+      const res = await adminFetch(`/api/admin/subadmins/${encodeURIComponent(account.username)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '删除子管理员失败');
+      setSubadmins(prev => prev.filter(item => item.username !== account.username));
+      setSubadminDrafts(prev => {
+        const next = { ...prev };
+        delete next[account.username];
+        return next;
+      });
+    } catch (error) {
+      setSubadminError(error.message);
+    } finally {
+      setSavingSubadmin('');
     }
   };
 
@@ -335,6 +910,59 @@ function App() {
     }));
   };
 
+  const moduleLabel = (module) => {
+    if (module.key === 'users') return `👤 用户管理 Users (${filteredUsers.length}/${users.length})`;
+    if (module.key === 'pets') return `🐶 宠物档案 Pets (${filteredPets.length}/${pets.length})`;
+    if (module.key === 'devices') return `🔌 智能设备 Devices (${filteredDevices.length})`;
+    if (module.key === 'faults') return `⚠️ 故障诊断 Fault Logs (${filteredFaults.length}/${mockFaultLogs.length})`;
+    return module.label;
+  };
+
+  if (adminAuthLoading && !adminSession) {
+    return (
+      <main className="admin-login-screen">
+        <section className="admin-login-card">
+          <div className="brand-mark">HB</div>
+          <h1>Heybo Pet Admin</h1>
+          <p>正在校验管理员登录状态...</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!adminSession) {
+    return (
+      <main className="admin-login-screen">
+        <form className="admin-login-card" onSubmit={handleAdminLogin}>
+          <div className="brand-mark">HB</div>
+          <h1>Heybo Pet Admin</h1>
+          <p>请输入管理员账号和密码。</p>
+          {adminLoginError && <div className="login-error">{adminLoginError}</div>}
+          <label>
+            <span>管理员帐号</span>
+            <input
+              value={adminLoginForm.username}
+              onChange={e => setAdminLoginForm(prev => ({ ...prev, username: e.target.value }))}
+              autoComplete="username"
+            />
+          </label>
+          <label>
+            <span>管理员密码</span>
+            <input
+              type="password"
+              value={adminLoginForm.password}
+              onChange={e => setAdminLoginForm(prev => ({ ...prev, password: e.target.value }))}
+              autoComplete="current-password"
+            />
+          </label>
+          <button className="action-btn" type="submit" disabled={adminAuthLoading}>
+            {adminAuthLoading ? '登录中...' : '登录'}
+          </button>
+        </form>
+      </main>
+    );
+  }
+
   return (
     <main className="admin-shell">
       {/* 侧边栏 */}
@@ -347,41 +975,17 @@ function App() {
           </p>
           <div className="region-indicator">
             <span className="dot active"></span>
-            <span>已接入 {activeRegion} 数据中心 (PostgreSQL)</span>
+            <span>{adminSession.username} · {adminSession.role === 'superadmin' ? '主管理员' : '子管理员'}</span>
           </div>
         </div>
         <nav aria-label="核心管理板块" className="sidebar-nav">
-          <button className={`nav-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
-            <span>📊 运行大盘 Dashboard</span>
-          </button>
-          <button className={`nav-btn ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>
-            <span>👤 用户管理 Users ({filteredUsers.length}/{users.length})</span>
-          </button>
-          <button className={`nav-btn ${activeTab === 'pets' ? 'active' : ''}`} onClick={() => setActiveTab('pets')}>
-            <span>🐶 宠物档案 Pets ({filteredPets.length}/{pets.length})</span>
-          </button>
-          <button className={`nav-btn ${activeTab === 'devices' ? 'active' : ''}`} onClick={() => setActiveTab('devices')}>
-            <span>🔌 智能设备 Devices ({filteredDevices.length})</span>
-          </button>
-          <button className={`nav-btn ${activeTab === 'recipes' ? 'active' : ''}`} onClick={() => setActiveTab('recipes')}>
-            <span>🍲 食谱配方 Recipes</span>
-          </button>
-          <button className={`nav-btn ${activeTab === 'products' ? 'active' : ''}`} onClick={() => setActiveTab('products')}>
-            <span>🛒 商品 & 溯源 Mall</span>
-          </button>
-          <button className={`nav-btn ${activeTab === 'orders' ? 'active' : ''}`} onClick={() => setActiveTab('orders')}>
-            <span>📦 订单对账 Orders</span>
-          </button>
-          <button className={`nav-btn ${activeTab === 'medical' ? 'active' : ''}`} onClick={() => setActiveTab('medical')}>
-            <span>🏥 医疗病例 Medical</span>
-          </button>
-          <button className={`nav-btn ${activeTab === 'doctors' ? 'active' : ''}`} onClick={() => setActiveTab('doctors')}>
-            <span>🩺 医生 & 处方 Doctors</span>
-          </button>
-          <button className={`nav-btn ${activeTab === 'faults' ? 'active' : ''}`} onClick={() => setActiveTab('faults')}>
-            <span>⚠️ 故障诊断 Fault Logs ({filteredFaults.length}/{mockFaultLogs.length})</span>
-          </button>
+          {visibleModules.map(module => (
+            <button key={module.key} className={`nav-btn ${activeTab === module.key ? 'active' : ''}`} onClick={() => setActiveTab(module.key)}>
+              <span>{moduleLabel(module)}</span>
+            </button>
+          ))}
         </nav>        <div className="sidebar-footer">
+          <button className="logout-btn" type="button" onClick={clearAdminSession}>退出登录</button>
           <p>当前合规：{activeRegion === 'CN' ? 'PIPL 本地隔离存储' : activeRegion === 'EU' ? 'GDPR 本地隔离存储' : 'US HIPAA/CCPA'}</p>
           <p className="version">Vite Dev Server • v4.5</p>
         </div>
@@ -399,7 +1003,7 @@ function App() {
           <div className="top-actions">
             <span className="switch-label">切换管辖数据中心:</span>
             <div className="region-switch-group">
-              {REGIONS.map(r => (
+              {allowedRegions.map(r => (
                 <button
                   key={r.code}
                   className={`region-switch-btn ${activeRegion === r.code ? 'active' : ''}`}
@@ -814,101 +1418,209 @@ function App() {
                 </p>
                 {recipeError && <p className="inline-error">{recipeError}</p>}
               </div>
-              <button className="action-btn" onClick={loadRecipes} disabled={recipesLoading}>
-                {recipesLoading ? '加载中...' : '刷新正式食谱'}
-              </button>
+              <div className="table-actions">
+                <label className="recipe-search-box">
+                  <span>检索</span>
+                  <input
+                    value={recipeSearch}
+                    onChange={e => setRecipeSearch(e.target.value)}
+                    placeholder="食谱名字 / 分类 / 健康标签 / 生命阶段"
+                  />
+                  <em>{filteredRecipes.length}/{recipes.length}</em>
+                </label>
+                <button className="action-btn" onClick={loadRecipes} disabled={recipesLoading}>
+                  {recipesLoading ? '加载中...' : '刷新正式食谱'}
+                </button>
+                <button className="action-btn secondary" onClick={addRecipe} disabled={savingRecipe === 'new' || recipeSource !== 'pg'}>
+                  {savingRecipe === 'new' ? '新增中...' : '增加食谱'}
+                </button>
+              </div>
             </div>
 
-            <div className="recipe-grid">
-              {recipes.map(recipe => {
-                const nutrition = recipeNutrition(recipe);
-                const cookingProfile = recipeCookingProfile(recipe);
-                const stages = Array.isArray(cookingProfile.stages) ? cookingProfile.stages : [];
+            <div className="recipe-table-scroll">
+              <div className="recipe-edit-table">
+                <div className="recipe-edit-head">
+                  <span>食谱照片</span>
+                  <span>食谱详情</span>
+                  <span>食材配比</span>
+                  <span>配套全价营养包B</span>
+                  <span>营养成份</span>
+                  <span>低温烹饪参数</span>
+                </div>
+
+                {filteredRecipes.map(recipe => {
+                  const draft = recipeDrafts[recipe.id] || toRecipeDraft(recipe);
+                  const isDirty = isRecipeDraftDirty(recipe, draft);
+                  const imageUrl = resolveRecipeImage(draft.img);
+                  const ingredientTotal = sumRows(draft.ingredientsRows);
+                  const bPackTotal = sumRows(draft.bPackRows);
+                  const rowError = recipeRowErrors[recipe.id];
                 return (
-                  <article key={recipe.id} className="recipe-card-v2">
-                    <div className="recipe-header">
-                      <div>
-                        <h4>{recipe.name}</h4>
-                        <code>{recipe.id}</code>
-                      </div>
-                      <div className="recipe-badges">
-                        <span className="badge-category">{recipe.category}</span>
-                        <span className="badge-category">{recipe.status || 'active'}</span>
-                        <button className="small-action-btn" onClick={() => openRecipeEditor(recipe)}>编辑</button>
-                      </div>
+                  <article key={recipe.id} className="recipe-edit-row">
+                    <div className="recipe-photo-cell">
+                      {imageUrl ? (
+                        <img src={imageUrl} alt={draft.name || recipe.id} />
+                      ) : (
+                        <div className="recipe-image-placeholder">无图片</div>
+                      )}
+                      <label className="small-action-btn upload-btn">
+                        {uploadingRecipeId === recipe.id ? '上传中...' : '上传新图片'}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          disabled={uploadingRecipeId === recipe.id || recipeSource !== 'pg'}
+                          onChange={e => uploadRecipeImage(recipe, e.target.files?.[0])}
+                        />
+                      </label>
+                      <button type="button" className={`action-btn recipe-photo-save ${isDirty ? 'unsaved' : ''}`} disabled={savingRecipe === recipe.id || recipeSource !== 'pg'} onClick={() => saveRecipeRow(recipe)}>
+                        {savingRecipe === recipe.id ? '保存中...' : isDirty ? '请点击保存' : '已保存'}
+                      </button>
+                      {rowError && <p className="inline-error">{rowError}</p>}
                     </div>
 
-                    <div className="recipe-body-desc">
-                      <div className="recipe-column">
-                        <h5>🥩 食材配比：</h5>
-                        <ul className="ingredient-list-v2">
-                          {Object.entries(recipe.ingredients || {}).slice(0, 8).map(([ing, pct]) => (
-                            <li key={ing}>{ing}: <strong>{pct}</strong></li>
-                          ))}
-                        </ul>
-                      </div>
+                    <div className="recipe-detail-cell">
+                      <span>recipe_id</span><code>{recipe.id}</code>
+                      <label><span>食谱名字</span><input value={draft.name} onChange={e => updateRecipeDraft(recipe.id, { name: e.target.value })} /></label>
+                      <label>
+                        <span>食谱状态</span>
+                        <select value={draft.status} onChange={e => updateRecipeDraft(recipe.id, { status: e.target.value })}>
+                          {STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span>食谱分类</span>
+                        <select value={draft.category} onChange={e => updateRecipeDraft(recipe.id, { category: e.target.value })}>
+                          {CATEGORY_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span>生命阶段</span>
+                        <select value={draft.life_stage} onChange={e => updateRecipeDraft(recipe.id, { life_stage: e.target.value })}>
+                          {LIFE_STAGE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                        </select>
+                      </label>
+                      <label><span>健康标签</span><input value={draft.health_tags} onChange={e => updateRecipeDraft(recipe.id, { health_tags: e.target.value })} placeholder="美毛、低敏" /></label>
+                    </div>
 
-                      <div className="recipe-column">
-                        <h5>🔬 营养快照：</h5>
-                        <div className="nutrition-stats-box">
-                          <p>粗蛋白: <strong>{nutrition.protein}</strong> | 粗脂肪: <strong>{nutrition.fat}</strong></p>
-                          <p>水分: <strong>{nutrition.moisture}</strong> | 能量密度: <strong>{nutrition.caloric_density}</strong></p>
-                          <p>生命阶段: <strong>{recipe.life_stage || '未设置'}</strong> | 版本: <strong>{recipe.version || 1}</strong></p>
+                    <div className="recipe-list-cell">
+                      <div className={Math.abs(ingredientTotal - 100) > 0.01 ? 'ratio-total error' : 'ratio-total'}>合计 {ingredientTotal.toFixed(1)}%</div>
+                      {draft.ingredientsRows.map((row, index) => (
+                        <div className="ratio-row" key={`${recipe.id}-ingredient-${index}`}>
+                          <input value={row.name} onChange={e => updateRecipeRow(recipe.id, 'ingredientsRows', index, 'name', e.target.value)} placeholder="食材名" />
+                          <input type="number" step="0.1" value={row.percent} onChange={e => updateRecipeRow(recipe.id, 'ingredientsRows', index, 'percent', e.target.value)} placeholder="%" />
+                          <button type="button" onClick={() => removeRecipeRow(recipe.id, 'ingredientsRows', index)}>−</button>
                         </div>
-                      </div>
+                      ))}
+                      <button type="button" className="small-action-btn" onClick={() => addRecipeRow(recipe.id, 'ingredientsRows')}>增加一行</button>
                     </div>
 
-                    <div className="cooking-profile-block">
-                      <h5>🔥 鲜食机控制参数：</h5>
-                      <p className="water-ratio"><strong>模式：</strong> {cookingProfile.mode || 'diy'} · <strong>温度：</strong> {cookingProfile.temperature || '-'} · <strong>功率：</strong> {cookingProfile.power || '-'}</p>
-                      <div className="cooking-timeline">
-                        {stages.length > 0 ? stages.map((stage, idx) => (
-                          <div key={idx} className="timeline-node">
-                            <span className="node-title">阶段 {idx + 1}: {stage.name}</span>
-                            <span className="node-detail">温度: {stage.temp || stage.temperature || '-'} | 时间: {stage.duration || stage.seconds || '-'} | 转速: {stage.speed || '-'}</span>
-                          </div>
-                        )) : (
-                          <div className="timeline-node">
-                            <span className="node-detail">速度: {cookingProfile.speed || '-'} · 加水比例: {cookingProfile.water_ratio || '-'}</span>
-                          </div>
-                        )}
-                      </div>
+                    <div className="recipe-list-cell">
+                      <div className={Math.abs(bPackTotal - 10) > 0.01 ? 'ratio-total error' : 'ratio-total'}>合计 {bPackTotal.toFixed(1)}%</div>
+                      {draft.bPackRows.map((row, index) => (
+                        <div className="ratio-row" key={`${recipe.id}-bpack-${index}`}>
+                          <input value={row.name} onChange={e => updateRecipeRow(recipe.id, 'bPackRows', index, 'name', e.target.value)} placeholder="营养素名称" />
+                          <input type="number" step="0.1" value={row.percent} onChange={e => updateRecipeRow(recipe.id, 'bPackRows', index, 'percent', e.target.value)} placeholder="%" />
+                          <button type="button" onClick={() => removeRecipeRow(recipe.id, 'bPackRows', index)}>−</button>
+                        </div>
+                      ))}
+                      <button type="button" className="small-action-btn" onClick={() => addRecipeRow(recipe.id, 'bPackRows')}>增加一行</button>
+                    </div>
+
+                    <div className="recipe-nutrition-cell">
+                      {NUTRITION_FIELDS.map(([key, label, unit]) => (
+                        <label key={key}>
+                          <span>{label}</span>
+                          <input value={draft.nutritionFields[key]} onChange={e => updateRecipeDraft(recipe.id, current => ({
+                            ...current,
+                            nutritionFields: { ...current.nutritionFields, [key]: e.target.value },
+                          }))} />
+                          <em>{unit}</em>
+                        </label>
+                      ))}
+                    </div>
+
+                    <div className="recipe-cooking-cell">
+                      <label>
+                        <span>主蛋白食材：</span>
+                        <select value={draft.cookingParams.protein_group} onChange={e => updateRecipeDraft(recipe.id, current => ({
+                          ...current,
+                          cookingParams: { ...current.cookingParams, protein_group: e.target.value },
+                        }))}>
+                          {PROTEIN_GROUP_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span>烹饪温度：</span>
+                        <div className="unit-input"><input value={draft.cookingParams.temperature} onChange={e => updateRecipeDraft(recipe.id, current => ({
+                          ...current,
+                          cookingParams: { ...current.cookingParams, temperature: e.target.value },
+                        }))} /><em>℃</em></div>
+                      </label>
+                      <label>
+                        <span>烹饪功率：</span>
+                        <select value={draft.cookingParams.powerWatts} onChange={e => updateRecipeDraft(recipe.id, current => ({
+                          ...current,
+                          cookingParams: { ...current.cookingParams, powerWatts: e.target.value },
+                        }))}>
+                          {POWER_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span>烹饪转速：</span>
+                        <select value={draft.cookingParams.speed} onChange={e => updateRecipeDraft(recipe.id, current => ({
+                          ...current,
+                          cookingParams: { ...current.cookingParams, speed: e.target.value },
+                        }))}>
+                          {SPEED_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span>建议加水比例：</span>
+                        <select value={draft.cookingParams.waterRatioPercent} onChange={e => updateRecipeDraft(recipe.id, current => ({
+                          ...current,
+                          cookingParams: { ...current.cookingParams, waterRatioPercent: e.target.value },
+                        }))}>
+                          {WATER_RATIO_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span>预热时长：</span>
+                        <div className="unit-input"><input type="number" min="0" step="0.5" value={draft.cookingParams.preheatMinutes} onChange={e => updateRecipeDraft(recipe.id, current => ({
+                          ...current,
+                          cookingParams: { ...current.cookingParams, preheatMinutes: e.target.value },
+                        }))} /><em>分钟</em></div>
+                      </label>
+                      <label>
+                        <span>烹饪时长：</span>
+                        <div className="unit-input"><input type="number" min="0" step="0.5" value={draft.cookingParams.cookMinutes} onChange={e => updateRecipeDraft(recipe.id, current => ({
+                          ...current,
+                          cookingParams: { ...current.cookingParams, cookMinutes: e.target.value },
+                        }))} /><em>分钟</em></div>
+                      </label>
+                      <label>
+                        <span>食材包克重：</span>
+                        <select value={draft.cookingParams.packageWeightGrams} onChange={e => updateRecipeDraft(recipe.id, current => ({
+                          ...current,
+                          cookingParams: { ...current.cookingParams, packageWeightGrams: e.target.value },
+                        }))}>
+                          {PACKAGE_WEIGHT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span>烹饪口感：</span>
+                        <select value={draft.cookingParams.textureProfile} onChange={e => updateRecipeDraft(recipe.id, current => ({
+                          ...current,
+                          cookingParams: { ...current.cookingParams, textureProfile: e.target.value },
+                        }))}>
+                          {TEXTURE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                        </select>
+                      </label>
                     </div>
                   </article>
                 );
               })}
-            </div>
-
-            {selectedRecipe && recipeForm && (
-              <div className="modal-overlay" onClick={() => setSelectedRecipe(null)}>
-                <div className="modal-content recipe-editor-modal" onClick={e => e.stopPropagation()}>
-                  <header className="modal-header">
-                    <h3>编辑正式食谱：{selectedRecipe.id}</h3>
-                    <button className="close-btn" onClick={() => setSelectedRecipe(null)}>✕</button>
-                  </header>
-                  <form className="modal-body recipe-editor-form" onSubmit={handleSaveRecipe}>
-                    <div className="recipe-form-grid">
-                      <label>名称<input value={recipeForm.name} onChange={e => handleRecipeFormChange('name', e.target.value)} required /></label>
-                      <label>分类<input value={recipeForm.category} onChange={e => handleRecipeFormChange('category', e.target.value)} required /></label>
-                      <label>生命阶段<input value={recipeForm.life_stage} onChange={e => handleRecipeFormChange('life_stage', e.target.value)} /></label>
-                      <label>状态<select value={recipeForm.status} onChange={e => handleRecipeFormChange('status', e.target.value)}><option value="active">active</option><option value="draft">draft</option><option value="archived">archived</option></select></label>
-                      <label>版本<input type="number" min="1" value={recipeForm.version} onChange={e => handleRecipeFormChange('version', e.target.value)} /></label>
-                      <label>健康标签<input value={recipeForm.health_tags} onChange={e => handleRecipeFormChange('health_tags', e.target.value)} placeholder="逗号分隔" /></label>
-                    </div>
-                    <label>食材配比 JSON<textarea value={recipeForm.ingredients} onChange={e => handleRecipeFormChange('ingredients', e.target.value)} rows={8} /></label>
-                    <label>营养快照 JSON<textarea value={recipeForm.nutrition_snapshot} onChange={e => handleRecipeFormChange('nutrition_snapshot', e.target.value)} rows={7} /></label>
-                    <label>鲜食机控制参数 JSON<textarea value={recipeForm.cooking_profile} onChange={e => handleRecipeFormChange('cooking_profile', e.target.value)} rows={7} /></label>
-                    {recipeError && <p className="inline-error">{recipeError}</p>}
-                    <div className="editor-actions">
-                      <button type="button" className="action-btn danger" onClick={() => setSelectedRecipe(null)}>取消</button>
-                      <button type="submit" className="action-btn" disabled={savingRecipe || recipeSource !== 'pg'}>
-                        {savingRecipe ? '保存中...' : '保存到正式 recipes 表'}
-                      </button>
-                    </div>
-                  </form>
-                </div>
               </div>
-            )}
+            </div>
           </section>
         )}
 
@@ -1393,6 +2105,103 @@ function App() {
                 </div>
               </div>
             )}
+          </section>
+        )}
+
+        {/* 10. 子管理员管理模块 */}
+        {activeTab === 'subadmins' && (
+          <section className="module-section">
+            <div className="table-header">
+              <div>
+                <h3>子管理员管理</h3>
+                <p>由主管理员设置区域分类和板块分类授权，子管理员最终权限由两类勾选项共同决定。</p>
+                {subadminError && <p className="inline-error">{subadminError}</p>}
+              </div>
+              <div className="table-actions">
+                <button className="action-btn" type="button" onClick={addSubadminDraft}>新增子管理员</button>
+              </div>
+            </div>
+
+            <div className="subadmin-table">
+              <div className="subadmin-head">
+                <span>子管理员帐号</span>
+                <span>子管理员密码</span>
+                <span>区域分类授权</span>
+                <span>板块分类授权</span>
+                <span>保存</span>
+              </div>
+              {subadmins.length === 0 && <div className="empty-row">暂无子管理员，点击“新增子管理员”创建。</div>}
+              {subadmins.map(account => {
+                const key = account.username;
+                const draft = subadminDrafts[key] || toSubadminDraft(account);
+                const isDirty = account.isNew || isSubadminDraftDirty(account, draft);
+                return (
+                  <article className="subadmin-row" key={key}>
+                    <div className="subadmin-account-cell">
+                      <input
+                        value={draft.username}
+                        disabled={!account.isNew}
+                        onChange={e => updateSubadminDraft(key, { username: e.target.value })}
+                        placeholder="例如：operator_cn"
+                      />
+                    </div>
+                    <div className="password-cell">
+                      <input
+                        type={visiblePasswords[key] ? 'text' : 'password'}
+                        value={draft.password}
+                        onChange={e => updateSubadminDraft(key, { password: e.target.value })}
+                        placeholder="设置初始密码"
+                      />
+                      <button type="button" onClick={() => setVisiblePasswords(prev => ({ ...prev, [key]: !prev[key] }))}>
+                        {visiblePasswords[key] ? '隐藏' : '显示'}
+                      </button>
+                    </div>
+                    <div className="checkbox-group">
+                      {REGIONS.map(region => (
+                        <label key={region.code}>
+                          <input
+                            type="checkbox"
+                            checked={draft.regions.includes(region.code)}
+                            onChange={() => toggleSubadminListValue(key, 'regions', region.code)}
+                          />
+                          <span>{region.name} ({region.code})</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="checkbox-group module-checkboxes">
+                      {ADMIN_MODULES.filter(module => module.key !== 'subadmins').map(module => (
+                        <label key={module.key}>
+                          <input
+                            type="checkbox"
+                            checked={draft.modules.includes(module.key)}
+                            onChange={() => toggleSubadminListValue(key, 'modules', module.key)}
+                          />
+                          <span>{module.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="subadmin-save-cell">
+                      <button
+                        className={`action-btn ${isDirty ? 'unsaved' : ''}`}
+                        type="button"
+                        disabled={savingSubadmin === key}
+                        onClick={() => saveSubadminRow(account)}
+                      >
+                        {savingSubadmin === key ? '保存中...' : isDirty ? '未保存' : '保存'}
+                      </button>
+                      <button
+                        className="delete-text-btn"
+                        type="button"
+                        disabled={savingSubadmin === key}
+                        onClick={() => deleteSubadminRow(account)}
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </section>
         )}
       </section>

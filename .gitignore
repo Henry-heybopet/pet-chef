@@ -28,3 +28,4 @@ frontend/ios/ios_core_sdk.tar.gz
 graphify-out/
 business-graphify/
 scratch/
+nginx/admin.htpasswd

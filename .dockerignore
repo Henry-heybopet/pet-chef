@@ -8,6 +8,10 @@ node_modules
 *.md
 !README.md
 admin/
+!admin/
+admin/*
+!admin/dist/
+!admin/dist/**
 docs/
 api/
 output/

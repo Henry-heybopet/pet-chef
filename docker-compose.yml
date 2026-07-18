@@ -22,6 +22,8 @@ services:
       - TUYA_BASE_URL=${TUYA_BASE_URL:-https://openapi.tuyacn.com}
       - SUPABASE_DB_URL=${SUPABASE_DB_URL:-}
       - DATABASE_URL=${DATABASE_URL:-postgresql://petchef:petchef_secure_pass@db:5432/petchef?schema=public}
+      - ADMIN_SUPER_USERNAME=${ADMIN_SUPER_USERNAME:-}
+      - ADMIN_SUPER_PASSWORD=${ADMIN_SUPER_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy

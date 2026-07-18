@@ -1099,6 +1099,12 @@ body {
   box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.5);
 }
 
+.cooking-pairing-sheet {
+  max-height: calc(100dvh - 64px);
+  overflow: hidden;
+  padding: 14px 18px calc(16px + var(--safe-bottom));
+}
+
 .cooking-sheet-close {
   float: right;
   border: 0;
@@ -1157,6 +1163,47 @@ body {
   font-size: 14px;
 }
 
+.cooking-pairing-sheet .cooking-sheet-flow {
+  gap: 8px;
+}
+
+.cooking-pairing-sheet .cooking-sheet-flow h2 {
+  margin-bottom: 6px;
+  font-size: 18px;
+}
+
+.cooking-pairing-sheet .cooking-sheet-flow p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.cooking-pairing-sheet .cooking-sheet-flow ol {
+  line-height: 1.45;
+  font-size: 13px;
+}
+
+.cooking-pairing-guide {
+  margin: 6px 0 8px;
+}
+
+.cooking-pairing-guide img {
+  display: block;
+  width: 100%;
+  max-height: clamp(96px, 16dvh, 132px);
+  object-fit: cover;
+  object-position: center;
+  border: 1px solid rgba(0, 230, 255, 0.22);
+  border-radius: 12px;
+}
+
+.cooking-pairing-guide div {
+  margin-top: 5px;
+  color: var(--gray);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .cooking-radar {
   width: 146px;
   height: 146px;
@@ -1166,6 +1213,16 @@ body {
   background: radial-gradient(circle, rgba(0, 229, 255, 0.18), transparent 62%);
   position: relative;
   overflow: hidden;
+}
+
+.cooking-pairing-sheet .cooking-radar {
+  width: clamp(96px, 18dvh, 118px);
+  height: clamp(96px, 18dvh, 118px);
+  margin: 4px auto;
+}
+
+.cooking-pairing-sheet .cooking-center-btn-ghost {
+  padding: 8px 12px;
 }
 
 .cooking-radar span {

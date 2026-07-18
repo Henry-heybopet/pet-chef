@@ -18,6 +18,18 @@ function asPercent(value, fallback) {
   return num > 0 && num <= 1 ? num * 100 : num;
 }
 
+let recipeColumnCache = null;
+
+async function getRecipeColumns() {
+  if (recipeColumnCache) return recipeColumnCache;
+  const result = await query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'recipes' AND table_schema = 'public'`,
+    []
+  );
+  recipeColumnCache = new Set(result.rows.map(row => row.column_name));
+  return recipeColumnCache;
+}
+
 function normalizeRecipe(row) {
   const healthTags = parseJson(row.health_tags, []);
   const ingredients = parseJson(row.ingredients, {});
@@ -104,10 +116,25 @@ async function updateRecipe(id, patch = {}) {
     'ingredients',
     'nutrition_snapshot',
     'cooking_profile',
+    'b_pack',
+    'c_pack',
+    'img',
+    'water_content_pct',
+    'protein_pct',
+    'fat_pct',
+    'carb_pct',
+    'fiber_pct',
+    'ash_pct',
+    'calcium_pct',
+    'phosphorus_pct',
+    'chloride_pct',
+    'lysine_pct',
+    'calories_per_100g',
     'status',
     'version',
   ];
-  const entries = Object.entries(patch).filter(([key, value]) => allowed.includes(key) && value !== undefined);
+  const columns = await getRecipeColumns();
+  const entries = Object.entries(patch).filter(([key, value]) => allowed.includes(key) && columns.has(key) && value !== undefined);
   if (entries.length === 0) return getRecipeById(id);
 
   const params = [id];
@@ -117,6 +144,56 @@ async function updateRecipe(id, patch = {}) {
   });
   const result = await query(
     `UPDATE recipes SET ${assignments.join(', ')}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    params
+  );
+  return { recipe: result.rows[0] ? normalizeRecipe(result.rows[0]) : null, source: 'pg' };
+}
+
+async function createRecipe(patch = {}) {
+  if (!(await isAvailable())) {
+    const error = new Error('recipes table unavailable');
+    error.code = 'DB_UNAVAILABLE';
+    throw error;
+  }
+
+  const idRows = await query(`SELECT id FROM recipes WHERE id LIKE 'dog_recipe_%'`, []);
+  const maxId = idRows.rows.reduce((max, row) => {
+    const match = String(row.id || '').match(/^dog_recipe_(\d+)$/);
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+  const id = patch.id || `dog_recipe_${String(maxId + 1).padStart(3, '0')}`;
+  const defaults = {
+    id,
+    name: `新食谱 ${String(maxId + 1).padStart(3, '0')}`,
+    species: 'dog',
+    category: '成犬通用',
+    life_stage: '成年犬',
+    health_tags: [],
+    ingredients: {},
+    nutrition_snapshot: {},
+    cooking_profile: {
+      mode: 'diy',
+      protein_group: 'other',
+      temperature: 85,
+      power: 8,
+      speed: '1',
+      water_ratio: 0.15,
+    },
+    b_pack: '',
+    c_pack: '无',
+    img: '',
+    status: 'draft',
+    version: 1,
+  };
+  const payload = { ...defaults, ...patch, id };
+  const columns = await getRecipeColumns();
+  const entries = Object.entries(payload).filter(([key, value]) => columns.has(key) && value !== undefined);
+  const jsonKeys = new Set(['health_tags', 'ingredients', 'nutrition_snapshot', 'cooking_profile']);
+  const params = entries.map(([key, value]) => jsonKeys.has(key) ? JSON.stringify(value) : value);
+  const columnSql = entries.map(([key]) => key).join(', ');
+  const valueSql = entries.map((_, index) => `$${index + 1}`).join(', ');
+  const result = await query(
+    `INSERT INTO recipes (${columnSql}) VALUES (${valueSql}) RETURNING *`,
     params
   );
   return { recipe: result.rows[0] ? normalizeRecipe(result.rows[0]) : null, source: 'pg' };
@@ -147,6 +224,7 @@ module.exports = {
   listAdminRecipes,
   getRecipeById,
   getRecipeNames,
+  createRecipe,
   updateRecipe,
   getIngredientMap,
   buildRecipeIndexByName,

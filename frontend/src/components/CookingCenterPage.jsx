@@ -6,9 +6,60 @@ const PAIRING_STEPS = ['正在连接设备', '正在发送 Wi-Fi 信息', '正�
 const START_CHECKS = ['加入食材', '加入适量的水', '盖上鲜食杯盖', '周围没有幼童和宠物'];
 const PET_CHEF_PID = 'ak2kofibhuvdtqip';
 const BLE_SCAN_MS = 60000;
+const COOKING_RUNTIME_KEY = 'petchef_cooking_runtime';
+const stirTimers = new Map();
 
 function isActiveCookingDps(dps) {
-  return dps?.[107] === 'start' || dps?.[107] === 'pause' || dps?.[107] === 'reset' || dps?.[5] === 'cooking' || dps?.[5] === 'pause';
+  return dps?.[107] === 'start' || dps?.[107] === 'pause' || dps?.[5] === 'cooking' || dps?.[5] === 'pause';
+}
+
+function readCookingRuntime() {
+  try {
+    const raw = globalThis.localStorage?.getItem(COOKING_RUNTIME_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCookingRuntime(devId, dps, extra = {}) {
+  if (!devId || !isActiveCookingDps(dps)) return;
+  try {
+    globalThis.localStorage?.setItem(COOKING_RUNTIME_KEY, JSON.stringify({
+      devId,
+      dps,
+      updatedAt: new Date().toISOString(),
+      ...extra,
+    }));
+  } catch {
+    // localStorage is best-effort; backend DP cache remains the source for cross-session state.
+  }
+}
+
+function clearCookingRuntime(devId) {
+  const runtime = readCookingRuntime();
+  if (!runtime || (devId && runtime.devId !== devId)) return;
+  try { globalThis.localStorage?.removeItem(COOKING_RUNTIME_KEY); } catch {}
+}
+
+function clearStirTimer(devId) {
+  const timer = stirTimers.get(devId);
+  if (timer) clearTimeout(timer);
+  stirTimers.delete(devId);
+}
+
+function scheduleStirCommand(devId, speed, delayMs, onComplete, onError) {
+  clearStirTimer(devId);
+  const timer = setTimeout(async () => {
+    stirTimers.delete(devId);
+    try {
+      await HeyboTuya.publishDps({ devId, dps: { 108: speed } });
+      onComplete?.();
+    } catch (error) {
+      onError?.(error);
+    }
+  }, Math.max(0, delayMs));
+  stirTimers.set(devId, timer);
 }
 
 function uniqueDevices(devices) {
@@ -255,6 +306,20 @@ function GhostButton({ children, danger, ...props }) {
   return <button className={`cooking-center-btn cooking-center-btn-ghost ${danger ? 'is-danger' : ''}`} {...props}>{children}</button>;
 }
 
+function PairingKeysGuide() {
+  return (
+    <div className="cooking-pairing-guide">
+      <img
+        src="/pairing-mode-keys.png"
+        alt="同时长按温度键和功率键 5 秒，启动配网模式"
+      />
+      <div>
+        红圈位置为温度键和功率键，同时长按 5 秒进入配网模式。
+      </div>
+    </div>
+  );
+}
+
 function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
   const [device, setDevice] = useState(null);
   const [wifi, setWifi] = useState(null);
@@ -481,7 +546,7 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
 
   return (
     <div className="cooking-sheet-mask" onClick={closeSheet}>
-      <div className="cooking-sheet" onClick={event => event.stopPropagation()}>
+      <div className="cooking-sheet cooking-pairing-sheet" onClick={event => event.stopPropagation()}>
         <button className="cooking-sheet-close" onClick={closeSheet}>×</button>
 
         {!device && (
@@ -490,9 +555,12 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
             <p>请先让鲜食机进入配网模式：</p>
             <ol>
               <li>打开鲜食机电源</li>
-              <li>长按 Wi-Fi 键 3 秒</li>
+              <li>
+                同时长按温度键和功率键 5 秒，启动配网模式
+              </li>
               <li>指示灯闪烁后点击下一步</li>
             </ol>
+            <PairingKeysGuide />
             {scanning && <div className="cooking-radar"><span /></div>}
             {scanning && (
               <div>
@@ -516,14 +584,19 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
                   </div>
                 )}
                 {!permissionNotice && scanSummary?.rawCount === 0 && (
-                  <ol>
-                    <li>打开鲜食机电源</li>
-                    <li>同时长按转速键和温度键 5 秒</li>
-                    <li>确认指示灯闪烁</li>
-                    <li>不要在手机系统蓝牙设置中直接连接设备</li>
-                    <li>如果设备曾绑定过其它 App 或账号，请先解绑或恢复出厂配网状态</li>
-                    <li>手机靠近鲜食机后重试</li>
-                  </ol>
+                  <>
+                    <ol>
+                      <li>打开鲜食机电源</li>
+                      <li>
+                        同时长按温度键和功率键 5 秒，启动配网模式
+                      </li>
+                      <li>确认指示灯闪烁</li>
+                      <li>不要在手机系统蓝牙设置中直接连接设备</li>
+                      <li>如果设备曾绑定过其它 App 或账号，请先解绑或恢复出厂配网状态</li>
+                      <li>手机靠近鲜食机后重试</li>
+                    </ol>
+                    <PairingKeysGuide />
+                  </>
                 )}
                 {!permissionNotice && (
                   <div className="cooking-sheet-actions">
@@ -534,19 +607,6 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
               </div>
             )}
             {!scanning && !foundDevices.length && !empty && <PrimaryButton onClick={scan}>开始扫描</PrimaryButton>}
-            {scanSummary && (
-              <div className="cooking-center-card is-compact" style={{ textAlign: 'left', fontSize: 12 }}>
-                <strong>扫描统计</strong>
-                <span>rawCount={scanSummary.rawCount}｜filteredCount={scanSummary.filteredCount}</span>
-                <span>Tuya设备={scanSummary.hasTuya ? 'yes' : 'no'}｜PID不匹配={scanSummary.hasPidMismatch ? 'yes' : 'no'}</span>
-              </div>
-            )}
-            {scanLogs.length > 0 && (
-              <div className="cooking-center-card is-compact" style={{ textAlign: 'left', fontSize: 11, lineHeight: 1.6 }}>
-                <strong>添加设备调试日志</strong>
-                {scanLogs.map((line, index) => <span key={`${line}-${index}`}>{line}</span>)}
-              </div>
-            )}
           </div>
         )}
 
@@ -793,9 +853,9 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const [runElapsedMs, setRunElapsedMs] = useState(0);
   const [nowTick, setNowTick] = useState(Date.now());
   const [tuyaHomeId, setTuyaHomeId] = useState('');
-  const stirTimerRef = useRef(null);
   const safetyRef = useRef({ lidAlerted: false });
   const cookingRef = useRef(null);
+  const mountedRef = useRef(true);
   cookingRef.current = getRecipeCookingParams(recipeContext);
 
   const selectedDevice = useMemo(() => {
@@ -830,14 +890,16 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       const serverDevices = uniqueDevices((deviceResult.devices || []).map(device => ({ ...device, devId: device.tuya_device_id || device.devId })));
       setDevices(prev => {
         const localByDevId = Object.fromEntries(prev.map(device => [device.devId || device.tuya_device_id, device]));
+        const runtime = readCookingRuntime();
         return serverDevices.map(device => {
           const local = localByDevId[device.devId];
           const serverDps = parseDps(device);
           const localDps = parseDps(local);
           const keepLocalRuntime = isActiveCookingDps(localDps);
+          const runtimeDps = runtime?.devId === device.devId && isActiveCookingDps(runtime.dps) ? runtime.dps : {};
           return {
             ...device,
-            dps: keepLocalRuntime ? { ...serverDps, ...localDps } : { ...localDps, ...serverDps },
+            dps: keepLocalRuntime ? { ...serverDps, ...localDps, ...runtimeDps } : { ...localDps, ...serverDps, ...runtimeDps },
           };
         });
       });
@@ -897,8 +959,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   }, []);
 
   useEffect(() => () => {
-    if (stirTimerRef.current) clearTimeout(stirTimerRef.current);
-    stirTimerRef.current = null;
+    mountedRef.current = false;
     safetyRef.current = { lidAlerted: false };
   }, []);
 
@@ -914,16 +975,26 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         try { nextDps = JSON.parse(nextDps || '{}'); } catch { nextDps = {}; }
       }
       const mergedDps = { ...parseDps(selectedDevice), ...nextDps };
+      if (authToken) {
+        api.syncDeviceDp(devId, {
+          tuya_device_id: devId,
+          online: selectedDevice?.isOnline,
+          dps: mergedDps,
+          reported_at: new Date().toISOString(),
+        }, authToken).catch(() => {});
+      }
       setDevices(prev => prev.map(device => {
         const itemDevId = device.devId || device.tuya_device_id;
         return itemDevId === devId ? { ...device, dps: { ...parseDps(device), ...nextDps } } : device;
       }));
       setLastStatusAt(new Date().toISOString());
-      const active = mergedDps[107] === 'start' || mergedDps[5] === 'cooking';
+      const active = isActiveCookingDps(mergedDps);
       if (!active) {
         safetyRef.current = { lidAlerted: false };
+        clearCookingRuntime(devId);
         return;
       }
+      saveCookingRuntime(devId, mergedDps);
       if (isLidOpenFault(mergedDps) && !safetyRef.current.lidAlerted) {
         safetyRef.current.lidAlerted = true;
         setMessage('鲜食杯盖未盖好，请检查杯盖。');
@@ -936,7 +1007,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       listener?.remove?.();
       HeyboTuya.unsubscribeDevice({ devId }).catch(() => {});
     };
-  }, [selectedDevice?.devId]);
+  }, [selectedDevice?.devId, authToken]);
 
   const handleStartCooking = async () => {
     const cooking = getRecipeCookingParams(recipeContext);
@@ -949,8 +1020,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       setMessage('鲜食杯盖未盖好，请盖好杯盖后再启动。');
       return;
     }
-    if (stirTimerRef.current) clearTimeout(stirTimerRef.current);
-    stirTimerRef.current = null;
+    clearStirTimer(selectedDevice.devId);
     safetyRef.current = { lidAlerted: false };
     const temperature = cooking.temperature ?? 85;
     const preheatMinutes = Number(cooking.preheatMinutes ?? stirDelayMinutes(recipeContext?.displayGrams));
@@ -959,6 +1029,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     const power = cooking.power ?? 8;
     const speed = String(cooking.speed ?? 1);
     const preheatSeconds = preheatMinutes * 60;
+    const runtimeDps = { 1: true, 3: 'diy', 5: 'cooking', 7: cookTime, 9: temperature, 102: power, 107: 'start', 108: '0' };
     await HeyboTuya.publishDps({
       devId: selectedDevice.devId,
       dps: {
@@ -970,26 +1041,43 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         107: 'start',
       },
     });
-    const scheduleStir = () => {
-      stirTimerRef.current = null;
-      HeyboTuya.publishDps({ devId: selectedDevice.devId, dps: { 108: speed } }).catch(error => {
-        setMessage(`预热完成后下发转速失败：${error?.message || String(error)}`);
-      });
+    saveCookingRuntime(selectedDevice.devId, runtimeDps, { startedAt: new Date().toISOString() });
+    if (authToken) {
+      api.syncDeviceDp(selectedDevice.devId, {
+        tuya_device_id: selectedDevice.devId,
+        online: selectedDevice.isOnline,
+        dps: runtimeDps,
+        reported_at: new Date().toISOString(),
+      }, authToken).catch(() => {});
+    }
+    scheduleStirCommand(selectedDevice.devId, speed, preheatSeconds * 1000, () => {
+      const dps = { ...runtimeDps, 108: speed };
+      saveCookingRuntime(selectedDevice.devId, dps);
+      if (authToken) {
+        api.syncDeviceDp(selectedDevice.devId, {
+          tuya_device_id: selectedDevice.devId,
+          online: selectedDevice.isOnline,
+          dps,
+          reported_at: new Date().toISOString(),
+        }, authToken).catch(() => {});
+      }
+      if (!mountedRef.current) return;
       setDevices(prev => prev.map(device => {
         const devId = device.devId || device.tuya_device_id;
         return devId === selectedDevice.devId
           ? { ...device, dps: { ...parseDps(device), 108: speed } }
           : device;
       }));
-    };
-    stirTimerRef.current = setTimeout(scheduleStir, Math.max(0, preheatSeconds) * 1000);
+    }, error => {
+      if (mountedRef.current) setMessage(`预热完成后下发转速失败：${error?.message || String(error)}`);
+    });
     const startedAt = Date.now();
     setRunElapsedMs(0);
     setRunStartedAt(startedAt);
     setDevices(prev => prev.map(device => {
       const devId = device.devId || device.tuya_device_id;
       return devId === selectedDevice.devId
-        ? { ...device, dps: { ...parseDps(device), 5: 'cooking', 9: temperature, 102: power, 107: 'start', 108: '0' } }
+        ? { ...device, dps: { ...parseDps(device), ...runtimeDps } }
         : device;
     }));
     await api.recordCookingOperation({
@@ -1011,17 +1099,26 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
 
   const handlePauseCooking = async () => {
     if (!selectedDevice?.devId) return;
-    if (stirTimerRef.current) clearTimeout(stirTimerRef.current);
-    stirTimerRef.current = null;
+    clearStirTimer(selectedDevice.devId);
     safetyRef.current = { lidAlerted: false };
     await HeyboTuya.pauseCooking({ devId: selectedDevice.devId });
+    const pausedDps = { ...parseDps(selectedDevice), 5: 'pause', 107: 'pause' };
+    saveCookingRuntime(selectedDevice.devId, pausedDps);
+    if (authToken) {
+      api.syncDeviceDp(selectedDevice.devId, {
+        tuya_device_id: selectedDevice.devId,
+        online: selectedDevice.isOnline,
+        dps: pausedDps,
+        reported_at: new Date().toISOString(),
+      }, authToken).catch(() => {});
+    }
     const pausedAt = Date.now();
     setRunElapsedMs(prev => prev + (runStartedAt ? pausedAt - runStartedAt : 0));
     setRunStartedAt(0);
     setDevices(prev => prev.map(device => {
       const devId = device.devId || device.tuya_device_id;
       return devId === selectedDevice.devId
-        ? { ...device, dps: { ...parseDps(device), 5: 'pause', 107: 'pause' } }
+        ? { ...device, dps: { ...parseDps(device), ...pausedDps } }
         : device;
     }));
     setMessage('已下发暂停指令。');
@@ -1035,11 +1132,21 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     }
     safetyRef.current = { lidAlerted: false };
     await HeyboTuya.publishDps({ devId: selectedDevice.devId, dps: { 107: 'start' } });
+    const resumedDps = { ...parseDps(selectedDevice), 5: 'cooking', 107: 'start' };
+    saveCookingRuntime(selectedDevice.devId, resumedDps);
+    if (authToken) {
+      api.syncDeviceDp(selectedDevice.devId, {
+        tuya_device_id: selectedDevice.devId,
+        online: selectedDevice.isOnline,
+        dps: resumedDps,
+        reported_at: new Date().toISOString(),
+      }, authToken).catch(() => {});
+    }
     setRunStartedAt(Date.now());
     setDevices(prev => prev.map(device => {
       const devId = device.devId || device.tuya_device_id;
       return devId === selectedDevice.devId
-        ? { ...device, dps: { ...parseDps(device), 5: 'cooking', 107: 'start' } }
+        ? { ...device, dps: { ...parseDps(device), ...resumedDps } }
         : device;
     }));
     setMessage('已恢复烹饪。');
@@ -1047,10 +1154,18 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
 
   const handleStopCooking = async () => {
     if (!selectedDevice?.devId) return;
-    if (stirTimerRef.current) clearTimeout(stirTimerRef.current);
-    stirTimerRef.current = null;
+    clearStirTimer(selectedDevice.devId);
     safetyRef.current = { lidAlerted: false };
     await HeyboTuya.resetCooking({ devId: selectedDevice.devId });
+    clearCookingRuntime(selectedDevice.devId);
+    if (authToken) {
+      api.syncDeviceDp(selectedDevice.devId, {
+        tuya_device_id: selectedDevice.devId,
+        online: selectedDevice.isOnline,
+        dps: { ...parseDps(selectedDevice), 5: 'standby', 107: 'reset', 102: undefined, 108: undefined },
+        reported_at: new Date().toISOString(),
+      }, authToken).catch(() => {});
+    }
     setRunStartedAt(0);
     setRunElapsedMs(0);
     setDevices(prev => prev.map(device => {
