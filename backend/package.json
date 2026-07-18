@@ -1,10 +1,15 @@
 {
   "name": "backend",
-  "version": "1.0.0",
+  "version": "B1.00",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node test_account_auth.js"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma db push",
+    "db:seed": "node prisma/seed.js",
+    "recipes:import": "python3 scripts/import_recipes_from_excel.py",
+    "db:sync": "node src/data/sync_db_recipes.js"
   },
   "keywords": [],
   "author": "",
@@ -12,10 +17,17 @@
   "type": "commonjs",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@prisma/client": "^5.18.0",
     "axios": "^1.15.2",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "js-yaml": "^4.1.1"
+    "express-rate-limit": "^8.5.2",
+    "js-yaml": "^4.1.1",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.18.0"
   }
 }

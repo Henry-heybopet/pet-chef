@@ -120,17 +120,13 @@ const initialDb = {
   seed_version: 3,
   users: [],
   user_identities: [],
-  sms_verification_codes: [],
-  email_verification_codes: [],
-  verification_failures: [],
-  auth_sessions: [],
-  account_merge_logs: [],
   households: [],
   household_members: [],
   tuya_user_mappings: [],
   pets: [],
   devices: [],
   device_pet_bindings: [],
+  cooking_operations: [],
   device_operation_records: [],
   feeding_records: [],
   health_records: [],
@@ -166,6 +162,9 @@ function loadDb() {
     if (!fs.existsSync(dataFile)) return structuredClone(initialDb);
     const parsed = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
     const merged = { ...structuredClone(initialDb), ...parsed };
+    if (!parsed.cooking_operations && Array.isArray(parsed.device_operation_records)) {
+      merged.cooking_operations = parsed.device_operation_records;
+    }
     if (!parsed.seed_version || parsed.seed_version < initialDb.seed_version) {
       merged.products = seedProducts;
       merged.seed_version = initialDb.seed_version;
@@ -186,57 +185,35 @@ function saveDb() {
   }
 }
 
-function ensureCollection(name) {
-  if (!Array.isArray(db[name])) db[name] = [];
-  return db[name];
-}
-
 function publicUser(user) {
   if (!user) return null;
   const { deleted_at, ...safeUser } = user;
   return safeUser;
 }
 
-function findIdentityByLogin(login, provider = 'phone', region = '') {
+function findUserByLogin(login, provider = 'phone') {
   const normalized = normalizeLogin(login);
   const loginHash = hash(normalized);
-  return db.user_identities.find(item =>
+  const identity = db.user_identities.find(item =>
     item.provider === provider &&
-    (!region || item.region === region || !item.region) &&
     (item.login_hash === loginHash || item.provider_user_id === normalized)
   );
-}
-
-function findIdentity(provider, providerUserId, region = '') {
-  const normalized = normalizeLogin(providerUserId);
-  return db.user_identities.find(item =>
-    item.provider === provider &&
-    (!region || item.region === region || !item.region) &&
-    item.provider_user_id === normalized &&
-    !item.unbound_at
-  );
-}
-
-function findUserByLogin(login, provider = 'phone', region = '') {
-  const identity = findIdentityByLogin(login, provider, region);
   if (!identity) return null;
   return db.users.find(user => user.id === identity.user_id) || null;
 }
 
-function createUserWithIdentity({ login, provider = 'phone', displayName, region = 'CN', countryCode = '86' }) {
+function createUserWithIdentity({ login, provider = 'phone', displayName }) {
   const normalized = normalizeLogin(login);
-  const isPhone = provider === 'phone';
-  const isEmail = provider === 'email';
   const user = {
     id: id('usr'),
-    display_name: displayName || (isPhone ? `用户${normalized.slice(-4)}` : normalized),
+    display_name: displayName || (provider === 'phone' ? `用户${normalized.slice(-4)}` : normalized),
     avatar_url: '',
-    primary_phone: isPhone ? normalized : '',
-    primary_email: isEmail ? normalized : '',
-    country_code: countryCode,
-    region,
-    language: region === 'CN' ? 'zh' : 'en',
-    timezone: region === 'CN' ? 'Asia/Shanghai' : (region === 'EU' ? 'Europe/Berlin' : 'America/Los_Angeles'),
+    primary_phone: provider === 'phone' ? normalized : '',
+    primary_email: provider === 'email' ? normalized : '',
+    country_code: '86',
+    region: 'CN',
+    language: 'zh',
+    timezone: 'Asia/Shanghai',
     status: 'active',
     created_at: now(),
     updated_at: now(),
@@ -246,18 +223,13 @@ function createUserWithIdentity({ login, provider = 'phone', displayName, region
   const identity = {
     id: id('idt'),
     user_id: user.id,
-    region,
     provider,
     provider_user_id: normalized,
-    provider_union_id: '',
     login_hash: hash(normalized),
-    phone_country_code: isPhone ? countryCode : '',
+    phone_country_code: provider === 'phone' ? '86' : '',
     is_primary: true,
     verified_at: now(),
     created_at: now(),
-    updated_at: now(),
-    unbound_at: '',
-    provider_payload: {},
   };
 
   db.users.push(user);
@@ -268,9 +240,13 @@ function createUserWithIdentity({ login, provider = 'phone', displayName, region
   return user;
 }
 
-function loginOrCreateUser({ login, provider = 'phone', displayName, region = 'CN', countryCode = '86' }) {
-  let user = findUserByLogin(login, provider, region);
-  if (!user) user = createUserWithIdentity({ login, provider, displayName, region, countryCode });
+function loginOrCreateUser({ login, provider = 'phone', displayName }) {
+  let user = findUserByLogin(login, provider);
+  if (!user) {
+    user = createUserWithIdentity({ login, provider, displayName });
+  } else if (displayName && user.display_name !== displayName) {
+    user.display_name = displayName;
+  }
   user.last_login_at = now();
   user.updated_at = now();
   const household = ensureDefaultHousehold(user.id);
@@ -282,67 +258,6 @@ function loginOrCreateUser({ login, provider = 'phone', displayName, region = 'C
     tuyaMapping,
     token: `dev_${user.id}`,
   };
-}
-
-function addIdentity(userId, {
-  provider,
-  providerUserId,
-  providerUnionId = '',
-  loginHashValue,
-  region = 'CN',
-  phoneCountryCode = '',
-  isPrimary = false,
-  providerPayload = {},
-}) {
-  const normalizedProviderUserId = normalizeLogin(providerUserId);
-  const existing = findIdentity(provider, normalizedProviderUserId, region);
-  if (existing && existing.user_id !== userId) throw new Error(`${provider} identity already bound`);
-  if (existing) return existing;
-
-  const identity = {
-    id: id('idt'),
-    user_id: userId,
-    region,
-    provider,
-    provider_user_id: normalizedProviderUserId,
-    provider_union_id: providerUnionId || '',
-    login_hash: loginHashValue || hash(normalizedProviderUserId),
-    phone_country_code: phoneCountryCode || '',
-    is_primary: Boolean(isPrimary),
-    verified_at: now(),
-    created_at: now(),
-    updated_at: now(),
-    unbound_at: '',
-    provider_payload: providerPayload || {},
-  };
-  db.user_identities.push(identity);
-  saveDb();
-  return identity;
-}
-
-function getUserIdentities(userId) {
-  return db.user_identities.filter(identity => identity.user_id === userId && !identity.unbound_at);
-}
-
-function unbindIdentity(identityId, userId) {
-  const identity = db.user_identities.find(item => item.id === identityId && item.user_id === userId && !item.unbound_at);
-  if (!identity) return null;
-  if (identity.is_primary) throw new Error('Primary identity cannot be unbound');
-  identity.unbound_at = now();
-  identity.updated_at = now();
-  saveDb();
-  return identity;
-}
-
-function appendAccountMergeLog(payload) {
-  const record = {
-    id: id('aml'),
-    created_at: now(),
-    ...payload,
-  };
-  ensureCollection('account_merge_logs').push(record);
-  saveDb();
-  return record;
 }
 
 function getUser(userId) {
@@ -379,13 +294,28 @@ function ensureDefaultHousehold(userId) {
 
 function ensureTuyaMapping(userId) {
   let mapping = db.tuya_user_mappings.find(item => item.user_id === userId);
-  if (mapping) return mapping;
-  const user = db.users.find(item => item.id === userId);
-  const tuyaUid = user?.primary_phone === '18757129405' ? '18757129405' : `heybo_${userId}`;
+  const user = getUser(userId);
+  const isSpecialTestAccount = user && user.primary_phone === '18757129405';
+
+  if (mapping) {
+    if (isSpecialTestAccount && mapping.tuya_uid !== '18757129405') {
+      mapping.tuya_uid = '18757129405';
+      mapping.updated_at = now();
+    }
+    const expectedTestPassword = mapping.tuya_uid;
+    if (mapping.tuya_test_password !== expectedTestPassword) {
+      mapping.tuya_test_password = expectedTestPassword;
+      mapping.updated_at = now();
+    }
+    saveDb();
+    return mapping;
+  }
+
   mapping = {
     id: id('tym'),
     user_id: userId,
-    tuya_uid: tuyaUid,
+    tuya_uid: isSpecialTestAccount ? '18757129405' : `heybo_${userId}`,
+    tuya_test_password: isSpecialTestAccount ? '18757129405' : `heybo_${userId}`,
     tuya_country_code: '86',
     tuya_region: 'CN',
     tuya_home_ids: [],
@@ -406,10 +336,56 @@ function userOwnsHousehold(userId, householdId) {
 }
 
 function listByHousehold(table, userId, householdId) {
-  return db[table].filter(item =>
+  return (db[table] || []).filter(item =>
     item.household_id === householdId &&
     userOwnsHousehold(userId, householdId)
   );
+}
+
+function normalizeArray(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === 'string') {
+    return value.split(/[,，、;；\s]+/).map(item => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function firstDefined(...values) {
+  return values.find(value => value !== undefined);
+}
+
+function normalizePetPayload(payload = {}, { partial = false } = {}) {
+  const normalized = {};
+  const set = (key, value, fallback) => {
+    if (value !== undefined) normalized[key] = value;
+    else if (!partial) normalized[key] = fallback;
+  };
+
+  set('name', payload.name, '我的爱犬');
+  set('species', payload.species, 'dog');
+  set('breed', firstDefined(payload.breed, payload.breedName), '');
+  set('sex', payload.sex, '');
+  set('neutered', payload.neutered === undefined ? undefined : Boolean(payload.neutered), false);
+  set('birth_date', firstDefined(payload.birth_date, payload.birthDate), '');
+  set('age_months', payload.age_months === undefined ? undefined : Number(payload.age_months), 0);
+  set('current_weight_kg', firstDefined(payload.current_weight_kg, payload.weight) === undefined ? undefined : Number(firstDefined(payload.current_weight_kg, payload.weight)), 0);
+  set('target_weight_kg', firstDefined(payload.target_weight_kg, payload.targetWeight) === undefined ? undefined : Number(firstDefined(payload.target_weight_kg, payload.targetWeight)), 0);
+  set('body_condition_score', firstDefined(payload.body_condition_score, payload.bcs), '');
+  set('activity_level', firstDefined(payload.activity_level, payload.activityLevel), 'medium');
+  set('life_stage', firstDefined(payload.life_stage, payload.lifeStage), 'adult');
+  set('allergens', firstDefined(payload.allergens, payload.allergensText) === undefined ? undefined : normalizeArray(firstDefined(payload.allergens, payload.allergensText)), []);
+  set('food_restrictions', firstDefined(payload.food_restrictions, payload.foodRestrictions) === undefined ? undefined : normalizeArray(firstDefined(payload.food_restrictions, payload.foodRestrictions)), []);
+  set('health_tags', firstDefined(payload.health_tags, payload.healthTags) === undefined ? undefined : normalizeArray(firstDefined(payload.health_tags, payload.healthTags)), []);
+  set('doctor_notes', firstDefined(payload.doctor_notes, payload.doctorNotes), '');
+  set('user_notes', firstDefined(payload.user_notes, payload.userNotes), '');
+  set('avatar_url', firstDefined(payload.avatar_url, payload.avatar), '');
+  set('feeding_goal', firstDefined(payload.feeding_goal, payload.feedingGoal), null);
+  set('body_size', firstDefined(payload.body_size, payload.bodySize), null);
+  set('environment', payload.environment, null);
+  set('allergy_symptoms', firstDefined(payload.allergy_symptoms, payload.allergySymptoms, payload.allergySymptomsText) === undefined ? undefined : normalizeArray(firstDefined(payload.allergy_symptoms, payload.allergySymptoms, payload.allergySymptomsText)), []);
+  set('allergy_severity', firstDefined(payload.allergy_severity, payload.allergySeverity), null);
+  set('special_period', firstDefined(payload.special_period, payload.specialPeriod), null);
+  return Object.fromEntries(Object.entries(normalized).filter(([, value]) => value !== undefined));
 }
 
 function createPet(userId, payload) {
@@ -422,26 +398,10 @@ function createPet(userId, payload) {
     id: id('pet'),
     household_id: household.id,
     owner_user_id: userId,
-    name: payload.name || '我的爱犬',
-    species: payload.species || 'dog',
-    breed: payload.breed || '',
-    sex: payload.sex || '',
-    neutered: Boolean(payload.neutered),
-    birth_date: payload.birth_date || '',
-    age_months: Number(payload.age_months || 0),
-    current_weight_kg: Number(payload.current_weight_kg || payload.weight || 0),
-    target_weight_kg: Number(payload.target_weight_kg || 0),
-    body_condition_score: payload.body_condition_score || '',
-    activity_level: payload.activity_level || 'medium',
-    life_stage: payload.life_stage || 'adult',
-    allergens: payload.allergens || [],
-    food_restrictions: payload.food_restrictions || [],
-    health_tags: payload.health_tags || [],
-    doctor_notes: payload.doctor_notes || '',
-    user_notes: payload.user_notes || '',
-    avatar_url: payload.avatar_url || '',
+    ...normalizePetPayload(payload),
     created_at: now(),
     updated_at: now(),
+    deleted_at: null,
   };
   db.pets.push(pet);
   saveDb();
@@ -451,9 +411,54 @@ function createPet(userId, payload) {
 function updateById(table, idValue, patch) {
   const item = db[table].find(row => row.id === idValue);
   if (!item) return null;
-  Object.assign(item, patch, { updated_at: now() });
+  Object.assign(item, table === 'pets' ? normalizePetPayload(patch, { partial: true }) : patch, { updated_at: now() });
   saveDb();
   return item;
+}
+
+function getPetById(petId) {
+  return db.pets.find(pet => pet.id === petId && !pet.deleted_at) || null;
+}
+
+function getPetForUser(userId, petId) {
+  const pet = getPetById(petId);
+  if (!pet) return null;
+  if (!userId) return pet;
+  if (pet.owner_user_id === userId || userOwnsHousehold(userId, pet.household_id)) return pet;
+  return null;
+}
+
+function petToDogProfile(pet, extras = {}) {
+  if (!pet) return null;
+  const ageMonths = Number(pet.age_months || 0);
+  const age = ageMonths > 0 ? Number((ageMonths / 12).toFixed(1)) : Number(extras.age || 3);
+  const bcsMatch = String(pet.body_condition_score || '').match(/\d+/);
+  const bcs = bcsMatch ? Number(bcsMatch[0]) : pet.body_condition_score;
+  return {
+    id: pet.id,
+    pet_id: pet.id,
+    name: pet.name,
+    breedName: pet.breed,
+    age,
+    age_months: ageMonths || undefined,
+    weight: pet.current_weight_kg,
+    targetWeight: pet.target_weight_kg,
+    bcs,
+    bodySize: pet.body_size,
+    activityLevel: pet.activity_level,
+    environment: pet.environment,
+    feedingGoal: pet.feeding_goal,
+    goals: pet.feeding_goal ? [pet.feeding_goal] : [],
+    healthTags: pet.health_tags || [],
+    allergens: pet.allergens || [],
+    allergySymptoms: pet.allergy_symptoms || [],
+    allergySeverity: pet.allergy_severity,
+    specialPeriod: pet.special_period,
+    neutered: pet.neutered,
+    updated_at: pet.updated_at,
+    pet_updated_at: pet.updated_at,
+    ...extras,
+  };
 }
 
 function upsertDevice(userId, payload) {
@@ -504,6 +509,54 @@ function upsertDevice(userId, payload) {
   return device;
 }
 
+function syncDeviceDp(userId, deviceId, payload = {}) {
+  const device = db.devices.find(item =>
+    (item.id === deviceId || item.tuya_device_id === deviceId || item.tuya_device_id === payload.tuya_device_id) &&
+    userOwnsHousehold(userId, item.household_id)
+  );
+  if (!device) {
+    const error = new Error('Device not found');
+    error.status = 404;
+    throw error;
+  }
+  if (!payload.dps || typeof payload.dps !== 'object' || Array.isArray(payload.dps)) {
+    const error = new Error('dps object is required');
+    error.status = 400;
+    throw error;
+  }
+
+  const dps = { ...(device.dps || {}), ...payload.dps };
+  const online = firstDefined(payload.online, payload.isOnline);
+  Object.assign(device, {
+    dps,
+    online_status: online === undefined ? device.online_status : Boolean(online),
+    status: online === false ? 'offline' : online === true ? 'online' : device.status,
+    last_online_at: online === true ? now() : device.last_online_at,
+    last_dp_reported_at: payload.reported_at || now(),
+    fault_code: firstDefined(dps[12], dps.fault, device.fault_code),
+    updated_at: now(),
+  });
+
+  saveDb();
+  return device;
+}
+
+function unbindDevice(userId, deviceId) {
+  const index = db.devices.findIndex(item =>
+    (item.id === deviceId || item.tuya_device_id === deviceId) &&
+    userOwnsHousehold(userId, item.household_id)
+  );
+  if (index < 0) {
+    const error = new Error('Device not found');
+    error.status = 404;
+    throw error;
+  }
+  const [device] = db.devices.splice(index, 1);
+  db.device_pet_bindings = db.device_pet_bindings.filter(item => item.device_id !== device.id);
+  saveDb();
+  return device;
+}
+
 function bindDevicePet(deviceId, petId, isDefault = false) {
   if (!db.device_pet_bindings.some(item => item.device_id === deviceId && item.pet_id === petId)) {
     db.device_pet_bindings.push({
@@ -532,6 +585,32 @@ function createRecord(table, userId, payload) {
   db[table].push(record);
   saveDb();
   return record;
+}
+
+function createCookingOperation(userId, payload = {}) {
+  const {
+    tuya_dp_payload,
+    target_temperature_c,
+    target_time_seconds,
+    target_power,
+    target_speed,
+    ...rest
+  } = payload;
+
+  const cookingParams = rest.cooking_params_snapshot || {
+    target_temperature_c,
+    target_time_seconds,
+    target_power,
+    target_speed,
+  };
+
+  return createRecord('cooking_operations', userId, {
+    operation_type: rest.operation_type || 'start_cooking',
+    status: rest.status || (rest.result === 'success' ? 'completed' : 'created'),
+    ...rest,
+    cooking_params_snapshot: cookingParams,
+    tuya_command_snapshot: rest.tuya_command_snapshot || tuya_dp_payload,
+  });
 }
 
 function createOrder(userId, payload) {
@@ -656,9 +735,7 @@ function appendAnalyticsEvent(event) {
 }
 
 function resetForTests() {
-  const fresh = structuredClone(initialDb);
-  Object.keys(db).forEach(key => delete db[key]);
-  Object.assign(db, fresh);
+  db = structuredClone(initialDb);
   saveDb();
 }
 
@@ -666,19 +743,7 @@ module.exports = {
   db,
   id,
   now,
-  hash,
-  normalizeLogin,
-  saveDb,
-  ensureCollection,
   loginOrCreateUser,
-  createUserWithIdentity,
-  findIdentity,
-  findIdentityByLogin,
-  findUserByLogin,
-  addIdentity,
-  getUserIdentities,
-  unbindIdentity,
-  appendAccountMergeLog,
   getUser,
   publicUser,
   ensureDefaultHousehold,
@@ -686,9 +751,15 @@ module.exports = {
   listByHousehold,
   createPet,
   updateById,
+  getPetById,
+  getPetForUser,
+  petToDogProfile,
   upsertDevice,
+  syncDeviceDp,
+  unbindDevice,
   bindDevicePet,
   createRecord,
+  createCookingOperation,
   createOrder,
   getOrder,
   createPayment,

@@ -207,6 +207,13 @@ export const NativeCapabilities = {
     startWifiPairing: (options) => safeNativeCall('tuya', 'startWifiPairing', () => HeyboTuya.startWifiPairing(options)),
     stopPairing: (options = {}) => safeNativeCall('tuya', 'stopPairing', () => HeyboTuya.stopPairing(options)),
     publishDps: (options) => safeNativeCall('tuya', 'publishDps', () => HeyboTuya.publishDps(options)),
+    unbindDevice: (options) => safeNativeCall('tuya', 'unbindDevice', () => HeyboTuya.unbindDevice(options)),
+    startBleScan: (options = {}) => safeNativeCall('tuya', 'startBleScan', () => HeyboTuya.startBleScan(options)),
+    stopBleScan: (options = {}) => safeNativeCall('tuya', 'stopBleScan', () => HeyboTuya.stopBleScan(options)),
+    connectBleDevice: (options) => safeNativeCall('tuya', 'connectBleDevice', () => HeyboTuya.connectBleDevice(options)),
+    subscribeDevice: (options) => safeNativeCall('tuya', 'subscribeDevice', () => HeyboTuya.subscribeDevice(options)),
+    unsubscribeDevice: (options) => safeNativeCall('tuya', 'unsubscribeDevice', () => HeyboTuya.unsubscribeDevice(options)),
+    openBluetoothSettings: (options = {}) => safeNativeCall('tuya', 'openBluetoothSettings', () => HeyboTuya.openBluetoothSettings(options)),
   },
   auth: {
     status: (capability = 'wechatAuth') => getAuthStatus(capability),

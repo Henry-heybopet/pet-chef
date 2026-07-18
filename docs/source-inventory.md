@@ -18,13 +18,13 @@
 | 文件 | 状态 | 后续处理 |
 | --- | --- | --- |
 | `宠物鲜食机项目进度计划.pptx` | `roadmap.md` | 6月到3月上市计划、测试节奏、交付物、风险管理 |
-| `frontend/public/犬用食谱.docx` | `recipe-database.md`, `requirements.md` | 基础犬用食谱、食材百分比、分类和标签 |
+| `docs/source/犬用鲜食配方_A+B+C_40种优化版_营养合规审查（0630）.xlsx` | `recipe-database.md`, `backend/src/data/recipes_db.js`, `frontend/src/data/demoRecipes.js` | 当前 40 个 A+B+C 优化食谱源数据 |
 | `鲜食机照片.jpg` | 未进入 Markdown | 可用于 README 或 UI 首屏素材 |
 
 ## 提炼原则
 
 1. 原始 Word/PDF/PPT 继续留在产品定义目录。
-2. GitHub 仓库只保留开发可执行的 Markdown 摘要。
+2. GitHub 仓库只保留开发可执行的 Markdown 摘要和仍在使用的轻量源数据。
 3. 与 MVP 直接相关的内容进入 `product.md`、`requirements.md`、`ui-notes.md`、`device-integration.md`。
 4. 专利和技术壁垒进入 `patent-notes.md`。
 5. 跨产品平台想法暂时不进入鲜食机 MVP，避免范围失控。

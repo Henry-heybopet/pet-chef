@@ -8,11 +8,11 @@ const { ingredientsDb } = require('../data/ingredients_db');
  * @param {Object} ingredients - { 食材名: 百分比 }
  * @returns {number} 含水量 0~1
  */
-function calcWaterContent(ingredients) {
+function calcWaterContent(ingredients, ingredientMap = ingredientsDb) {
   let totalWeight = 0, totalWater = 0;
   Object.entries(ingredients).forEach(([name, pct]) => {
     if (typeof pct !== 'number') return;
-    const ing = ingredientsDb[name];
+    const ing = ingredientMap[name];
     const waterPct = ing ? ing.water_pct : 0.70;
     totalWeight += pct;
     totalWater += pct * waterPct;
@@ -20,40 +20,23 @@ function calcWaterContent(ingredients) {
   return totalWeight > 0 ? totalWater / totalWeight : 0.70;
 }
 
-/**
- * 根据实测数据推导：
- * 实测1: 200g纯肉(水60%), 8档, 85℃ → 预热45s, 熟透9min
- * 实测2: 191g混合(水70%), 8档, 85℃ → 预热48s, 熟透11min
- * 实测3: 200g肉+蔬菜(水75%), 8档, 85℃ → 预热30s, 熟透8min
- * 
- * 模型（100g基准，8档，85℃）：
- *   基础预热 = 22.5s（水含量60%基准）
- *   预热修正：水分越高，前期升温越快（-60s per +10%水含量）
- *   
- *   基础烹饪 = 270s（水含量60%基准，100%熟）
- *   烹饪修正：水分越高，导热越快，时间越短（-80s per +10%水含量）
- */
+function stirDelayMinutes(totalGrams) {
+  if (totalGrams <= 100) return 2;
+  if (totalGrams <= 200) return 3;
+  return 4;
+}
+
 function calcCookingParams(recipe, totalGrams) {
   const { cooking_base, ingredients, water_content_pct } = recipe;
-  const waterContent = water_content_pct / 100;
   
   // 加水量（食材总量的15%）
   const waterGrams = Math.round(totalGrams * cooking_base.water_ratio);
   
-  // ——— 预热时间计算 ———
-  // 基准：100g食材，60%水含量 → 22.5s预热
-  // 水含量每增加1%，预热减少 0.6s/100g
-  const waterDelta = waterContent - 0.60;
-  const preheat_per_100g = Math.max(10, 22.5 - waterDelta * 60);
-  // 非线性缩放：大质量时预热不完全线性（指数 0.9）
-  const preheat_seconds = Math.round(preheat_per_100g * Math.pow(totalGrams / 100, 0.9));
-  
-  // ——— 烹饪时间计算 ———
-  // 基准：100g，60%水含量 → 270s到100%熟
-  // 水含量每增加1%，烹饪减少 1.2s/100g
-  const cook_per_100g = Math.max(120, 270 - waterDelta * 120);
-  // 非线性缩放：大质量时烹饪时间不完全线性（指数 0.75）
-  const cook_seconds = Math.round(cook_per_100g * Math.pow(totalGrams / 100, 0.75));
+  const preheat_minutes = stirDelayMinutes(totalGrams);
+  const preheat_seconds = preheat_minutes * 60;
+  const cook_minutes = Number(cooking_base.cook_minutes || 10);
+  const cook_seconds = cook_minutes * 60;
+  const total_seconds = preheat_seconds + cook_seconds;
   
   // ——— 阶段时间分配 ———
   const stages = [
@@ -67,16 +50,16 @@ function calcCookingParams(recipe, totalGrams) {
     {
       id: 'preheat',
       name: '预加热',
-      desc: `高火（${cooking_base.power}档）快速升温至 ${cooking_base.temperature}℃`,
+      desc: `高火（${cooking_base.power}档）快速升温，约${preheat_minutes}分钟后启动搅拌`,
       seconds: preheat_seconds,
-      display: preheat_seconds < 60 ? `约${preheat_seconds}秒` : `约${Math.ceil(preheat_seconds/60)}分钟`,
+      display: `约${preheat_minutes}分钟`,
     },
     {
       id: 'cook',
       name: '低温烹饪',
       desc: `恒温 ${cooking_base.temperature}℃，搅拌速度${cooking_base.speed}档（60转/分钟），低温慢炖`,
       seconds: cook_seconds,
-      display: `约${Math.ceil(cook_seconds/60)}分钟`,
+      display: `约${cook_minutes}分钟`,
     },
     {
       id: 'done',
@@ -94,9 +77,11 @@ function calcCookingParams(recipe, totalGrams) {
     temperature: cooking_base.temperature,
     power: cooking_base.power,
     speed: cooking_base.speed,
+    cook_minutes,
+    preheat_minutes,
     preheat_seconds,
     cook_seconds,
-    total_seconds: preheat_seconds + cook_seconds,
+    total_seconds,
     stages,
   };
 }

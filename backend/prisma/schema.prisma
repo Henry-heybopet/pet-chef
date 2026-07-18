@@ -164,6 +164,7 @@ model UserIdentity {
   provider           IdentityProvider
   provider_user_id   String
   login_hash         String
+  password_hash      String?
   phone_country_code String?
   is_primary         Boolean
   verified_at        DateTime?
