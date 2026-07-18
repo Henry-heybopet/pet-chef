@@ -13,7 +13,8 @@ import AIAnalysisScreen from './components/AIAnalysisScreen';
 import RecipeList from './components/RecipeList';
 import RecipeMake from './components/RecipeMake';
 import CookingScreen from './components/CookingScreen';
-import TuyaDeviceFlow from './components/TuyaDeviceFlow';
+import CookingCenterPage from './components/CookingCenterPage';
+import { FreshMatchResultScreen, FreshMatchScreen } from './components/FreshMatchScreen';
 import BottomTabBar from './components/BottomTabBar';
 import RecipeCategoryCatalog from './components/RecipeCategoryCatalog';
 import PetProfileDetails from './components/PetProfileDetails';
@@ -74,6 +75,7 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
   const [username, setUsername] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [authAction, setAuthAction] = useState('login');
 
   useEffect(() => {
     if (!authPrompt) return;
@@ -95,11 +97,15 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
     resetModal();
   };
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event, action = 'login') => {
     event.preventDefault();
     const loginValue = login.trim();
     if (!loginValue) {
       setMessage('请输入用户名或手机号');
+      return;
+    }
+    if (action === 'signup' && !/^1[3-9]\d{9}$/.test(loginValue)) {
+      setMessage('新用户注册请输入手机号');
       return;
     }
     if (!/^\d{6}$/.test(password)) {
@@ -107,6 +113,7 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
       return;
     }
     setBusy(true);
+    setAuthAction(action);
     setMessage('');
     try {
       const result = await api.phoneLogin({ login: loginValue, password });
@@ -207,7 +214,14 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
                   placeholder="6位数字密码"
                   autoComplete="current-password"
                 />
-                <button type="submit" disabled={busy}>{busy ? '登录中' : (message.includes('激活') ? '立即登录' : '登录')}</button>
+                <div className="auth-modal-actions">
+                  <button type="button" className="auth-modal-register" disabled={busy} onClick={event => handleSubmit(event, 'signup')}>
+                    {busy && authAction === 'signup' ? '注册中' : '新用户注册'}
+                  </button>
+                  <button type="submit" disabled={busy}>
+                    {busy && authAction === 'login' ? '登录中' : '登录'}
+                  </button>
+                </div>
               </form>
             ) : (
               <form onSubmit={handleSignup} className="auth-modal-form">
@@ -353,10 +367,10 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken,
           <div style={{ marginLeft: 'auto', color: 'var(--secondary)', fontSize: 20 }}>→</div>
         </button>
         <button onClick={onDeviceEntry} className={`home-action-button home-action-device ${authToken ? '' : 'is-locked'}`}>
-          <div className="home-action-icon">⚙</div>
+          <div className="home-action-icon">🍲</div>
           <div>
-            <div className="home-action-title" style={{ color: '#7CFFB2' }}>{t('deviceControl')}</div>
-            <div className="home-action-desc">{t('deviceControlDesc')}</div>
+            <div className="home-action-title" style={{ color: '#7CFFB2' }}>烹饪</div>
+            <div className="home-action-desc">鲜食机 · 绑定 · 记录 · 状态</div>
           </div>
           <div style={{ marginLeft: 'auto', color: '#7CFFB2', fontSize: 20 }}>→</div>
         </button>
@@ -375,6 +389,7 @@ function AppInner() {
   const [aiProfile, setAiProfile] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
+  const [freshMatchResult, setFreshMatchResult] = useState(null);
   const [cookingData, setCookingData] = useState(null);
   const [entrySource, setEntrySource] = useState(null);
   const [editingPet, setEditingPet] = useState(null);
@@ -384,6 +399,7 @@ function AppInner() {
   const [authPromptMessage, setAuthPromptMessage] = useState('');
   const [pendingAuthAction, setPendingAuthAction] = useState(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [breedOptions, setBreedOptions] = useState(dogBreeds);
   const swipeStartRef = useRef(null);
 
   // Derived active tab based on current screen
@@ -394,6 +410,8 @@ function AppInner() {
       case 'recipe_catalog':
       case 'recipe_list':
       case 'recipe_make':
+      case 'fresh_match':
+      case 'fresh_match_result':
         return 'recipes';
       case 'pet_management':
       case 'dog_setup':
@@ -437,6 +455,14 @@ function AppInner() {
     }
   }, []);
 
+  useEffect(() => {
+    api.getBreeds()
+      .then(result => {
+        if (result?.success && result.breeds?.length) setBreedOptions(result.breeds);
+      })
+      .catch(error => console.error('Load breeds failed:', error));
+  }, []);
+
   const saveAuthSession = (result) => {
     const user = result.user || null;
     const token = result.token || '';
@@ -449,6 +475,13 @@ function AppInner() {
     localStorage.setItem('sessionExpiresAt', expiresAt);
     localStorage.removeItem('petchef_auth_token');
     localStorage.removeItem('petchef_auth_user');
+    HeyboTuya.syncAuthState({
+      token,
+      userId: user?.id || '',
+      nickname: user?.display_name || '',
+      tuyaUid: result.tuyaMapping?.tuya_uid || (user?.id ? `heybo_${user.id}` : ''),
+      tuyaPassword: result.tuyaMapping?.tuya_test_password || (user?.id ? `heybo_${user.id}` : ''),
+    }).catch(error => console.warn('Sync native auth failed:', error));
   };
 
   const clearAuthSession = () => {
@@ -460,6 +493,7 @@ function AppInner() {
     localStorage.removeItem('sessionExpiresAt');
     localStorage.removeItem('petchef_auth_token');
     localStorage.removeItem('petchef_auth_user');
+    HeyboTuya.clearAuthState().catch(error => console.warn('Clear native auth failed:', error));
   };
 
   const handleAuthLogin = (result) => {
@@ -516,7 +550,7 @@ function AppInner() {
         requireAuth(() => setScreen('pet_management'));
         break;
       case 'cook':
-        requireAuth(() => setScreen(cookingData ? 'cooking' : 'device_flow'));
+        requireAuth(() => setScreen('device_flow'));
         break;
       case 'mall':
         setScreen('mall_placeholder');
@@ -547,14 +581,15 @@ function AppInner() {
   };
 
   const toUiPet = (pet) => {
-    const breedName = pet.breed || pet.breedName;
-    const breed = dogBreeds.find(item =>
+    const breedName = typeof pet.breed === 'object' ? pet.breed?.name : (pet.breed || pet.breedName);
+    const breed = breedOptions.find(item =>
       item.id === pet.breedId ||
       item.name === breedName ||
       (breedName && (breedName.includes(item.name) || item.name.includes(breedName)))
     );
     const ageMonths = pet.age_months ?? pet.ageMonths;
-    return {
+    const avatarUrl = pet.avatar_url || pet.avatarUrl || pet.photoUrl || pet.profileImage || pet.imageUrl || pet.photo || pet.avatar || '';
+    const mapped = {
       ...pet,
       birthDate: toDateInput(pet.birth_date || pet.birthDate),
       breedId: pet.breedId || breed?.id || (breedName ? 'custom' : ''),
@@ -571,20 +606,31 @@ function AppInner() {
       allergySymptoms: pet.allergy_symptoms || pet.allergySymptoms || [],
       allergySeverity: pet.allergy_severity || pet.allergySeverity,
       specialPeriod: pet.special_period || pet.specialPeriod,
-      avatar: pet.avatar_url || pet.avatar,
+      avatar: avatarUrl,
+      avatar_url: avatarUrl,
+      avatarUpdatedAt: pet.avatar_updated_at || pet.updated_at || pet.updatedAt || '',
       gender: pet.sex || pet.gender,
       age: ageMonths ? Number((Number(ageMonths) / 12).toFixed(1)) : pet.age,
     };
+    return mapped;
+  };
+
+  const reloadPets = async (reason = 'manual') => {
+    if (!authToken) return [];
+    const result = await api.listPets(authToken);
+    if (result?.success) {
+      const mapped = (result.pets || []).map(toUiPet);
+      replaceProfiles(mapped);
+      return mapped;
+    }
+    return [];
   };
 
   useEffect(() => {
     if (!authToken) return;
-    api.listPets(authToken)
-      .then(result => {
-        if (result?.success) replaceProfiles((result.pets || []).map(toUiPet));
-      })
+    reloadPets('auth-or-breed-change')
       .catch(error => console.error('Load DB pets failed:', error));
-  }, [authToken]);
+  }, [authToken, breedOptions]);
 
   const savePetProfile = async (draft) => {
     if (!authToken) return draft;
@@ -686,6 +732,11 @@ function AppInner() {
     } else {
       addProfile(savedPet);
     }
+    try {
+      await reloadPets('after-save');
+    } catch (error) {
+      console.warn('Reload pets after save failed:', error);
+    }
     setScreen('pet_management');
   };
 
@@ -698,8 +749,7 @@ function AppInner() {
   };
 
   const handleAIEntry = () => requireAuth(() => {
-    if (profile?.id) handleAIShortcut(profile);
-    else setScreen('pet_management');
+    setScreen('fresh_match');
   });
   const handleDeviceEntry = () => requireAuth(() => setScreen('device_flow'));
 
@@ -762,7 +812,7 @@ function AppInner() {
   const handleSelectRecipe = (recipe) => { setSelectedRecipe(recipe); setScreen('recipe_make'); };
   const handleStartCooking = (data) => {
     setCookingData(data);
-    setScreen('cooking');
+    setScreen('device_flow');
     // 首次烹饪时标记引导完成和已烹饪
     if (!hasCookedBefore) {
       markHasCooked();
@@ -788,6 +838,8 @@ function AppInner() {
     if (screen === 'dog_setup') setScreen('pet_management');
     if (screen === 'pet_management' || screen === 'device_flow' || screen === 'mall_placeholder') setScreen('home');
     if (screen === 'ai_analysis') setScreen('pet_management');
+    if (screen === 'fresh_match') setScreen('home');
+    if (screen === 'fresh_match_result') setScreen('fresh_match');
     if (screen === 'recipe_catalog') setScreen('home');
     if (screen === 'recipe_list') {
       if (entrySource === 'catalog') setScreen('recipe_catalog');
@@ -847,6 +899,7 @@ function AppInner() {
       {screen === 'pet_management' && (
         <PetManagementScreen
           profiles={profiles}
+          breeds={breedOptions}
           onAddPet={handleAddPet}
           onEditPet={handleEditPet}
           onSelectPet={handleSelectPet}
@@ -863,12 +916,33 @@ function AppInner() {
           lang={lang}
         />
       )}
+      {screen === 'fresh_match' && (
+        <FreshMatchScreen
+          profiles={profiles}
+          authToken={authToken}
+          onBack={goHome}
+          onAddPet={handleAddPet}
+          onResult={(result) => { setFreshMatchResult(result); setScreen('fresh_match_result'); }}
+        />
+      )}
+      {screen === 'fresh_match_result' && <FreshMatchResultScreen result={freshMatchResult} onBack={() => setScreen('fresh_match')} onStartCooking={handleStartCooking} />}
       {screen === 'dog_setup' && <DogSetup onBack={goHome} profile={editingPet} onSave={handleProfileSave} onSelectCategory={handleSelectCategory} onShowAnalysis={handleShowAnalysis} lang={lang} />}
       {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} onSelectRecipe={handleSelectRecipe} lang={lang} authToken={authToken} />}
       {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={profile} onSelectRecipe={handleSelectRecipe} lang={lang} />}
       {screen === 'recipe_make' && <RecipeMake onBack={goBack} recipe={selectedRecipe} profile={profile} onStartCooking={handleStartCooking} lang={lang} />}
       {screen === 'cooking' && <CookingScreen onBack={goHome} cookingData={cookingData} lang={lang} />}
-      {screen === 'device_flow' && <TuyaDeviceFlow onBack={goHome} />}
+      {screen === 'device_flow' && (
+        <CookingCenterPage
+          onBack={goHome}
+          authToken={authToken}
+          recipeContext={cookingData}
+          onChooseRecipe={() => {
+            setSelectedCategory(null);
+            setEntrySource('catalog');
+            setScreen('recipe_catalog');
+          }}
+        />
+      )}
       {screen === 'mall_placeholder' && (
         <div className="animate-fade flex-col" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: '40px 20px', color: 'var(--gray)', textAlign: 'center', background: 'var(--dark)' }}>
           <span style={{ fontSize: '48px', marginBottom: '16px' }}>🛒</span>

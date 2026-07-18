@@ -25,7 +25,7 @@ function RecipeCard({ recipe, onSelect, t, lang }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           {!expanded ? (
             <div style={{ position: 'relative', height: 160, overflow: 'hidden' }}>
-              <img src={recipe.img} alt={recipe.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
+              <img src={recipe.img} loading="lazy" alt={recipe.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
                 onError={e => { e.target.src = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&h=200&q=80'; e.target.onerror = null; }} />
               <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(10,13,20,0.9) 0%, transparent 60%)' }} />
               <div style={{ position: 'absolute', bottom: 8, left: 12, right: 8 }}>

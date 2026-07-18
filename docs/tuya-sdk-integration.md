@@ -263,3 +263,72 @@ frontend/android/app/build/outputs/apk/debug/app-debug.apk
 - 固件是否已经支持 App SDK 配网和 DP 控制。
 - `multistep` raw 协议格式。
 - `fault` 故障码含义。
+
+## 2026-06-29 蓝牙配网权限修复与调试诊断仪升级记录
+
+为了解决工厂在调试过程中遇到的“App内蓝牙扫描设备为空”及“云端Token等待获取”问题，进行了以下加固修改：
+
+### 1. 修复 Android 原生蓝牙与定位权限机制
+*   **根本原因**：debug App 目标 API 级别为 36 (Android 14+)。在 Android 12+ 上，蓝牙 BLE 扫描不仅需要静态声明，还必须在**运行时动态申请** `BLUETOOTH_SCAN` 和 `BLUETOOTH_CONNECT` 权限，且底层蓝牙广播扫描依赖定位服务 (`ACCESS_FINE_LOCATION`) 运行时权限和 GPS 开关。
+*   **解决方案**：
+    *   在 `HeyboTuyaPlugin.java` 类的头部注册 Capacitor `@Permission` 别名。
+    *   在 `TuyaDeviceFlow.jsx` 的 `startBleScan()` 启动时，强制执行动态权限检查与弹窗申请。
+    *   在原生 `status()` 方法中追加系统蓝牙开关、GPS 开关、Wi-Fi 频段和各项权限状态的实时读取，以供前端诊断。
+
+### 2. 升级环境诊断仪面板 (Diagnostics Panel)
+在 App 的设备流页面的顶端，集成了包含 15 个关键参数的 **“环境状态与配网监控诊断仪”** 模块：
+*   **SDK & 账号状态**：SDK 初始化结果、当前登录 Heybo User ID、当前 Tuya Home ID。
+*   **手机硬件开关**：系统蓝牙开关、系统定位 (GPS) 开关、当前连接 Wi-Fi 的 SSID 和频段（自适应识别 2.4G/5G 并给出更换警告）。
+*   **运行时权限**：动态显现 `BLUETOOTH_SCAN`、`BLUETOOTH_CONNECT` 和 `ACCESS_FINE_LOCATION` 的授权绿/红灯。
+*   **实时配网握手数据流**：
+    *   **Token 预检与四状态细化**：细化为 `未请求`、`正在请求...`、`成功 (Token: xxx)`、`失败 (Error)` 四种状态。
+    *   **连通性预测试**：用户登录并绑定家庭 ID 后，App 会在后台**自动触发一次 Token 获取测试**，无需物理设备也可测通涂鸦云端通路；并在诊断面板中增加了 `🧪 测试获取` 的手动测试按钮。
+    *   待配网目标设备参数（显示 UUID / MAC / PID / Name）、配网成功 `onSuccess` 的设备 JSON 载荷、以及失败 `onError` 详细错误码。
+
+### 3. 构建结果
+*   经 `clean` 构建编译，成功打出包含以上诊断机制的最新 debug APK：
+    `/Users/yhl/Antigravity/pet chef/frontend/android/app/build/outputs/apk/debug/app-debug.apk`
+
+## 2026-06-30 修复配网闪退与运行日志可视化升级记录
+
+### 1. 解决一键配网/一键绑定闪退 Bug
+*   **根本原因**：涂鸦 SDK 配网网络请求（`getActivatorToken`）的 onSuccess/onFailure 回调运行在 **非 UI 线程（background thread）**。当回调触发时，原生的 `ThingHomeSdk.getActivatorInstance().newActivator(builder)` 和 `currentActivator.start()`（以及 `MultiModeActivator` 的启动与停止方法）在后台线程实例化了 Handler，导致 Android 抛出致命异常：`java.lang.RuntimeException: Can't create handler inside thread that has not called Looper.prepare()`，引发 App 闪退。
+*   **解决方案**：
+    *   在 `HeyboTuyaPlugin.java` 中，将所有 Activator 的实例化、开启（`.start()`、`.startActivator()`）以及停止/销毁（`stopCurrentActivator()`）全部包裹在 **`getActivity().runOnUiThread(Runnable)`** 中，确保所有涉及底层 Handler 消息机制的操作均在 Android UI 主线程执行。
+    *   增加对 `MultiModeActivator` 异常情况的 try-catch，防止底层 SDK 二次报错抛出。
+
+### 2. 升级运行日志输出 (Debugging Logs Console)
+*   **痛点**：此前的“实时通信日志”被塞在特定设备被选中之后的 Details Tab 下。这导致在进行最需要调试的“登录账号 → 绑定家庭 → 蓝牙扫描 → 一键配网/启动备用配网”阶段时，界面上根本没有选中设备，测试人员完全无法查看日志，无法了解 App 在哪一步卡住或失败。
+*   **解决方案**：
+    *   在 [TuyaDeviceFlow.jsx](file:///Users/yhl/Antigravity/pet%20chef/frontend/src/components/TuyaDeviceFlow.jsx) 中，移除设备 Tab 主面板内的 logs 切换选项。
+    *   将 **“Real-Time Console 运行日志输出 (Debugging Logs)”** 移出条件块，作为一等公民**永久呈现在页面最底部**。
+    *   测试人员现在从“登录、获取Token、蓝牙扫描”到“点击一键绑定配网”的每一步，均能一目了然看到实时日志流输出，并支持随时一键复制到剪贴板，方便反馈研发。
+
+### 3. Wi-Fi 配网 1006 错误超时原因说明
+*   在日志栏和状态说明中补充说明：**`1006 out of time`** 是涂鸦云端/底层的配网超时错误。它意味着 App 成功发送了 Token 并开始了 EZ（快闪）或 AP（热点）信号广播，但设备在 120 秒内没有成功连接上 Wi-Fi 路由器或涂鸦云端。
+*   **典型排查方法**：
+    1.  确认输入的 Wi-Fi 密码是否有误。
+    2.  确认 Wi-Fi 是否为标准的 2.4GHz 频段（不支持 5GHz，且最好将路由器的 2.4G/5G 双频合一改为独立 SSID）。
+    3.  确认设备在配网前是否已经被复位（EZ 模式应为快速闪烁，AP 模式为慢闪，且手机在 AP 模式下需连接到 `SmartLife-xxxx` 机器热点）。
+
+### 4. 解决蓝牙双模配网 NullPointerException
+*   **根本原因**：在蓝牙辅助双模配网时，我们从 React 传递设备参数给原生 Android `connectBleDevice`，但在原生构造 `MultiModeActivatorBean` 对象时，仅设置了 `uuid`, `address`, `productId`, `ssid`, `pwd`, `token`, `timeout` 等参数，**遗漏了 `mac`（需为蓝牙 MAC 地址，在 BLE 环境下即为 `address`）、`deviceType` 与 `flag` 参数**。在涂鸦 SDK 底层启动多模配网器时，由于 `mac` 缺失或底层逻辑对该 Bean 对象的某些必需属性进行空指针敏感方法调用，导致抛出 `NullPointerException` (反馈为 `Start BLE activator failed: null`)。
+*   **解决方案**：
+    *   在原生 BLE 扫描回调 `bleDeviceFound` 事件中，向 JS 层额外透传 `deviceType` 与 `flag` 属性。
+    *   在 React 组件 [TuyaDeviceFlow.jsx](file:///Users/yhl/Antigravity/pet%20chef/frontend/src/components/TuyaDeviceFlow.jsx) 中，点击 `connectBleDevice` 时一并将 `deviceType` 和 `flag` 参数通过桥接通道传递给 Java 插件。
+    *   在原生 `HeyboTuyaPlugin.java` 的 `connectBleDevice` 方法中，读取 `deviceType` 和 `flag` 参数，并对 `MultiModeActivatorBean` 赋值：
+        *   `bean.mac = address;` (蓝牙 MAC 地址)
+        *   `bean.deviceType = deviceType;`
+        *   `bean.flag = flag;`
+    *   同时，在 `try-catch` 捕获块中，将 `e.printStackTrace` 的输出内容转为 String 拒绝信息（StringWriter），防止再次出现 NPE 时由于 message 为 null 而无法抓取堆栈信息。
+
+## 2026-07-01 修复设备实时状态上报回调失效记录
+
+### 1. 解决设备实时状态上报 (onDpUpdate) 无日志问题
+*   **根本原因**：涂鸦 SDK 的设备通信监听器 `IDevListener` 用于接收并分发设备在云端 MQTT 上报的数据。该监听器的后台逻辑高度依赖 Android 的 Handler 消息循环机制。由于 Capacitor 插件方法（`subscribeDevice`）运行在**非 UI 的 background bridge 线程**，在此背景下直接调用 `ThingHomeSdk.newDeviceInstance(devId)` 构造设备实例，会导致其内部的 Handler 线程绑定发生错乱（未能成功绑定到 Android UI 的主 Main Looper），从而阻断了设备状态更新（`onDpUpdate` 和 `onStatusChanged` 等事件）的分发。
+*   **解决方案**：
+    *   在 [HeyboTuyaPlugin.java](file:///Users/yhl/Antigravity/pet%20chef/frontend/android/app/src/main/java/com/heybopet/petchef/HeyboTuyaPlugin.java) 中，将 `subscribeDevice` 方法内所有的设备实例实例化、`registerDevListener` 监听绑定以及 `unsubscribeDevice` 里的 `unRegisterDevListener`、`onDestroy` 销毁操作，统统包裹在 **`getActivity().runOnUiThread(Runnable)`** 中，强制它们在 Android UI 线程上实例化。
+    *   这保证了内部消息循环 Handler 自动在 Android UI 主线程的 Looper 下初始化，MQTT 服务发来的设备数据上报可以正确流转并投递到 `onDpUpdate` 触发 `notifyListeners("dpUpdate", data)` 发送给前端，恢复了 `📥 [DP 上报]` 日志流展示。
+*   **构建结果**：
+    *   新版 debug APK（B1.00.04）已重新 clean 打包输出至：
+        `/Users/yhl/Antigravity/pet chef/frontend/android/app/build/outputs/apk/debug/app-debug.apk`
