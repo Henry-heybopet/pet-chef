@@ -93,11 +93,54 @@ const ingredientsDb = {
     safety_level: 'safe', safety_note: null,
   },
 
+  '鸡小胸': {
+    category: 'protein', water_pct: 0.74,
+    benefits: '肉质鲜嫩易消化，高蛋白质、极低脂肪，适合生长期和体重控制。',
+    calories_per_100g: 110, protein_pct: 22, fat_pct: 1.5,
+    safety_level: 'safe', safety_note: null,
+  },
+  '鸭小胸': {
+    category: 'protein', water_pct: 0.72,
+    benefits: '低致敏性优质禽肉，降火温和，富含B族维生素和铁元素，提供皮毛与免疫支持。',
+    calories_per_100g: 120, protein_pct: 21, fat_pct: 2.5,
+    safety_level: 'safe', safety_note: null,
+  },
+  '兔里脊': {
+    category: 'protein', water_pct: 0.72,
+    benefits: '极低脂肪、极低致敏性高蛋白白肉，易于消化，非常适合低敏排敏与体重管理。',
+    calories_per_100g: 115, protein_pct: 22, fat_pct: 2,
+    safety_level: 'safe', safety_note: null,
+  },
+  '金枪鱼白肉': {
+    category: 'protein', water_pct: 0.74,
+    benefits: '极低脂高蛋白，富含牛磺酸、EPA和DHA，支持心脏健康和认知发育。',
+    calories_per_100g: 105, protein_pct: 24, fat_pct: 0.6,
+    safety_level: 'safe', safety_note: null,
+  },
+  '牛心': {
+    category: 'protein', water_pct: 0.70,
+    benefits: '富含天然辅酶Q10、牛磺酸和铁，支持心肌健康，提供充足活力和耐力。',
+    calories_per_100g: 130, protein_pct: 17, fat_pct: 6,
+    safety_level: 'safe', safety_note: null,
+  },
+
   // ===== 碳水/主食类 =====
   '红薯': {
     category: 'carb', water_pct: 0.78,
     benefits: '低GI缓释碳水，富含β-胡萝卜素（抗氧化）和维生素C，膳食纤维帮助消化，能量持久稳定。',
     calories_per_100g: 86, carb_pct: 20, fiber_pct: 3,
+    safety_level: 'safe', safety_note: null,
+  },
+  '山药丁': {
+    category: 'carb', water_pct: 0.75,
+    benefits: '健脾养胃易吸收，黏液多糖保护胃黏膜，低升糖碳水，适合消化道敏感个体。',
+    calories_per_100g: 63, carb_pct: 14, fiber_pct: 1.7,
+    safety_level: 'safe', safety_note: null,
+  },
+  '全熟燕麦片': {
+    category: 'carb', water_pct: 0.08,
+    benefits: '优质熟化粗粮，水溶性膳食纤维丰富，保护肠道，平稳血糖，提供饱腹感。',
+    calories_per_100g: 367, carb_pct: 68, fiber_pct: 9,
     safety_level: 'safe', safety_note: null,
   },
   '南瓜': {
@@ -172,6 +215,12 @@ const ingredientsDb = {
     category: 'veg', water_pct: 0.94,
     benefits: '水分含量极高，低热量，含有维生素C和钾，消化轻负担，适合老年犬和需要控制热量的犬只。',
     calories_per_100g: 17, carb_pct: 3.1,
+    safety_level: 'safe', safety_note: null,
+  },
+  '冬瓜丁': {
+    category: 'veg', water_pct: 0.96,
+    benefits: '水分含量极高，清热利尿，热量极低，有助于老年犬及肥胖犬体重管理。',
+    calories_per_100g: 12, carb_pct: 2,
     safety_level: 'safe', safety_note: null,
   },
   '苹果': {

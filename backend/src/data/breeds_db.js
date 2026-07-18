@@ -6,7 +6,7 @@ const breedsDb = [
     intake_factor: { low: 20, medium: 25, high: 30 },
     nutrition_notes: ['美毛', '关节保护', '高蛋白需求', 'Omega-3'],
     breed_desc: '金毛是友善的家庭犬，活跃度高，双层毛发需要Omega-3和生物素维持光泽，大型犬骨骼压力大需适量补钙。',
-    img: 'https://images.unsplash.com/photo-1558788353-f76d92427f16?auto=format&fit=crop&w=400&h=400&q=80',
+    img: '/breeds/dog/golden.png',
   },
   {
     id: 'labrador', name: '拉布拉多', name_en: 'Labrador Retriever',
@@ -14,7 +14,7 @@ const breedsDb = [
     intake_factor: { low: 20, medium: 25, high: 30 },
     nutrition_notes: ['体重管理', '关节保护', '高蛋白需求'],
     breed_desc: '拉布拉多食欲旺盛，容易超重，需要控制碳水比例，保证优质蛋白摄入，关节需要葡萄糖胺支撑。',
-    img: 'https://images.unsplash.com/photo-1571594736942-90ffde91a3ef?auto=format&fit=crop&w=400&h=400&q=80',
+    img: '/breeds/dog/labrador.png',
   },
   {
     id: 'husky', name: '哈士奇', name_en: 'Siberian Husky',
@@ -22,7 +22,7 @@ const breedsDb = [
     intake_factor: { low: 22, medium: 28, high: 35 },
     nutrition_notes: ['高能量需求', '眼睛保健', '耐寒脂肪储备'],
     breed_desc: '哈士奇是典型工作犬，运动量极大，需要高蛋白高脂肪饮食维持能量，眼部色素需要抗氧化剂保护。',
-    img: 'https://images.unsplash.com/photo-1767381604151-bae00f2fb337?auto=format&fit=crop&w=400&h=400&q=80',
+    img: '/breeds/dog/husky.png',
   },
   {
     id: 'samoyed', name: '萨摩耶', name_en: 'Samoyed',
@@ -30,7 +30,7 @@ const breedsDb = [
     intake_factor: { low: 20, medium: 25, high: 30 },
     nutrition_notes: ['美毛', '白毛护理', 'Omega-3', '皮肤健康'],
     breed_desc: '萨摩耶雪白双层厚毛需要充足Omega-3和维生素E，活跃度高，关节和消化系统需要重点关注。',
-    img: 'https://images.unsplash.com/photo-1736196674354-b5e918a64644?auto=format&fit=crop&w=400&h=400&q=80',
+    img: '/breeds/dog/samoyed.png',
   },
   {
     id: 'alaskan', name: '阿拉斯加雪橇犬', name_en: 'Alaskan Malamute',
@@ -38,7 +38,7 @@ const breedsDb = [
     intake_factor: { low: 20, medium: 26, high: 33 },
     nutrition_notes: ['高能量', '高蛋白', '骨骼支撑', '关节保护'],
     breed_desc: '阿拉斯加是大型工作犬，体型壮硕，需要充足蛋白质维持肌肉，葡萄糖胺和钙质保护大体型骨骼关节。',
-    img: 'https://images.unsplash.com/photo-1743108056300-25f56b603eab?auto=format&fit=crop&w=400&h=400&q=80',
+    img: '/breeds/dog/alaskan.png',
   },
   {
     id: 'shepherd', name: '德国牧羊犬', name_en: 'German Shepherd',
@@ -46,7 +46,7 @@ const breedsDb = [
     intake_factor: { low: 20, medium: 26, high: 33 },
     nutrition_notes: ['高蛋白', '关节保护', '皮肤健康', '免疫增强'],
     breed_desc: '德牧是警用工作犬，智力高、运动量大，需要高蛋白食谱，髋关节发育不良的遗传风险需要关节保护。',
-    img: 'https://images.unsplash.com/photo-1649923625793-af1cbd33c8bd?auto=format&fit=crop&w=400&h=400&q=80',
+    img: '/breeds/dog/shepherd.png',
   },
   {
     id: 'border_collie', name: '边境牧羊犬', name_en: 'Border Collie',
@@ -54,7 +54,7 @@ const breedsDb = [
     intake_factor: { low: 20, medium: 28, high: 35 },
     nutrition_notes: ['高能量', '脑部发育', '高蛋白', '眼部保健'],
     breed_desc: '边牧是世界上最聪明的犬种，运动量和脑力消耗都极大，需要高蛋白高脂肪提供稳定能量，DHA支持认知功能。',
-    img: 'https://images.unsplash.com/photo-1743506444782-41ec0289710f?auto=format&fit=crop&w=400&h=400&q=80',
+    img: '/breeds/dog/border_collie.png',
   },
   {
     id: 'akita', name: '秋田犬', name_en: 'Akita',
@@ -62,7 +62,7 @@ const breedsDb = [
     intake_factor: { low: 18, medium: 22, high: 27 },
     nutrition_notes: ['关节保护', '体重管理', '皮肤健康', '免疫'],
     breed_desc: '秋田犬是日本国犬，活跃度中等，容易肥胖，需要控制食量，关节和皮肤是主要健康关注点。',
-    img: 'https://images.unsplash.com/photo-1613574033473-78f007b957f9?auto=format&fit=crop&w=400&h=400&q=80',
+    img: '/breeds/dog/akita.jpg',
   },
   {
     id: 'shiba', name: '柴犬', name_en: 'Shiba Inu',
@@ -70,7 +70,7 @@ const breedsDb = [
     intake_factor: { low: 20, medium: 25, high: 30 },
     nutrition_notes: ['皮肤健康', '美毛', '过敏体质', '低敏饮食'],
     breed_desc: '柴犬皮肤容易过敏，食物敏感率高，建议单一蛋白质饮食，Omega-3保护皮肤屏障功能。',
-    img: 'https://images.unsplash.com/photo-1647530376762-9e71f566bad9?auto=format&fit=crop&w=400&h=400&q=80',
+    img: '/breeds/dog/shiba.png',
   },
   {
     id: 'corgi', name: '柯基', name_en: 'Pembroke Welsh Corgi',
@@ -78,7 +78,7 @@ const breedsDb = [
     intake_factor: { low: 20, medium: 25, high: 30 },
     nutrition_notes: ['体重管理', '脊背保护', '关节健康', '控脂'],
     breed_desc: '柯基腿短身长，脊柱压力大，需要严格控制体重，低脂高蛋白食谱防止肥胖，葡萄糖胺保护关节。',
-    img: 'https://images.unsplash.com/photo-1612808128461-7502c99c4f32?auto=format&fit=crop&w=400&h=400&q=80',
+    img: '/breeds/dog/corgi.png',
   },
   {
     id: 'poodle', name: '贵宾犬', name_en: 'Poodle (Toy/Miniature)',
@@ -86,7 +86,7 @@ const breedsDb = [
     intake_factor: { low: 20, medium: 25, high: 30 },
     nutrition_notes: ['美毛', '皮肤健康', '牙齿护理', '低过敏'],
     breed_desc: '贵宾犬卷毛需要充足Omega-3和生物素，皮肤敏感，建议高质量蛋白和健康脂肪，注意口腔健康。',
-    img: 'https://images.unsplash.com/photo-1673487069553-45b6071d6e88?auto=format&fit=crop&w=400&h=400&q=80',
+    img: '/breeds/dog/poodle.jpg',
   },
   {
     id: 'pomeranian', name: '博美', name_en: 'Pomeranian',
@@ -94,7 +94,7 @@ const breedsDb = [
     intake_factor: { low: 22, medium: 27, high: 32 },
     nutrition_notes: ['美毛', '牙齿健康', '骨骼密度', '心脏保健'],
     breed_desc: '博美毛发浓密需要Omega-3维护，小型犬代谢快，心脏病和骨折风险需要钙质和牛磺酸补充。',
-    img: 'https://images.unsplash.com/photo-1683410086052-f1dc5d9a5a51?auto=format&fit=crop&w=400&h=400&q=80',
+    img: '/breeds/dog/pomeranian.jpg',
   },
   {
     id: 'bichon', name: '比熊', name_en: 'Bichon Frise',
@@ -238,7 +238,7 @@ const breedsDb = [
     intake_factor: { low: 22, medium: 26, high: 30 },
     nutrition_notes: ['美毛', '泪痕管理', '牙齿健康', '皮肤健康'],
     breed_desc: '马尔济斯长白毛需要大量蛋白质和Omega-3维护，泪痕是常见问题，低铁低矿物质饮食有助于减少泪痕。',
-    img: 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=400&h=400&q=80',
+    img: '/breeds/dog/maltese.jpg',
   },
   {
     id: 'custom', name: '其他犬种（自定义）', name_en: 'Custom Breed',

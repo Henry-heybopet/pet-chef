@@ -7,7 +7,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma db push",
-    "db:seed": "node prisma/seed.js"
+    "db:seed": "node prisma/seed.js",
+    "recipes:import": "python3 scripts/import_recipes_from_excel.py",
+    "db:sync": "node src/data/sync_db_recipes.js"
   },
   "keywords": [],
   "author": "",

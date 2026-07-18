@@ -95,7 +95,7 @@ model User {
   status        UserStatus @default(active)
   created_at    DateTime   @default(now())
   updated_at    DateTime   @updatedAt
-
+  
   identities    UserIdentity[]
   memberships   HouseholdMember[]
   pets          Pet[]
@@ -107,7 +107,7 @@ model Household {
   owner_user_id String
   region        String
   created_at    DateTime   @default(now())
-
+  
   members       HouseholdMember[]
   pets          Pet[]
   devices       Device[]
@@ -122,7 +122,7 @@ model Device {
   device_name      String
   status           DeviceStatus @default(active)
   bound_at         DateTime     @default(now())
-
+  
   household        Household    @relation(fields: [household_id], references: [id])
 }
 
@@ -142,7 +142,7 @@ model Sku {
   price_cents  Int      // 价格(分)
   currency     String   @default("CNY")
   stock_status String   @default("in_stock")
-
+  
   product      Product  @relation(fields: [product_id], references: [id])
 }
 ```

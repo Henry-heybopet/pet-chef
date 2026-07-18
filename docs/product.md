@@ -88,6 +88,6 @@ Pet Chef 是面向养宠家庭的高端宠物健康烹饪电器和个性化喂�
 - `鲜食机专利建议（GPT）.docx`
 - `产品定义（综合UI）.docx`
 - `宠物鲜食机项目进度计划.pptx`
-- `frontend/public/犬用食谱.docx`
+- `docs/source/犬用鲜食配方_A+B+C_40种优化版_营养合规审查（0630）.xlsx`
 
-项目进度计划已提炼到 `roadmap.md`，犬用食谱已提炼到 `recipe-database.md`。
+项目进度计划已提炼到 `roadmap.md`，犬用食谱已提炼到 `recipe-database.md` 和代码结构化数据。
