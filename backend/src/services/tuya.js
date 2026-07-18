@@ -117,12 +117,12 @@ async function sendCommands(commands) {
 /**
  * 获取设备状态
  */
-async function getDeviceStatus() {
+async function getDeviceStatus(deviceId = DEVICE_ID) {
   return requestWithRetry(async () => {
     const token = await getToken();
     const t = Date.now().toString();
     const nonce = crypto.randomUUID();
-    const path = `/v1.0/devices/${DEVICE_ID}/status`;
+    const path = `/v1.0/devices/${deviceId}/status`;
     // 业务请求签名必须包含 access_token
     const sign = generateSign(ACCESS_ID, SECRET, t, nonce, 'GET', path, '', token);
     

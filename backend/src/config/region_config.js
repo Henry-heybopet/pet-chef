@@ -25,13 +25,8 @@ const REGION_CONFIGS = Object.freeze({
 
     // --- 支付 ---
     payment: {
-      providers: ['wechat_pay'],
-      planned_providers: ['bank_card', 'wechat_pay', 'alipay'],
-      first_stage_provider: 'wechat_pay',
+      providers: ['wechat_pay', 'alipay'],
       currency: 'CNY',
-      bank_card_enabled: false,
-      wechat_pay_enabled: true,
-      alipay_enabled: false,
       stripe_enabled: false,
       paypal_enabled: false,
     },
@@ -104,14 +99,10 @@ const REGION_CONFIGS = Object.freeze({
     },
 
     payment: {
-      providers: ['stripe'],
-      planned_providers: ['stripe', 'apple_pay', 'google_pay', 'paypal'],
-      first_stage_provider: 'stripe',
+      providers: ['stripe', 'paypal'],
       currency: 'USD',
       stripe_enabled: true,
-      apple_pay_enabled: false,
-      google_pay_enabled: false,
-      paypal_enabled: false,
+      paypal_enabled: true,
     },
 
     auth: {
@@ -174,14 +165,10 @@ const REGION_CONFIGS = Object.freeze({
     },
 
     payment: {
-      providers: ['stripe'],
-      planned_providers: ['stripe', 'apple_pay', 'google_pay', 'paypal'],
-      first_stage_provider: 'stripe',
+      providers: ['stripe', 'paypal'],
       currency: 'EUR',
       stripe_enabled: true,
-      apple_pay_enabled: false,
-      google_pay_enabled: false,
-      paypal_enabled: false,
+      paypal_enabled: true,
     },
 
     auth: {

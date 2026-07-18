@@ -3,7 +3,7 @@
 > **文档版本**: v3.0（全球化三区域架构升级）
 > **适用范围**: 移动端 App、后端服务、固件/设备通信、AI 引擎、全球支付与合规
 > **最后更新**: 2026-06-22（架构重构版）
-> **变更摘要**: 针对 5 万台设备与 100 万用户吞吐量的全球化多区域重构。支持严格数据本地化（中国/美国/欧洲）、基于 JWT 与 Rate Limiter 的网络安全网关、Prisma 驱动的 PostgreSQL 实例、及分阶段支付规划（中国区长期支持银行卡/微信/支付宝，第一阶段只接微信；海外长期支持信用卡/Apple Pay/Google Pay/PayPal，第一阶段只接 Stripe Card）。
+> **变更摘要**: 针对 5 万台设备与 100 万用户吞吐量的全球化多区域重构。支持严格数据本地化（中国/美国/欧洲）、基于 JWT 与 Rate Limiter 的网络安全网关、Prisma 驱动的 PostgreSQL 实例、及多通道支付（微信/支付宝/Stripe/PayPal）。
 
 ---
 
@@ -55,7 +55,7 @@ Pet Chef v3.0 弃用原本的单一云端服务模式，升级为**环境变量�
 | **CORS 域名** | `*.petchef.cn` | `*.petchef.com` | `*.petchef.com` |
 | **数据合规法** | 中华人民共和国 PIPL | CCPA (加州消费者隐私法) | 欧盟 GDPR (最严苛) |
 | **Tuya IoT API** | `openapi.tuyacn.com` | `openapi.tuyaus.com` | `openapi.tuyaeu.com` |
-| **支持支付渠道** | 第一阶段：微信支付；长期：银行卡/微信/支付宝 | 第一阶段：Stripe Card；长期：信用卡/Apple Pay/Google Pay/PayPal | 第一阶段：Stripe Card；长期：信用卡/Apple Pay/Google Pay/PayPal |
+| **支持支付渠道** | 微信支付 App Pay / 支付宝 App | Stripe (信用卡/Apple) / PayPal | Stripe / PayPal |
 | **本地化语系** | 默认: zh-CN (支持: zh, en) | 默认: en-US (支持: en, es, pt, fr) | 默认: en-GB (支持: en, de, fr, es, it, pt, ru, ar) |
 | **默认时区** | Asia/Shanghai | America/New_York | Europe/Berlin |
 | **推送渠道** | 极光推送 (JPush) / 个推 | FCM (Firebase Cloud Messaging) | FCM (Firebase Cloud Messaging) |
@@ -95,7 +95,7 @@ model User {
   status        UserStatus @default(active)
   created_at    DateTime   @default(now())
   updated_at    DateTime   @updatedAt
-
+  
   identities    UserIdentity[]
   memberships   HouseholdMember[]
   pets          Pet[]
@@ -107,7 +107,7 @@ model Household {
   owner_user_id String
   region        String
   created_at    DateTime   @default(now())
-
+  
   members       HouseholdMember[]
   pets          Pet[]
   devices       Device[]
@@ -122,7 +122,7 @@ model Device {
   device_name      String
   status           DeviceStatus @default(active)
   bound_at         DateTime     @default(now())
-
+  
   household        Household    @relation(fields: [household_id], references: [id])
 }
 
@@ -142,14 +142,14 @@ model Sku {
   price_cents  Int      // 价格(分)
   currency     String   @default("CNY")
   stock_status String   @default("in_stock")
-
+  
   product      Product  @relation(fields: [product_id], references: [id])
 }
 ```
 
 ---
 
-## 5. 全球化分阶段支付流
+## 5. 全球化多渠道支付流
 
 不同区域在创建支付流水（`POST /api/v1/payments`）时，后端通过 `region_config` 自动切分商户通道，在服务端组装返回给移动端的原生拉起参数。
 
@@ -162,18 +162,13 @@ model Sku {
             ▼                          ▼                          ▼
        中国法区 (CN)              美国法区 (US)              欧洲法区 (EU)
     ┌─────────────────┐        ┌─────────────────┐        ┌─────────────────┐
-    │  微信支付        │        │  Stripe Card    │        │  Stripe Card    │
+    │  微信支付 / 支付宝│        │  Stripe / PayPal│        │  Stripe / PayPal│
     └─────────────────┘        └─────────────────┘        └─────────────────┘
 ```
 
-| 区域 | 长期规划 | 第一阶段启用 |
-| --- | --- | --- |
-| 中国区 | 银行卡 / 微信支付 / 支付宝 | 微信支付 |
-| 海外 | 信用卡 / Apple Pay / Google Pay / PayPal | 信用卡支付（Stripe Card Payment） |
-
-- **微信支付 (中国第一阶段)**: 服务端对接微信支付 V3 App 下单接口，使用商户私钥生成移动端拉起参数；微信异步通知进入 Heybo 后端，完成 SHA256withRSA 验签和 API v3 解密后，幂等更新 `payment` 与 `order` 状态。
-- **Stripe Card Payment (海外第一阶段)**: 服务端调用 Stripe SDK 创建 `PaymentIntent`，向前端返回 `clientSecret`。App 端通过 Stripe SDK 完成 3D Secure 信用卡安全验证，后端通过 Webhook 接收 `payment_intent.succeeded` 广播更新库存及订单状态。
-- **支付宝 / Apple Pay / Google Pay / PayPal**: 属于长期规划通道，不进入第一阶段测试范围。后端 `region_config.payment.planned_providers` 保留规划，`region_config.payment.providers` 只暴露第一阶段已启用通道。
+- **微信/支付宝 (中国)**: 服务端对接官方 V3 接口，使用商户私钥和微信平台证书完成 SHA256withRSA 回调签名校验，验证通过后更改订单为 `paid`。
+- **Stripe (欧美)**: 服务端调用 Stripe SDK 创建 `PaymentIntent`，向前端返回 `clientSecret`。App 端通过 Stripe SDK 完成 3D Secure 信用卡安全验证，后端通过 Webhook 接收 `payment_intent.succeeded` 广播更新库存及订单状态。
+- **PayPal (欧美)**: 服务端创建 PayPal 订单，返回审批 Link，由移动端 SDK 或网页重定向完成支付授权。
 
 ---
 

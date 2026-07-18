@@ -1,3 +1,4 @@
+{/* Pet Chef Ver B1.00 — 2026-06-22 */}
 // App.jsx — Heybo Lux Feeding OS v2.0 with i18n
 import React, { useEffect, useRef, useState } from 'react';
 import { useDogProfile } from './hooks/useDogProfile';
@@ -7,12 +8,19 @@ import { api } from './api/index';
 import { HeyboTuya } from './native/heyboTuya';
 
 import DogSetup from './components/DogSetup';
-import AIInputScreen from './components/AIInputScreen';
+import PetManagementScreen from './components/PetManagementScreen';
 import AIAnalysisScreen from './components/AIAnalysisScreen';
 import RecipeList from './components/RecipeList';
 import RecipeMake from './components/RecipeMake';
 import CookingScreen from './components/CookingScreen';
-import TuyaDeviceFlow from './components/TuyaDeviceFlow';
+import CookingCenterPage from './components/CookingCenterPage';
+import { FreshMatchResultScreen, FreshMatchScreen } from './components/FreshMatchScreen';
+import BottomTabBar from './components/BottomTabBar';
+import RecipeCategoryCatalog from './components/RecipeCategoryCatalog';
+import PetProfileDetails from './components/PetProfileDetails';
+import { dogBreeds } from './data/breeds';
+
+const SESSION_MS = 15 * 24 * 60 * 60 * 1000;
 
 // ——— Language Selector (top-right globe button) ———
 function LangSelector() {
@@ -53,6 +61,191 @@ function LangSelector() {
         </div>
       )}
     </div>
+  );
+}
+
+function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLogout }) {
+  const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [mode, setMode] = useState('login');
+  const [login, setLogin] = useState('');
+  const [password, setPassword] = useState('');
+  const [signupPhone, setSignupPhone] = useState('');
+  const [maskedPhone, setMaskedPhone] = useState('');
+  const [username, setUsername] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [authAction, setAuthAction] = useState('login');
+
+  useEffect(() => {
+    if (!authPrompt) return;
+    setMode('login');
+    setOpen(true);
+    setMessage(authPromptMessage || '请先登录以激活 Heybo AI 功能');
+  }, [authPrompt, authPromptMessage]);
+
+  const resetModal = () => {
+    setOpen(false);
+    setMode('login');
+    setMessage('');
+    setPassword('');
+    setUsername('');
+  };
+
+  const finishLogin = (result) => {
+    onLogin(result);
+    resetModal();
+  };
+
+  const handleSubmit = async (event, action = 'login') => {
+    event.preventDefault();
+    const loginValue = login.trim();
+    if (!loginValue) {
+      setMessage('请输入用户名或手机号');
+      return;
+    }
+    if (action === 'signup' && !/^1[3-9]\d{9}$/.test(loginValue)) {
+      setMessage('新用户注册请输入手机号');
+      return;
+    }
+    if (!/^\d{6}$/.test(password)) {
+      setMessage('密码必须为6位数字');
+      return;
+    }
+    setBusy(true);
+    setAuthAction(action);
+    setMessage('');
+    try {
+      const result = await api.phoneLogin({ login: loginValue, password });
+      if (!result?.success) throw new Error(result?.error || '注册/登录失败');
+      if (result.needsUsername) {
+        setSignupPhone(result.phone);
+        setMaskedPhone(result.maskedPhone);
+        setMode('signup');
+        return;
+      }
+      finishLogin(result);
+    } catch (error) {
+      setMessage(error?.message || '账号或密码错误，请重新输入');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSignup = async (event) => {
+    event.preventDefault();
+    const name = username.trim();
+    if (!name) {
+      setMessage('用户名不能为空');
+      return;
+    }
+    if (name.length > 18) {
+      setMessage('用户名最多18位');
+      return;
+    }
+    if (!/^[\u4e00-\u9fa5A-Za-z0-9]{1,18}$/.test(name)) {
+      setMessage('用户名仅支持中文、英文和数字');
+      return;
+    }
+    if (/^\d+$/.test(name)) {
+      setMessage('用户名不能为纯数字');
+      return;
+    }
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await api.phoneSignup({ phone: signupPhone, password, username: name });
+      if (!result?.success) throw new Error(result?.error || '完成登录失败');
+      finishLogin(result);
+    } catch (error) {
+      setMessage(error?.message || '该用户名已被使用，请换一个');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const displayName = user?.display_name || user?.username || '当前用户';
+
+  return (
+    <>
+      <div className="home-auth-entry">
+        <button
+          type="button"
+          className="home-auth-pill"
+          onClick={() => token ? setMenuOpen(value => !value) : setOpen(true)}
+        >
+          {token ? displayName : '登录'}
+        </button>
+        {token && menuOpen && (
+          <div className="home-auth-menu">
+            <div className="home-auth-account">当前账号：{displayName}</div>
+            <button type="button" onClick={() => { setMenuOpen(false); onLogout(); }}>退出登录</button>
+          </div>
+        )}
+      </div>
+
+      {open && !token && (
+        <div className="auth-modal-backdrop" onClick={resetModal}>
+          <div className="auth-modal" role="dialog" aria-modal="true" onClick={event => event.stopPropagation()}>
+            {mode === 'login' ? (
+              <form onSubmit={handleSubmit} className="auth-modal-form">
+                <div>
+                  <h2>登录 Heybo AI</h2>
+                  <p>登录后可使用 AI 食谱、宠物档案与一键烹饪功能</p>
+                </div>
+                {message && (
+                  <div className="auth-modal-message">
+                    <strong>{message}</strong>
+                    {message.includes('激活') && <span>登录后即可使用宠物档案、AI 食谱和一键烹饪</span>}
+                  </div>
+                )}
+                <input
+                  value={login}
+                  onChange={event => setLogin(event.target.value)}
+                  placeholder="用户名 / 手机号"
+                  autoComplete="username"
+                />
+                <input
+                  value={password}
+                  onChange={event => setPassword(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  type="password"
+                  placeholder="6位数字密码"
+                  autoComplete="current-password"
+                />
+                <div className="auth-modal-actions">
+                  <button type="button" className="auth-modal-register" disabled={busy} onClick={event => handleSubmit(event, 'signup')}>
+                    {busy && authAction === 'signup' ? '注册中' : '新用户注册'}
+                  </button>
+                  <button type="submit" disabled={busy}>
+                    {busy && authAction === 'login' ? '登录中' : '登录'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleSignup} className="auth-modal-form">
+                <div>
+                  <h2>设置用户名</h2>
+                  <p>检测到该手机号首次使用，请设置一个用户名</p>
+                </div>
+                <div className="auth-modal-phone">手机号：{maskedPhone}</div>
+                {message && <div className="auth-modal-message"><strong>{message}</strong></div>}
+                <input
+                  value={username}
+                  onChange={event => setUsername(event.target.value.trim())}
+                  placeholder="用户名（18位以内中英文数字）"
+                  maxLength={18}
+                  autoComplete="nickname"
+                />
+                <button type="submit" disabled={busy}>{busy ? '处理中' : '完成登录'}</button>
+              </form>
+            )}
+            <button type="button" className="auth-modal-close" onClick={resetModal}>×</button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -114,12 +307,28 @@ function TuyaSdkPanel() {
   );
 }
 
+function AiWaitingModal() {
+  return (
+    <div className="ai-waiting-overlay" role="status" aria-live="polite">
+      <div className="ai-waiting-modal">
+        <div className="ai-waiting-title">宠物档案已更新，正在重新推演，请稍候。。。</div>
+        <div className="ai-waiting-visual" aria-hidden="true">
+          <img src="/heybo-ai-thinking.png" alt="" />
+        </div>
+        <div className="ai-waiting-powered">Power by Heybo AI</div>
+      </div>
+    </div>
+  );
+}
+
 // ——— HomeScreen ———
-function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry }) {
+function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken, authPrompt, authPromptMessage, onLogin, onLogout }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
+
   return (
     <div className="animate-fade home-screen">
+      <AuthWidget user={authUser} token={authToken} authPrompt={authPrompt} authPromptMessage={authPromptMessage} onLogin={onLogin} onLogout={onLogout} />
       <LangSelector />
       <div className="home-hero">
         <div className="home-logo-wrap">
@@ -141,7 +350,7 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry }) {
         </div>
       </div>
       <div className="home-actions">
-        <button onClick={onDogEntry} className="home-action-button home-action-dog">
+        <button onClick={onDogEntry} className={`home-action-button home-action-dog ${authToken ? '' : 'is-locked'}`}>
           <div className="home-action-icon">🐕</div>
           <div>
             <div className="home-action-title" style={{ color: 'var(--primary)' }}>{t('myDog')}</div>
@@ -149,7 +358,7 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry }) {
           </div>
           <div style={{ marginLeft: 'auto', color: 'var(--primary)', fontSize: 20 }}>→</div>
         </button>
-        <button onClick={onAIEntry} className="home-action-button home-action-ai">
+        <button onClick={onAIEntry} className={`home-action-button home-action-ai ${authToken ? '' : 'is-locked'}`}>
           <div className="home-action-icon">🤖</div>
           <div>
             <div className="home-action-title" style={{ color: 'var(--secondary)' }}>{t('aiRecipe')}</div>
@@ -157,11 +366,11 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry }) {
           </div>
           <div style={{ marginLeft: 'auto', color: 'var(--secondary)', fontSize: 20 }}>→</div>
         </button>
-        <button onClick={onDeviceEntry} className="home-action-button home-action-device">
-          <div className="home-action-icon">⚙</div>
+        <button onClick={onDeviceEntry} className={`home-action-button home-action-device ${authToken ? '' : 'is-locked'}`}>
+          <div className="home-action-icon">🍲</div>
           <div>
-            <div className="home-action-title" style={{ color: '#7CFFB2' }}>设备闭环</div>
-            <div className="home-action-desc">登录 · 配网 · 设备列表 · 85°C DIY</div>
+            <div className="home-action-title" style={{ color: '#7CFFB2' }}>烹饪</div>
+            <div className="home-action-desc">鲜食机 · 绑定 · 记录 · 状态</div>
           </div>
           <div style={{ marginLeft: 'auto', color: '#7CFFB2', fontSize: 20 }}>→</div>
         </button>
@@ -172,58 +381,474 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry }) {
 
 // ——— Main App Router ———
 function AppInner() {
-  const { profile, setProfile, hasProfile } = useDogProfile();
+  const { profiles, profile, setActiveId, addProfile, updateProfile, deleteProfile, replaceProfiles, hasProfile } = useDogProfile();
   const { lang } = useLanguage();
   const [screen, setScreen] = useState('home');
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
+  const [hasCookedBefore, setHasCookedBefore] = useState(false);
   const [aiProfile, setAiProfile] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [activeProfile, setActiveProfile] = useState(null);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
+  const [freshMatchResult, setFreshMatchResult] = useState(null);
   const [cookingData, setCookingData] = useState(null);
   const [entrySource, setEntrySource] = useState(null);
+  const [editingPet, setEditingPet] = useState(null);
+  const [authToken, setAuthToken] = useState('');
+  const [authUser, setAuthUser] = useState(null);
+  const [authPrompt, setAuthPrompt] = useState(0);
+  const [authPromptMessage, setAuthPromptMessage] = useState('');
+  const [pendingAuthAction, setPendingAuthAction] = useState(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [breedOptions, setBreedOptions] = useState(dogBreeds);
   const swipeStartRef = useRef(null);
 
-  const goHome = () => setScreen('home');
-  const handleDogEntry = () => setScreen('dog_setup');
-  const handleProfileSave = (p) => { setProfile(p); setActiveProfile(p); };
+  // Derived active tab based on current screen
+  const activeTab = (() => {
+    switch (screen) {
+      case 'home':
+        return 'home';
+      case 'recipe_catalog':
+      case 'recipe_list':
+      case 'recipe_make':
+      case 'fresh_match':
+      case 'fresh_match_result':
+        return 'recipes';
+      case 'pet_management':
+      case 'dog_setup':
+      case 'pet_details':
+        return 'pet';
+      case 'cooking':
+      case 'device_flow':
+        return 'cook';
+      case 'mall_placeholder':
+        return 'mall';
+      default:
+        return 'home';
+    }
+  })();
+
+  // 挂载时从 localStorage 恢复状态
+  useEffect(() => {
+    const onboardingDone = localStorage.getItem('petchef_onboarding_completed') === 'true';
+    const hasCooked = localStorage.getItem('petchef_has_cooked') === 'true';
+    const savedToken = localStorage.getItem('authToken') || localStorage.getItem('petchef_auth_token') || '';
+    const expiresAt = Number(localStorage.getItem('sessionExpiresAt') || 0);
+    setHasCompletedOnboarding(onboardingDone);
+    setHasCookedBefore(hasCooked);
+    if (savedToken && expiresAt > Date.now()) {
+      setAuthToken(savedToken);
+      setAuthUser({
+        id: localStorage.getItem('userId') || '',
+        display_name: localStorage.getItem('username') || '当前用户',
+      });
+      api.heyboMe(savedToken)
+        .then(result => {
+          if (!result?.success) throw new Error(result?.error || '登录已过期');
+          saveAuthSession(result);
+        })
+        .catch(() => clearAuthSession());
+    } else {
+      clearAuthSession();
+    }
+    if (onboardingDone) {
+      setScreen('home');
+    }
+  }, []);
+
+  useEffect(() => {
+    api.getBreeds()
+      .then(result => {
+        if (result?.success && result.breeds?.length) setBreedOptions(result.breeds);
+      })
+      .catch(error => console.error('Load breeds failed:', error));
+  }, []);
+
+  const saveAuthSession = (result) => {
+    const user = result.user || null;
+    const token = result.token || '';
+    const expiresAt = String(Date.now() + SESSION_MS);
+    setAuthToken(token);
+    setAuthUser(user);
+    localStorage.setItem('authToken', token);
+    localStorage.setItem('userId', user?.id || '');
+    localStorage.setItem('username', user?.display_name || '');
+    localStorage.setItem('sessionExpiresAt', expiresAt);
+    localStorage.removeItem('petchef_auth_token');
+    localStorage.removeItem('petchef_auth_user');
+    HeyboTuya.syncAuthState({
+      token,
+      userId: user?.id || '',
+      nickname: user?.display_name || '',
+      tuyaUid: result.tuyaMapping?.tuya_uid || (user?.id ? `heybo_${user.id}` : ''),
+      tuyaPassword: result.tuyaMapping?.tuya_test_password || (user?.id ? `heybo_${user.id}` : ''),
+    }).catch(error => console.warn('Sync native auth failed:', error));
+  };
+
+  const clearAuthSession = () => {
+    setAuthToken('');
+    setAuthUser(null);
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userId');
+    localStorage.removeItem('username');
+    localStorage.removeItem('sessionExpiresAt');
+    localStorage.removeItem('petchef_auth_token');
+    localStorage.removeItem('petchef_auth_user');
+    HeyboTuya.clearAuthState().catch(error => console.warn('Clear native auth failed:', error));
+  };
+
+  const handleAuthLogin = (result) => {
+    saveAuthSession(result);
+    if (pendingAuthAction) {
+      pendingAuthAction();
+      setPendingAuthAction(null);
+    }
+  };
+
+  const handleAuthLogout = () => {
+    clearAuthSession();
+    replaceProfiles([]);
+    setScreen('home');
+  };
+
+  const requireAuth = (next) => {
+    if (authToken) {
+      next();
+      return;
+    }
+    setPendingAuthAction(() => next);
+    setAuthPromptMessage('请先登录以激活 Heybo AI 功能');
+    setAuthPrompt(value => value + 1);
+    setScreen('home');
+  };
+
+  // 标记引导完成
+  const markOnboardingComplete = () => {
+    setHasCompletedOnboarding(true);
+    localStorage.setItem('petchef_onboarding_completed', 'true');
+  };
+
+  // 标记已烹饪
+  const markHasCooked = () => {
+    setHasCookedBefore(true);
+    localStorage.setItem('petchef_has_cooked', 'true');
+  };
+
+  // Tab 切换处理
+  const handleTabChange = (tabKey) => {
+    switch (tabKey) {
+      case 'home':
+        setScreen('home');
+        break;
+      case 'recipes':
+        requireAuth(() => {
+          setSelectedCategory(null);
+          setEntrySource('catalog');
+          setScreen('recipe_catalog');
+        });
+        break;
+      case 'pet':
+        requireAuth(() => setScreen('pet_management'));
+        break;
+      case 'cook':
+        requireAuth(() => setScreen('device_flow'));
+        break;
+      case 'mall':
+        setScreen('mall_placeholder');
+        break;
+      default:
+        setScreen('home');
+    }
+  };
+
+  const goHome = () => { setScreen('home'); };
+  const handleDogEntry = () => requireAuth(() => setScreen('pet_management'));
+  
+  const handleAddPet = () => {
+    setEditingPet(null);
+    setScreen('dog_setup');
+  };
+
+  const handleEditPet = (pet) => {
+    setEditingPet(pet);
+    setScreen('dog_setup');
+  };
+
+  const toDateInput = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+    return date.toISOString().slice(0, 10);
+  };
+
+  const toUiPet = (pet) => {
+    const breedName = typeof pet.breed === 'object' ? pet.breed?.name : (pet.breed || pet.breedName);
+    const breed = breedOptions.find(item =>
+      item.id === pet.breedId ||
+      item.name === breedName ||
+      (breedName && (breedName.includes(item.name) || item.name.includes(breedName)))
+    );
+    const ageMonths = pet.age_months ?? pet.ageMonths;
+    const avatarUrl = pet.avatar_url || pet.avatarUrl || pet.photoUrl || pet.profileImage || pet.imageUrl || pet.photo || pet.avatar || '';
+    const mapped = {
+      ...pet,
+      birthDate: toDateInput(pet.birth_date || pet.birthDate),
+      breedId: pet.breedId || breed?.id || (breedName ? 'custom' : ''),
+      breedName,
+      customBreed: breed ? '' : (pet.customBreed || breedName || ''),
+      breed: breed || pet.breed,
+      bodySize: pet.body_size || pet.bodySize || breed?.size,
+      activityLevel: pet.activity_level || pet.activityLevel,
+      targetWeight: pet.target_weight_kg ?? pet.targetWeight,
+      weight: pet.current_weight_kg ?? pet.weight,
+      bcs: pet.body_condition_score ?? pet.bcs,
+      feedingGoal: pet.feeding_goal || pet.feedingGoal,
+      healthTags: pet.health_tags || pet.healthTags || [],
+      allergySymptoms: pet.allergy_symptoms || pet.allergySymptoms || [],
+      allergySeverity: pet.allergy_severity || pet.allergySeverity,
+      specialPeriod: pet.special_period || pet.specialPeriod,
+      avatar: avatarUrl,
+      avatar_url: avatarUrl,
+      avatarUpdatedAt: pet.avatar_updated_at || pet.updated_at || pet.updatedAt || '',
+      gender: pet.sex || pet.gender,
+      age: ageMonths ? Number((Number(ageMonths) / 12).toFixed(1)) : pet.age,
+    };
+    return mapped;
+  };
+
+  const reloadPets = async (reason = 'manual') => {
+    if (!authToken) return [];
+    const result = await api.listPets(authToken);
+    if (result?.success) {
+      const mapped = (result.pets || []).map(toUiPet);
+      replaceProfiles(mapped);
+      return mapped;
+    }
+    return [];
+  };
+
+  useEffect(() => {
+    if (!authToken) return;
+    reloadPets('auth-or-breed-change')
+      .catch(error => console.error('Load DB pets failed:', error));
+  }, [authToken, breedOptions]);
+
+  const savePetProfile = async (draft) => {
+    if (!authToken) return draft;
+    const { avatar } = draft;
+    const ageMonths = draft.age_months ?? draft.ageMonths ?? null;
+    const lifeStage = ageMonths !== null
+      ? (Number(ageMonths) < 12 ? 'puppy' : Number(ageMonths) >= 96 ? 'senior' : 'adult')
+      : (draft.lifeStage || null);
+    const payload = {
+      name: draft.name,
+      species: draft.species || 'dog',
+      breed: draft.breedName || draft.breed || draft.customBreed || null,
+      sex: draft.sex || null,
+      neutered: Boolean(draft.neutered),
+      birth_date: draft.birthDate || null,
+      age_months: ageMonths,
+      current_weight_kg: draft.weight ?? null,
+      target_weight_kg: draft.targetWeight ?? null,
+      body_condition_score: draft.bcs === undefined || draft.bcs === null ? null : String(draft.bcs),
+      activity_level: draft.activityLevel || 'medium',
+      life_stage: lifeStage,
+      allergens: draft.allergens || [],
+      food_restrictions: draft.foodRestrictions || [],
+      health_tags: draft.healthTags || [],
+      doctor_notes: draft.doctorNotes || null,
+      user_notes: draft.userNotes || null,
+      feeding_goal: draft.feedingGoal || null,
+      body_size: draft.bodySize || null,
+      environment: draft.environment || null,
+      allergy_symptoms: draft.allergySymptoms || [],
+      allergy_severity: draft.allergySeverity || null,
+      special_period: draft.specialPeriod || null,
+    };
+    if (avatar) {
+      if (String(avatar).startsWith('data:')) {
+        const uploaded = await api.uploadAvatar(avatar, authToken);
+        if (!uploaded?.success) throw new Error(uploaded?.error || '上传宠物头像失败');
+        payload.avatar_url = uploaded.avatar_url;
+      } else {
+        payload.avatar_url = avatar;
+      }
+    }
+    let result = editingPet?.id
+      ? await api.updatePet(editingPet.id, payload, authToken)
+      : await api.createPet(payload, authToken);
+    if (!result?.success && editingPet?.id) {
+      result = await api.createPet(payload, authToken);
+    }
+    if (!result?.success) throw new Error(result?.error || '保存宠物档案失败');
+    return toUiPet(result.pet);
+  };
+
+  const analyzePetProfile = async (pet) => {
+    if (!pet?.id) throw new Error('请先保存宠物档案后再进行 AI 分析');
+    let loadingTimer = setTimeout(() => setIsAiLoading(true), 300);
+    try {
+      const byPetId = await api.aiAnalysisByPet(pet.id, lang, authToken);
+      if (byPetId?.success) return byPetId;
+      throw new Error(byPetId?.error || 'AI 分析失败');
+    } finally {
+      clearTimeout(loadingTimer);
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleSelectPet = async (pet) => {
+    setActiveId(pet.id);
+    setEntrySource('dog');
+    try {
+      const result = await analyzePetProfile(pet);
+      if (result.success) {
+        setAiProfile({
+          ...pet,
+          goals: pet.feedingGoal ? [pet.feedingGoal] : (pet.goals || []),
+          analysis: result.analysis,
+          comparisons: result.comparisons
+        });
+        setScreen('ai_analysis');
+        return;
+      }
+    } catch (e) {
+      console.error('AI analysis request failed for pet:', e);
+      window.alert(e?.message || 'AI 分析失败');
+    }
+    setScreen('pet_management');
+  };
+
+  const handleProfileSave = async (p) => {
+    let savedPet = p;
+    try {
+      savedPet = await savePetProfile(p);
+    } catch (error) {
+      console.error('Save pet profile failed:', error);
+      window.alert(error?.message || '保存宠物档案失败，请稍后重试');
+      return;
+    }
+    if (editingPet && editingPet.id) {
+      updateProfile(editingPet.id, savedPet);
+    } else {
+      addProfile(savedPet);
+    }
+    try {
+      await reloadPets('after-save');
+    } catch (error) {
+      console.warn('Reload pets after save failed:', error);
+    }
+    setScreen('pet_management');
+  };
 
   const handleSelectCategory = (cat, p) => {
     if (cat.query?.ai_shortcut) { handleAIShortcut(p); return; }
-    setSelectedCategory(cat); setActiveProfile(p);
+    setSelectedCategory(cat);
+    if (p && p.id) setActiveId(p.id);
     if (!entrySource) setEntrySource('dog');
     setScreen('recipe_list');
   };
 
-  const handleAIEntry = () => setScreen('ai_input');
-  const handleDeviceEntry = () => setScreen('device_flow');
+  const handleAIEntry = () => requireAuth(() => {
+    setScreen('fresh_match');
+  });
+  const handleDeviceEntry = () => requireAuth(() => setScreen('device_flow'));
 
   const handleAIShortcut = async (p) => {
-    setActiveProfile(p); setEntrySource('ai');
+    if (p && p.id) setActiveId(p.id);
+    setEntrySource('ai');
     try {
-      const result = await api.aiAnalysis({ breedId: p.breedId, breedName: p.breedName, age: p.age, weight: p.weight, lang });
+      const result = await analyzePetProfile(p);
       if (result.success) {
-        setAiProfile({ breedId: p.breedId, breedName: p.breedName, age: p.age, weight: p.weight, breed: p.breed, analysis: result.analysis });
+        setAiProfile({
+          ...p,
+          goals: p.feedingGoal ? [p.feedingGoal] : (p.goals || []),
+          analysis: result.analysis,
+          comparisons: result.comparisons
+        });
         setScreen('ai_analysis'); return;
       }
-    } catch (e) { console.error('AI shortcut failed:', e); }
-    setScreen('ai_input');
+    } catch (e) {
+      console.error('AI shortcut failed:', e);
+      alert(e.message || 'AI 分析失败，请先确认宠物档案已保存。');
+    }
+    setScreen('pet_management');
   };
 
-  const handleAIAnalyzed = (result) => {
-    setAiProfile(result);
-    setActiveProfile({ breedId: result.breedId, breedName: result.breedName, age: result.age, weight: result.weight, breed: result.breed });
-    setEntrySource('ai'); setScreen('ai_analysis');
+  const handleShowAnalysis = async (p) => {
+    let savedPet = p;
+    try {
+      savedPet = await savePetProfile(p);
+    } catch (error) {
+      console.error('Save pet profile failed:', error);
+      window.alert(error?.message || '保存宠物档案失败，请稍后重试');
+      return;
+    }
+    if (editingPet && editingPet.id) {
+      updateProfile(editingPet.id, savedPet);
+    } else {
+      savedPet = addProfile(savedPet);
+    }
+    setActiveId(savedPet.id);
+    setEntrySource('dog');
+    try {
+      const result = await analyzePetProfile(savedPet);
+      if (result.success) {
+        setAiProfile({
+          ...savedPet,
+          goals: savedPet.feedingGoal ? [savedPet.feedingGoal] : (savedPet.goals || []),
+          analysis: result.analysis,
+          comparisons: result.comparisons
+        });
+        setScreen('ai_analysis');
+        return;
+      }
+    } catch (e) {
+      console.error('AI analysis request failed on setup completion:', e);
+      window.alert(e?.message || 'AI 分析失败');
+    }
+    setScreen('pet_management');
   };
 
   const handleSelectRecipe = (recipe) => { setSelectedRecipe(recipe); setScreen('recipe_make'); };
-  const handleStartCooking = (data) => { setCookingData(data); setScreen('cooking'); };
+  const handleStartCooking = (data) => {
+    setCookingData(data);
+    setScreen('device_flow');
+    // 首次烹饪时标记引导完成和已烹饪
+    if (!hasCookedBefore) {
+      markHasCooked();
+      markOnboardingComplete();
+    }
+  };
+  // 处理保存过敏史 / 疾病史到 profile
+  const handleSaveHealthHistory = (updatedProfile) => {
+    if (updatedProfile.id) {
+      updateProfile(updatedProfile.id, updatedProfile);
+    }
+  };
+
+  // 从食谱分类目录中选择一个分类 → 跳转到食谱列表
+  const handleCatalogSelectCategory = (cat) => {
+    setSelectedCategory(cat);
+    setEntrySource('catalog');
+    setScreen('recipe_list');
+  };
+
   const goBack = () => {
     if (screen === 'home') return false;
-    if (screen === 'dog_setup' || screen === 'ai_input' || screen === 'device_flow') setScreen('home');
-    if (screen === 'ai_analysis') setScreen(entrySource === 'ai' ? 'ai_input' : 'dog_setup');
-    if (screen === 'recipe_list') setScreen(entrySource === 'ai' ? 'ai_analysis' : 'dog_setup');
+    if (screen === 'dog_setup') setScreen('pet_management');
+    if (screen === 'pet_management' || screen === 'device_flow' || screen === 'mall_placeholder') setScreen('home');
+    if (screen === 'ai_analysis') setScreen('pet_management');
+    if (screen === 'fresh_match') setScreen('home');
+    if (screen === 'fresh_match_result') setScreen('fresh_match');
+    if (screen === 'recipe_catalog') setScreen('home');
+    if (screen === 'recipe_list') {
+      if (entrySource === 'catalog') setScreen('recipe_catalog');
+      else if (entrySource === 'ai') setScreen('ai_analysis');
+      else setScreen('pet_management');
+    }
     if (screen === 'recipe_make') setScreen('recipe_list');
     if (screen === 'cooking') setScreen('recipe_make');
+    if (screen === 'pet_details') setScreen('pet_management');
     return true;
   };
 
@@ -250,15 +875,89 @@ function AppInner() {
   };
 
   return (
-    <div id="app-container" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-      {screen === 'home' && <HomeScreen onDogEntry={handleDogEntry} onAIEntry={handleAIEntry} onDeviceEntry={handleDeviceEntry} />}
-      {screen === 'dog_setup' && <DogSetup onBack={goHome} profile={hasProfile ? profile : null} onSave={handleProfileSave} onSelectCategory={handleSelectCategory} lang={lang} />}
-      {screen === 'ai_input' && <AIInputScreen onBack={goHome} onAnalyze={handleAIAnalyzed} lang={lang} />}
-      {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} lang={lang} />}
-      {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={activeProfile} onSelectRecipe={handleSelectRecipe} lang={lang} />}
-      {screen === 'recipe_make' && <RecipeMake onBack={goBack} recipe={selectedRecipe} profile={activeProfile} onStartCooking={handleStartCooking} lang={lang} />}
+    <div id="app-container" className={hasCompletedOnboarding ? 'app-with-tabs' : ''} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+      {screen === 'home' && (
+        <HomeScreen
+          onDogEntry={handleDogEntry}
+          onAIEntry={handleAIEntry}
+          onDeviceEntry={handleDeviceEntry}
+          authUser={authUser}
+          authToken={authToken}
+          authPrompt={authPrompt}
+          authPromptMessage={authPromptMessage}
+          onLogin={handleAuthLogin}
+          onLogout={handleAuthLogout}
+        />
+      )}
+      {screen === 'recipe_catalog' && (
+        <RecipeCategoryCatalog
+          onBack={goBack}
+          onSelectCategory={handleCatalogSelectCategory}
+          lang={lang}
+        />
+      )}
+      {screen === 'pet_management' && (
+        <PetManagementScreen
+          profiles={profiles}
+          breeds={breedOptions}
+          onAddPet={handleAddPet}
+          onEditPet={handleEditPet}
+          onSelectPet={handleSelectPet}
+          onBack={goHome}
+          lang={lang}
+        />
+      )}
+      {screen === 'pet_details' && (
+        <PetProfileDetails
+          profile={profile}
+          onEdit={() => setScreen('dog_setup')}
+          onSelectCategory={(cat) => { setEntrySource('catalog'); handleSelectCategory(cat, profile); }}
+          onSaveHealthHistory={handleSaveHealthHistory}
+          lang={lang}
+        />
+      )}
+      {screen === 'fresh_match' && (
+        <FreshMatchScreen
+          profiles={profiles}
+          authToken={authToken}
+          onBack={goHome}
+          onAddPet={handleAddPet}
+          onResult={(result) => { setFreshMatchResult(result); setScreen('fresh_match_result'); }}
+        />
+      )}
+      {screen === 'fresh_match_result' && <FreshMatchResultScreen result={freshMatchResult} onBack={() => setScreen('fresh_match')} onStartCooking={handleStartCooking} />}
+      {screen === 'dog_setup' && <DogSetup onBack={goHome} profile={editingPet} onSave={handleProfileSave} onSelectCategory={handleSelectCategory} onShowAnalysis={handleShowAnalysis} lang={lang} />}
+      {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} onSelectRecipe={handleSelectRecipe} lang={lang} authToken={authToken} />}
+      {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={profile} onSelectRecipe={handleSelectRecipe} lang={lang} />}
+      {screen === 'recipe_make' && <RecipeMake onBack={goBack} recipe={selectedRecipe} profile={profile} onStartCooking={handleStartCooking} lang={lang} />}
       {screen === 'cooking' && <CookingScreen onBack={goHome} cookingData={cookingData} lang={lang} />}
-      {screen === 'device_flow' && <TuyaDeviceFlow onBack={goHome} />}
+      {screen === 'device_flow' && (
+        <CookingCenterPage
+          onBack={goHome}
+          authToken={authToken}
+          recipeContext={cookingData}
+          onChooseRecipe={() => {
+            setSelectedCategory(null);
+            setEntrySource('catalog');
+            setScreen('recipe_catalog');
+          }}
+        />
+      )}
+      {screen === 'mall_placeholder' && (
+        <div className="animate-fade flex-col" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: '40px 20px', color: 'var(--gray)', textAlign: 'center', background: 'var(--dark)' }}>
+          <span style={{ fontSize: '48px', marginBottom: '16px' }}>🛒</span>
+          <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '800', margin: '0 0 8px 0' }}>宠物商城</h2>
+          <p style={{ fontSize: '13px', color: 'var(--gray)', margin: 0 }}>全新宠物鲜食与功能用品商城筹备中，敬请期待！</p>
+          <button className="btn btn-secondary" style={{ marginTop: '24px', padding: '8px 24px' }} onClick={goHome}>返回首页</button>
+        </div>
+      )}
+
+      {isAiLoading && <AiWaitingModal />}
+
+      {/* 引导完成后显示底部标签栏 */}
+      {hasCompletedOnboarding && (
+        <BottomTabBar activeTab={activeTab} onSelect={handleTabChange} />
+      )}
     </div>
   );
 }
