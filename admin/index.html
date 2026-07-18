@@ -6,6 +6,26 @@
     <title>Heybo Pet Admin Console</title>
   </head>
   <body>
+    <script>
+      window.addEventListener('error', (event) => {
+        const root = document.getElementById('root');
+        if (root) {
+          root.innerHTML = `<div style="color: #ff4444; padding: 24px; font-family: monospace; background: #1a0d14; min-height: 100vh; margin: 0; box-sizing: border-box;">
+            <h2 style="margin: 0 0 16px 0;">[Heybo Client-side Runtime Error]</h2>
+            <pre style="white-space: pre-wrap; word-break: break-all;">${event.error ? event.error.stack : event.message}</pre>
+          </div>`;
+        }
+      });
+      window.addEventListener('unhandledrejection', (event) => {
+        const root = document.getElementById('root');
+        if (root) {
+          root.innerHTML = `<div style="color: #ff4444; padding: 24px; font-family: monospace; background: #1a0d14; min-height: 100vh; margin: 0; box-sizing: border-box;">
+            <h2 style="margin: 0 0 16px 0;">[Heybo Unhandled Promise Rejection]</h2>
+            <pre style="white-space: pre-wrap; word-break: break-all;">${event.reason ? (event.reason.stack || event.reason) : 'No reason provided'}</pre>
+          </div>`;
+        }
+      });
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

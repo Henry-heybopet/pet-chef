@@ -63,6 +63,17 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>我们需要使用蓝牙连接并配置您的宠物鲜食机。</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>我们需要使用蓝牙连接并配置您的宠物鲜食机。</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>我们需要使用定位权限来获取当前的 Wi-Fi 网络名称，以配合设备进行配网。</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>WECHAT_OPEN_APP_ID</key>

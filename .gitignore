@@ -1,21 +1,31 @@
 node_modules
 .DS_Store
 .env
+*.env
+.env.*
 dist
 *.log
+.data/
+uploads/
 backend/.data/
+backend/public/uploads/
+backend/src/data/compare_cache*.json
+frontend/public/*.docx
+frontend/public/*.xlsx
 
 # Office/WPS temporary lock files
 ~$*
 
-frontend/public/*.docx
-frontend/public/*.xlsx
-/108108.png
-/2828.png
-/主页.png
-/烹饪.jpg
-/菜谱.png
-/菜谱2.jpg
-/菜谱3.png
-/菜谱4.png
-/营养分析.jpg
+# Local IDE and native build caches
+.idea/
+frontend/android/.idea/
+frontend/ios/**/*.xcworkspace/
+frontend/ios/**/xcshareddata/swiftpm/
+
+# Local SDK drops and generated analysis output
+frontend/ios/ios_core_sdk/
+frontend/ios/ios_core_sdk.tar.gz
+graphify-out/
+business-graphify/
+scratch/
+nginx/admin.htpasswd
