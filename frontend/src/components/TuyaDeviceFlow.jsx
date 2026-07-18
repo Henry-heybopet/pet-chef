@@ -91,7 +91,7 @@ export default function TuyaDeviceFlow({ onBack }) {
   const [pairingMode, setPairingMode] = useState('EZ'); // 'EZ' | 'AP'
   const [isScanningBle, setIsScanningBle] = useState(false);
   const [discoveredBleDevices, setDiscoveredBleDevices] = useState([]);
-
+  
   // Real-time Selected Device State
   const [deviceDps, setDeviceDps] = useState({});
   const [flashingDps, setFlashingDps] = useState({}); // Track which DPs just updated
@@ -116,6 +116,13 @@ export default function TuyaDeviceFlow({ onBack }) {
   const [message, setMessage] = useState('请先登录 Heybo Pet 测试账号，完成后将静默激活虚拟涂鸦账号。');
   const [activeTab, setActiveTab] = useState('control'); // 'control' | 'logs' | 'history'
 
+  // Diagnostic Monitor details state
+  const [showDiagnostics, setShowDiagnostics] = useState(true);
+  const [diagTokenResult, setDiagTokenResult] = useState('idle');
+  const [diagSelectedBle, setDiagSelectedBle] = useState(null);
+  const [diagActivatorSuccess, setDiagActivatorSuccess] = useState(null);
+  const [diagActivatorError, setDiagActivatorError] = useState(null);
+
   const logsEndRef = useRef(null);
 
   const selectedDevice = useMemo(
@@ -131,17 +138,53 @@ export default function TuyaDeviceFlow({ onBack }) {
     setLogs(prev => [...prev, `[${timestamp}] ${text}`]);
   };
 
+  // Check and Refresh Tuya SDK and environment Status
+  const refreshTuyaStatus = async () => {
+    try {
+      const status = await HeyboTuya.status();
+      setTuyaStatus(status);
+      return status;
+    } catch (error) {
+      setMessage(error?.message || 'Tuya SDK 状态读取失败');
+      addLog(`读取 Tuya SDK 状态失败: ${error?.message}`);
+      return null;
+    }
+  };
+
+  // Test fetch activator token for diagnostics pre-check
+  const testFetchActivatorToken = async (targetHomeId = home?.homeId) => {
+    if (!targetHomeId) {
+      setDiagTokenResult('idle');
+      return null;
+    }
+
+    setDiagTokenResult('loading');
+    addLog(`⏳ 正在测试获取涂鸦云配网 Token (HomeID: ${targetHomeId})...`);
+
+    try {
+      const res = await HeyboTuya.getActivatorToken({ homeId: targetHomeId });
+      if (res?.token) {
+        setDiagTokenResult(`success:${res.token}`);
+        addLog(`🟢 成功获取云端 Token: ${res.token}`);
+        return res.token;
+      } else {
+        throw new Error('云端返回的 Token 字段为空');
+      }
+    } catch (err) {
+      const errStr = `${err.code || 'FAIL'} - ${err.message || '未知错误'}`;
+      setDiagTokenResult(`error:${errStr}`);
+      addLog(`🔴 测试获取云端 Token 失败: ${errStr}`);
+      return null;
+    }
+  };
+
   // Check Tuya SDK Status on Mount
   useEffect(() => {
-    HeyboTuya.status()
-      .then(status => {
-        setTuyaStatus(status);
+    refreshTuyaStatus().then(status => {
+      if (status) {
         addLog(`Tuya SDK 状态: platform=${status.platform}, nativeAvailable=${status.nativeAvailable}, initialized=${status.initialized}`);
-      })
-      .catch(error => {
-        setMessage(error?.message || 'Tuya SDK 状态读取失败');
-        addLog(`读取 Tuya SDK 状态失败: ${error?.message}`);
-      });
+      }
+    });
   }, []);
 
   // Scroll to bottom of logs
@@ -179,7 +222,7 @@ export default function TuyaDeviceFlow({ onBack }) {
     }
     setDevices(nextDevices);
     addLog(`成功获取设备列表，共 ${nextDevices.length} 台设备`);
-
+    
     // Auto-select first device if none selected
     if (nextDevices.length > 0 && !selectedDevId) {
       const firstPetChef = nextDevices.find(d => d.productId === 'ak2kofibhuvdtqip' || d.isPetChef);
@@ -200,9 +243,29 @@ export default function TuyaDeviceFlow({ onBack }) {
         device_name: device.name,
         status: device.isOnline ? 'online' : 'offline',
       }, token);
+      await api.syncDeviceDp(device.devId, {
+        tuya_device_id: device.devId,
+        online: device.isOnline,
+        dps: parseDps(device.dps),
+        reported_at: new Date().toISOString(),
+      }, token);
       addLog(`设备 ${device.name || device.devId} 元数据已同步到 Heybo 后端`);
     } catch (error) {
       addLog(`同步设备到后端失败: ${error.message}`);
+    }
+  };
+
+  const syncDpToBackend = async (devId, dps, online = isOnline, token = heyboToken) => {
+    if (!devId || !token || (!dps && online === undefined)) return;
+    try {
+      await api.syncDeviceDp(devId, {
+        tuya_device_id: devId,
+        online,
+        dps: dps || {},
+        reported_at: new Date().toISOString(),
+      }, token);
+    } catch (error) {
+      addLog(`同步 DP 到后端失败: ${error.message}`);
     }
   };
 
@@ -256,6 +319,9 @@ export default function TuyaDeviceFlow({ onBack }) {
       setHome(nextHome);
       addLog(`虚拟涂鸦账号就绪! 分配家庭: ${nextHome.name} (ID: ${nextHome.homeId})`);
 
+      // Auto pre-test token fetching to verify cloud credentials pathway
+      testFetchActivatorToken(nextHome.homeId);
+
       const nextStatus = await HeyboTuya.status();
       setTuyaStatus(nextStatus);
 
@@ -264,7 +330,7 @@ export default function TuyaDeviceFlow({ onBack }) {
       if (nextDevices.length > 0) {
         await Promise.all(nextDevices.map(d => registerDeviceToBackend(d, nextHome.homeId, loginResult.token)));
       }
-
+      
       // Load history
       await loadHistory(loginResult.token);
 
@@ -315,6 +381,38 @@ export default function TuyaDeviceFlow({ onBack }) {
       setMessage('请先登录 Heybo 账号。');
       return;
     }
+
+    // Refresh status to fetch latest permission states from Android native side
+    const currentStatus = await refreshTuyaStatus();
+
+    // Android/iOS runtime permissions precheck
+    if (currentStatus?.platform === 'android') {
+      try {
+        addLog('🔒 正在检查系统定位与附近设备权限...');
+        const permStatus = currentStatus;
+        addLog(`当前权限状态: 定位(Location)=${permStatus.permLocation ? '已授权' : '未授权'}, 蓝牙扫描(Scan)=${permStatus.permBluetoothScan ? '已授权' : '未授权'}, 蓝牙连接(Connect)=${permStatus.permBluetoothConnect ? '已授权' : '未授权'}`);
+        
+        if (!permStatus.permLocation || !permStatus.permBluetoothScan || !permStatus.permBluetoothConnect) {
+          addLog('⚠️ 部分必要权限未授予，正在向系统申请“定位”与“附近设备”权限...');
+          const reqResult = await HeyboTuya.requestPermissions({
+            permissions: ['location', 'bluetooth']
+          });
+          
+          addLog(`系统授权结果: 定位=${reqResult.location}, 附近设备(蓝牙)=${reqResult.bluetooth}`);
+          
+          if (reqResult.location !== 'granted' || reqResult.bluetooth !== 'granted') {
+            setMessage('未获得定位和蓝牙权限，无法扫描。请在系统设置中为本应用允许“定位”和“附近设备”权限。');
+            addLog('❌ 权限不足，已终止蓝牙扫描。');
+            return;
+          }
+          // Refresh status again to update state
+          await refreshTuyaStatus();
+        }
+      } catch (err) {
+        addLog(`权限预检异常: ${err.message}`);
+      }
+    }
+
     setDiscoveredBleDevices([]);
     setIsScanningBle(true);
     addLog('🎯 开启蓝牙扫描，正在搜寻附近的涂鸦设备...');
@@ -372,25 +470,47 @@ export default function TuyaDeviceFlow({ onBack }) {
     }
     await stopBleScan();
 
+    // Reset diagnostic states
+    setDiagSelectedBle({
+      name: bleDevice.name,
+      address: bleDevice.address,
+      uuid: bleDevice.uuid,
+      productId: bleDevice.productId,
+    });
+    setDiagTokenResult('正在获取云端 Token...');
+    setDiagActivatorSuccess(null);
+    setDiagActivatorError(null);
+
     await setBusy('ble_bind', async () => {
       addLog(`🔗 开启蓝牙辅助双模配网...\n设备: ${bleDevice.name}\nWi-Fi: ${ssid}`);
-      const res = await HeyboTuya.connectBleDevice({
-        uuid: bleDevice.uuid,
-        address: bleDevice.address,
-        productId: bleDevice.productId,
-        ssid: ssid.trim(),
-        password: wifiPassword,
-        homeId: home?.homeId,
-      });
+      try {
+        const res = await HeyboTuya.connectBleDevice({
+          uuid: bleDevice.uuid,
+          address: bleDevice.address,
+          productId: bleDevice.productId,
+          deviceType: bleDevice.deviceType,
+          flag: bleDevice.flag,
+          ssid: ssid.trim(),
+          password: wifiPassword,
+          homeId: home?.homeId,
+        });
 
-      if (res?.success) {
-        addLog(`✅ 双模配网成功! 绑定设备: ${res.device.name} (ID: ${res.device.devId})`);
-        const nextDevices = await refreshDevices(home?.homeId);
-        await registerDeviceToBackend(res.device, home?.homeId);
-        setSelectedDevId(res.device.devId);
-        setMessage(`蓝牙辅助配网成功，已绑定设备 ${res.device.name}`);
-      } else {
-        throw new Error('双模配网失败');
+        setDiagTokenResult('云端 Token 获取成功');
+
+        if (res?.success) {
+          addLog(`✅ 双模配网成功! 绑定设备: ${res.device.name} (ID: ${res.device.devId})`);
+          setDiagActivatorSuccess(res.device);
+          const nextDevices = await refreshDevices(home?.homeId);
+          await registerDeviceToBackend(res.device, home?.homeId);
+          setSelectedDevId(res.device.devId);
+          setMessage(`蓝牙辅助配网成功，已绑定设备 ${res.device.name}`);
+        } else {
+          throw new Error('双模配网失败：返回结构不完整');
+        }
+      } catch (err) {
+        setDiagTokenResult('获取 Token / 配网失败');
+        setDiagActivatorError({ code: err.code || 'UNKNOWN_ERROR', message: err.message });
+        throw err;
       }
     });
   };
@@ -406,24 +526,39 @@ export default function TuyaDeviceFlow({ onBack }) {
       return;
     }
 
+    // Reset diagnostic states
+    setDiagSelectedBle(null);
+    setDiagTokenResult('正在获取云端 Token...');
+    setDiagActivatorSuccess(null);
+    setDiagActivatorError(null);
+
     await setBusy('wifi_pair', async () => {
       addLog(`⏳ 开启 Wi-Fi ${pairingMode} 模式配网... 请确保设备进入配网状态。 SSID: ${ssid}`);
-      const res = await HeyboTuya.startWifiPairing({
-        homeId: home.homeId,
-        ssid: ssid.trim(),
-        password: wifiPassword,
-        mode: pairingMode,
-        timeout: 120,
-      });
+      try {
+        const res = await HeyboTuya.startWifiPairing({
+          homeId: home.homeId,
+          ssid: ssid.trim(),
+          password: wifiPassword,
+          mode: pairingMode,
+          timeout: 120,
+        });
 
-      if (res?.device) {
-        addLog(`✅ Wi-Fi 配网成功! 绑定设备: ${res.device.name} (ID: ${res.device.devId})`);
-        await refreshDevices(home.homeId);
-        await registerDeviceToBackend(res.device, home.homeId);
-        setSelectedDevId(res.device.devId);
-        setMessage(`Wi-Fi 配网成功，已绑定设备 ${res.device.name}`);
-      } else {
-        throw new Error('Wi-Fi 配网返回空设备');
+        setDiagTokenResult('云端 Token 获取成功');
+
+        if (res?.device) {
+          addLog(`✅ Wi-Fi 配网成功! 绑定设备: ${res.device.name} (ID: ${res.device.devId})`);
+          setDiagActivatorSuccess(res.device);
+          await refreshDevices(home.homeId);
+          await registerDeviceToBackend(res.device, home.homeId);
+          setSelectedDevId(res.device.devId);
+          setMessage(`Wi-Fi 配网成功，已绑定设备 ${res.device.name}`);
+        } else {
+          throw new Error('Wi-Fi 配网返回空设备');
+        }
+      } catch (err) {
+        setDiagTokenResult('获取 Token / 配网失败');
+        setDiagActivatorError({ code: err.code || 'UNKNOWN_ERROR', message: err.message });
+        throw err;
       }
     });
   };
@@ -441,7 +576,7 @@ export default function TuyaDeviceFlow({ onBack }) {
 
     const setupSubscription = async () => {
       addLog(`🔌 正在订阅设备实时数据变化: ${selectedDevId}...`);
-
+      
       // Initialize current state
       if (selectedDevice) {
         setDeviceDps(parseDps(selectedDevice.dps) || {});
@@ -451,19 +586,20 @@ export default function TuyaDeviceFlow({ onBack }) {
       // Register real-time listener for DP updates
       dpListener = await HeyboTuya.addListener('dpUpdate', (data) => {
         if (data.devId !== selectedDevId) return;
-
+        
         const updatedDps = parseDps(data.dps);
-
+        
         // Update local DPs state
         setDeviceDps(prev => ({ ...prev, ...updatedDps }));
-
+        syncDpToBackend(selectedDevId, updatedDps, isOnline);
+        
         // Trigger card flash animation for each updated DP
         const newFlash = {};
         Object.keys(updatedDps).forEach(dpId => {
           newFlash[dpId] = true;
           addLog(`📥 [DP 上报] DP ${dpId} (${DP_LABELS[dpId]?.name || '未知'}) -> ${JSON.stringify(updatedDps[dpId])}`);
         });
-
+        
         setFlashingDps(prev => ({ ...prev, ...newFlash }));
         setTimeout(() => {
           setFlashingDps(prev => {
@@ -478,6 +614,7 @@ export default function TuyaDeviceFlow({ onBack }) {
       const statusListener = await HeyboTuya.addListener('deviceStatusChanged', (data) => {
         if (data.devId !== selectedDevId) return;
         setIsOnline(data.online);
+        syncDpToBackend(selectedDevId, {}, data.online);
         addLog(`📡 [设备状态] 设备 ${data.online ? '上线' : '下线'}`);
       });
 
@@ -526,10 +663,10 @@ export default function TuyaDeviceFlow({ onBack }) {
   const startDiyCooking = async () => {
     if (!selectedDevId) return;
     const timeSecs = Math.max(1, Number(ctrlTimeMins)) * 60;
-
+    
     await setBusy('cook', async () => {
       addLog(`🍳 发送低迷温度 DIY 鲜食烹饪配方：温度=${ctrlTemp}℃, 时间=${ctrlTimeMins}分, 功率=${ctrlPower}, 速度=${ctrlSpeed}`);
-
+      
       const dps = {
         1: true,
         3: ctrlMode,
@@ -541,7 +678,7 @@ export default function TuyaDeviceFlow({ onBack }) {
       };
 
       await sendDpCommand(dps);
-
+      
       // Save operation record to backend
       if (heyboToken) {
         await api.recordCookingOperation({
@@ -614,7 +751,7 @@ export default function TuyaDeviceFlow({ onBack }) {
       <TopBar onBack={onBack} title="涂鸦硬件集成调试中心" />
 
       <main className="tuya-flow-content" style={{ flex: 1, padding: '20px', maxWidth: '800px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-
+        
         {/* Banner */}
         <section className="tuya-flow-hero" style={{ textAlign: 'center', marginBottom: '24px', background: 'linear-gradient(135deg, rgba(16,24,48,0.8), rgba(8,12,24,0.9))', padding: '20px', borderRadius: '16px', border: '1px solid rgba(0, 230, 255, 0.15)' }}>
           <div className="tuya-flow-eyebrow" style={{ color: '#00e6ff', textTransform: 'uppercase', letterSpacing: '1.5px', fontSize: '12px', fontWeight: '800' }}>Heybo Pet × Tuya Joint-Debugging</div>
@@ -622,6 +759,141 @@ export default function TuyaDeviceFlow({ onBack }) {
           <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
             {isNative ? `⚡ 当前处于 ${tuyaStatus?.platform === 'ios' ? 'iOS' : 'Android'} 原生环境，连接涂鸦真实 SDK。` : '🖥️ 当前处于 Web 预览开发模式，使用虚拟沙盒模拟 DP 通信。'}
           </p>
+        </section>
+
+        {/* 15 Parameters Provisioning Diagnostics Panel */}
+        <section className="tuya-flow-card" style={{ background: 'rgba(15, 23, 42, 0.9)', border: '1px solid rgba(0, 230, 255, 0.3)', borderRadius: '16px', padding: '20px', marginBottom: '20px', boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)' }}>
+          <button 
+            onClick={() => setShowDiagnostics(!showDiagnostics)}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', background: 'none', border: 'none', color: '#00e6ff', fontSize: '15px', fontWeight: '800', cursor: 'pointer', outline: 'none', padding: 0 }}
+          >
+            <span>🛠️ 环境状态与配网监控诊断仪 (Diagnostics Panel)</span>
+            <span style={{ fontSize: '12px' }}>{showDiagnostics ? '▲ 点击收起' : '▼ 点击展开'}</span>
+          </button>
+          
+          {showDiagnostics && (
+            <div className="animate-fade" style={{ marginTop: '16px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px' }}>
+              <p style={{ fontSize: '11px', color: '#94a3b8', margin: '0 0 14px 0', lineHeight: '1.4' }}>
+                供测试及研发人员实时观察设备环境。如发现红灯（“未授权”或“已关闭”），请按对应引导操作。
+              </p>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                {/* SDK & Account Status Group */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '800', color: '#e2e8f0', marginBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px' }}>🔑 SDK & 账号状态</div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>SDK 初始化结果:</span>
+                    <span style={{ color: tuyaStatus?.initialized ? '#20f29b' : '#ef4444', fontWeight: '700' }}>{tuyaStatus?.initialized ? 'SUCCESS (已初始化)' : 'FAIL (未初始化)'}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>当前登录 User ID:</span>
+                    <span style={{ color: heyboUser ? 'white' : '#64748b', fontWeight: '700' }}>{heyboUser?.id || '未登录'}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>当前家庭 Home ID:</span>
+                    <span style={{ color: home?.homeId ? '#20f29b' : '#64748b', fontWeight: '700' }}>{home?.homeId || '无'}</span>
+                  </div>
+                </div>
+
+                {/* Hardware State Group */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '800', color: '#e2e8f0', marginBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px' }}>📳 手机硬件开关</div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>系统蓝牙开关:</span>
+                    <span style={{ color: tuyaStatus?.bluetoothEnabled ? '#20f29b' : '#ef4444', fontWeight: '700' }}>{tuyaStatus?.bluetoothEnabled ? 'ON (已开启)' : 'OFF (请开启蓝牙)'}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>系统定位(GPS)开关:</span>
+                    <span style={{ color: tuyaStatus?.gpsEnabled ? '#20f29b' : '#ef4444', fontWeight: '700' }}>{tuyaStatus?.gpsEnabled ? 'ON (已开启)' : 'OFF (请打开GPS)'}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>当前网络 SSID / 频段:</span>
+                    <span style={{ color: tuyaStatus?.wifiFreq === '5G' ? '#ef4444' : 'white', fontWeight: '700' }}>
+                      {tuyaStatus?.wifiSsid || 'Unknown'} ({tuyaStatus?.wifiFreq || 'Unknown'})
+                      {tuyaStatus?.wifiFreq === '5G' && ' ⚠️ 请换2.4G'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* System Permissions Group */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '800', color: '#e2e8f0', marginBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px' }}>🛡️ 安卓系统运行时权限</div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>BLUETOOTH_SCAN (扫描):</span>
+                    <span style={{ color: tuyaStatus?.permBluetoothScan ? '#20f29b' : '#ef4444', fontWeight: '700' }}>{tuyaStatus?.permBluetoothScan ? '已授权' : '未授权 (请点扫描)'}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>BLUETOOTH_CONNECT (连接):</span>
+                    <span style={{ color: tuyaStatus?.permBluetoothConnect ? '#20f29b' : '#ef4444', fontWeight: '700' }}>{tuyaStatus?.permBluetoothConnect ? '已授权' : '未授权 (请点扫描)'}</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>ACCESS_FINE_LOCATION (定位):</span>
+                    <span style={{ color: tuyaStatus?.permLocation ? '#20f29b' : '#ef4444', fontWeight: '700' }}>{tuyaStatus?.permLocation ? '已授权' : '未授权 (请点扫描)'}</span>
+                  </div>
+                </div>
+
+                {/* Provisioning Callback logs */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.04)', gridColumn: '1 / -1' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '800', color: '#e2e8f0', marginBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px' }}>📡 实时配网握手数据流</div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <span>涂鸦云 Token 获取状态 (activatorToken):</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ 
+                        color: diagTokenResult === 'idle' ? '#64748b' :
+                               diagTokenResult === 'loading' ? '#eab308' :
+                               diagTokenResult.startsWith('success:') ? '#20f29b' :
+                               diagTokenResult.startsWith('error:') ? '#ef4444' : '#64748b', 
+                        fontWeight: '700' 
+                      }}>
+                        {diagTokenResult === 'idle' ? '⚪ 未请求' :
+                         diagTokenResult === 'loading' ? '🟡 正在请求...' :
+                         diagTokenResult.startsWith('success:') ? `🟢 成功 (Token: ${diagTokenResult.split(':')[1]})` :
+                         diagTokenResult.startsWith('error:') ? `🔴 失败: ${diagTokenResult.split(':')[1]}` : diagTokenResult}
+                      </span>
+                      {home?.homeId && (
+                        <button 
+                          onClick={() => testFetchActivatorToken(home.homeId)}
+                          style={{ background: 'rgba(0, 230, 255, 0.1)', border: '1px solid rgba(0, 230, 255, 0.3)', borderRadius: '4px', padding: '2px 6px', color: '#00e6ff', fontSize: '9px', cursor: 'pointer', fontWeight: '800' }}
+                        >
+                          🧪 测试获取
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>待配网目标设备 (Selected BLE):</span>
+                    <span style={{ color: diagSelectedBle ? '#00e6ff' : '#64748b', fontWeight: '700' }}>
+                      {diagSelectedBle ? `${diagSelectedBle.name} (UUID: ${diagSelectedBle.uuid} | MAC: ${diagSelectedBle.address} | PID: ${diagSelectedBle.productId})` : '无 (请在下方扫描并点击一键绑定)'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>配网完成回调成功 (activator onSuccess):</span>
+                    <span style={{ color: diagActivatorSuccess ? '#20f29b' : '#64748b', fontWeight: '700' }}>
+                      {diagActivatorSuccess ? `SUCCESS 🎉 (已绑定: ${diagActivatorSuccess.name} | ID: ${diagActivatorSuccess.devId})` : '未完成'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>配网错误回调失败 (activator onError):</span>
+                    <span style={{ color: diagActivatorError ? '#ef4444' : '#64748b', fontWeight: '700' }}>
+                      {diagActivatorError ? `ERROR ❌ [Code: ${diagActivatorError.code}] ${diagActivatorError.message}` : '无异常记录'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <button 
+                onClick={async () => {
+                  await refreshTuyaStatus();
+                  if (home?.homeId) {
+                    await testFetchActivatorToken(home.homeId);
+                  }
+                }}
+                style={{ width: '100%', marginTop: '12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px', color: 'white', fontWeight: '700', fontSize: '11px', cursor: 'pointer' }}
+              >
+                🔄 刷新硬件与环境参数
+              </button>
+            </div>
+          )}
         </section>
 
         {/* Step 1: Heybo Pet Account Login */}
@@ -654,27 +926,27 @@ export default function TuyaDeviceFlow({ onBack }) {
                 disabled={Boolean(loading)}
               />
             </div>
-
+            
             <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-              <button
-                className="tuya-flow-button"
-                onClick={handleHeyboLogin}
+              <button 
+                className="tuya-flow-button" 
+                onClick={handleHeyboLogin} 
                 style={{ flex: 2, background: 'linear-gradient(90deg, #00e6ff, #00a8ff)', border: 'none', borderRadius: '10px', padding: '12px', color: '#090d14', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}
                 disabled={Boolean(loading)}
               >
                 {loading === 'login' ? '正在静默激活 Tuya...' : '登录账号并激活涂鸦'}
               </button>
-              <button
-                className="tuya-flow-ghost"
-                onClick={prefillTestAccount1}
+              <button 
+                className="tuya-flow-ghost" 
+                onClick={prefillTestAccount1} 
                 style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '12px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}
                 disabled={Boolean(loading)}
               >
                 测试号 1
               </button>
-              <button
-                className="tuya-flow-ghost"
-                onClick={prefillTestAccount2}
+              <button 
+                className="tuya-flow-ghost" 
+                onClick={prefillTestAccount2} 
                 style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '12px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}
                 disabled={Boolean(loading)}
               >
@@ -722,19 +994,24 @@ export default function TuyaDeviceFlow({ onBack }) {
 
           {/* Action Buttons: Bluetooth scanning & Open Settings */}
           <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
-            <button
+            <button 
               onClick={isScanningBle ? stopBleScan : startBleScan}
               style={{ flex: 2, background: isScanningBle ? '#ef4444' : '#20f29b', border: 'none', borderRadius: '10px', padding: '12px', color: '#090d14', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
               disabled={!home}
             >
               {isScanningBle ? '🛑 停止扫描' : '🔍 扫描附近蓝牙设备'}
             </button>
-            <button
+            <button 
               onClick={handleOpenBluetoothSettings}
               style={{ flex: 1, background: 'rgba(0, 230, 255, 0.1)', border: '1px solid rgba(0, 230, 255, 0.3)', borderRadius: '10px', padding: '12px', color: '#00e6ff', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
             >
               ⚙️ 蓝牙设置
             </button>
+          </div>
+
+          {/* System Pairing Warning Notice */}
+          <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '10px', padding: '10px 12px', marginBottom: '12px', fontSize: '11px', color: '#f87171', lineHeight: '1.4' }}>
+            ⚠️ <strong>防错配提示：</strong> 请<strong>直接在 App 内</strong>进行蓝牙扫描并点击“一键绑定”配网。<strong>请勿</strong>在手机系统“蓝牙设置”页面直接点击连接 <code>TUYA_</code> 设备进行配对，否则系统会报错“PIN码或密钥不正确”。
           </div>
 
           {isScanningBle && (
@@ -753,11 +1030,11 @@ export default function TuyaDeviceFlow({ onBack }) {
               discoveredBleDevices.map((dev, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '12px' }}>
                   <div>
-                    <strong style={{ color: 'white' }}>{dev.name}</strong>
+                    <strong style={{ color: 'white' }}>{dev.name}</strong> 
                     <span style={{ color: '#64748b', marginLeft: '6px' }}>({dev.address})</span>
                     <div style={{ fontSize: '10px', color: '#00e6ff' }}>PID: {dev.productId}</div>
                   </div>
-                  <button
+                  <button 
                     onClick={() => handleBleBind(dev)}
                     style={{ background: '#20f29b', border: 'none', borderRadius: '6px', padding: '5px 12px', color: '#090d14', fontWeight: '800', cursor: 'pointer' }}
                     disabled={Boolean(loading)}
@@ -771,7 +1048,7 @@ export default function TuyaDeviceFlow({ onBack }) {
 
           {/* Collapsible Backup Pairing Section */}
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
-            <button
+            <button 
               onClick={() => setShowBackupPairing(!showBackupPairing)}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', background: 'none', border: 'none', padding: '4px 0', color: '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}
             >
@@ -785,15 +1062,15 @@ export default function TuyaDeviceFlow({ onBack }) {
                   如果蓝牙扫描不到设备，可在此使用热点直连方式（AP模式）或快闪（EZ模式）配网。首选AP热点配网。
                 </p>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <select
-                    value={pairingMode}
-                    onChange={e => setPairingMode(e.target.value)}
+                  <select 
+                    value={pairingMode} 
+                    onChange={e => setPairingMode(e.target.value)} 
                     style={{ background: 'rgba(20,27,45,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '8px', color: 'white', fontSize: '12px' }}
                   >
                     <option value="AP">AP 热点配网 (首选备用)</option>
                     <option value="EZ">EZ 快闪配网</option>
                   </select>
-                  <button
+                  <button 
                     onClick={handleWifiPairing}
                     style={{ flex: 1, background: '#00e6ff', border: 'none', borderRadius: '8px', padding: '9px', color: '#090d14', fontWeight: '800', cursor: 'pointer', fontSize: '12px' }}
                     disabled={Boolean(loading) || !home}
@@ -813,7 +1090,7 @@ export default function TuyaDeviceFlow({ onBack }) {
               <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '50%', background: '#00e6ff', color: '#090d14', fontWeight: '800', fontSize: '14px' }}>3</span>
               <h2 style={{ fontSize: '16px', fontWeight: '800', margin: 0 }}>第三步：已绑定设备列表</h2>
             </div>
-            <button
+            <button 
               onClick={() => refreshDevices(home?.homeId)}
               style={{ background: 'none', border: 'none', color: '#00e6ff', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}
               disabled={!home || Boolean(loading)}
@@ -829,14 +1106,14 @@ export default function TuyaDeviceFlow({ onBack }) {
               </div>
             ) : (
               devices.map(device => (
-                <div
-                  key={device.devId}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px',
-                    borderRadius: '12px',
+                <div 
+                  key={device.devId} 
+                  style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    padding: '12px', 
+                    borderRadius: '12px', 
                     background: device.devId === selectedDevId ? 'rgba(0,230,255,0.08)' : 'rgba(255,255,255,0.03)',
                     border: device.devId === selectedDevId ? '1px solid rgba(0,230,255,0.4)' : '1px solid rgba(255,255,255,0.05)',
                     cursor: 'pointer'
@@ -854,17 +1131,17 @@ export default function TuyaDeviceFlow({ onBack }) {
                     <div style={{ fontSize: '11px', color: '#64748b' }}>PID: {device.productId}</div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{
-                      display: 'inline-block',
-                      width: '8px',
-                      height: '8px',
-                      borderRadius: '50%',
+                    <span style={{ 
+                      display: 'inline-block', 
+                      width: '8px', 
+                      height: '8px', 
+                      borderRadius: '50%', 
                       background: device.isOnline ? '#20f29b' : '#64748b'
                     }} />
                     <span style={{ fontSize: '12px', color: device.isOnline ? '#20f29b' : '#64748b', fontWeight: '700' }}>
                       {device.isOnline ? '在线' : '离线'}
                     </span>
-                    <button
+                    <button 
                       onClick={(e) => {
                         e.stopPropagation();
                         handleUnbind(device.devId);
@@ -883,19 +1160,13 @@ export default function TuyaDeviceFlow({ onBack }) {
         {/* Tab Switching for Details Area */}
         {selectedDevice && (
           <div style={{ display: 'flex', background: 'rgba(15,22,38,0.9)', borderRadius: '12px', padding: '4px', border: '1px solid rgba(255,255,255,0.06)', marginBottom: '16px' }}>
-            <button
+            <button 
               onClick={() => setActiveTab('control')}
               style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '8px', background: activeTab === 'control' ? 'rgba(255,255,255,0.08)' : 'transparent', color: activeTab === 'control' ? 'white' : '#94a3b8', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}
             >
               🎛️ 联调主面板 (DP控制)
             </button>
-            <button
-              onClick={() => setActiveTab('logs')}
-              style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '8px', background: activeTab === 'logs' ? 'rgba(255,255,255,0.08)' : 'transparent', color: activeTab === 'logs' ? 'white' : '#94a3b8', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}
-            >
-              💻 实时通信日志 ({logs.length})
-            </button>
-            <button
+            <button 
               onClick={() => setActiveTab('history')}
               style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '8px', background: activeTab === 'history' ? 'rgba(255,255,255,0.08)' : 'transparent', color: activeTab === 'history' ? 'white' : '#94a3b8', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}
             >
@@ -933,12 +1204,12 @@ export default function TuyaDeviceFlow({ onBack }) {
                   }
 
                   return (
-                    <div
+                    <div 
                       key={dpId}
-                      style={{
-                        padding: '10px',
-                        borderRadius: '10px',
-                        background: isFlashing ? 'rgba(32,242,155,0.22)' : 'rgba(255,255,255,0.02)',
+                      style={{ 
+                        padding: '10px', 
+                        borderRadius: '10px', 
+                        background: isFlashing ? 'rgba(32,242,155,0.22)' : 'rgba(255,255,255,0.02)', 
                         border: isFlashing ? '1px solid #20f29b' : '1px solid rgba(255,255,255,0.05)',
                         transition: 'background 0.3s, border 0.3s'
                       }}
@@ -967,17 +1238,17 @@ export default function TuyaDeviceFlow({ onBack }) {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ fontSize: '11px', color: '#64748b' }}>电源开关:</span>
-                  <button
+                  <button 
                     onClick={handleTogglePower}
-                    style={{
-                      background: deviceDps[1] ? '#ef4444' : '#20f29b',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '5px 12px',
-                      color: '#090d14',
-                      fontWeight: '800',
+                    style={{ 
+                      background: deviceDps[1] ? '#ef4444' : '#20f29b', 
+                      border: 'none', 
+                      borderRadius: '8px', 
+                      padding: '5px 12px', 
+                      color: '#090d14', 
+                      fontWeight: '800', 
                       fontSize: '11px',
-                      cursor: 'pointer'
+                      cursor: 'pointer' 
                     }}
                   >
                     {deviceDps[1] ? '物理关机' : '物理开机'}
@@ -989,8 +1260,8 @@ export default function TuyaDeviceFlow({ onBack }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>烹饪模式 (DP 3)</label>
-                  <select
-                    value={ctrlMode}
+                  <select 
+                    value={ctrlMode} 
                     onChange={e => setCtrlMode(e.target.value)}
                     style={{ width: '100%', padding: '10px', background: 'rgba(10,13,20,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'white' }}
                   >
@@ -999,12 +1270,12 @@ export default function TuyaDeviceFlow({ onBack }) {
                     ))}
                   </select>
                 </div>
-
+                
                 {/* Speed Select */}
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>搅拌速度 (DP 108)</label>
-                  <select
-                    value={ctrlSpeed}
+                  <select 
+                    value={ctrlSpeed} 
                     onChange={e => setCtrlSpeed(e.target.value)}
                     style={{ width: '100%', padding: '10px', background: 'rgba(10,13,20,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'white' }}
                   >
@@ -1029,11 +1300,11 @@ export default function TuyaDeviceFlow({ onBack }) {
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>烹饪温度 (DP 9)</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
+                    <input 
                       type="range" min="0" max="120" value={ctrlTemp} onChange={e => setCtrlTemp(e.target.value)}
                       style={{ flex: 1 }}
                     />
-                    <input
+                    <input 
                       type="number" value={ctrlTemp} onChange={e => setCtrlTemp(e.target.value)}
                       style={{ width: '55px', padding: '6px', background: 'rgba(10,13,20,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'white', textAlign: 'center', fontSize: '12px' }}
                     />
@@ -1044,11 +1315,11 @@ export default function TuyaDeviceFlow({ onBack }) {
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>烹饪时间 (DP 7)</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
+                    <input 
                       type="range" min="1" max="120" value={ctrlTimeMins} onChange={e => setCtrlTimeMins(e.target.value)}
                       style={{ flex: 1 }}
                     />
-                    <input
+                    <input 
                       type="number" value={ctrlTimeMins} onChange={e => setCtrlTimeMins(e.target.value)}
                       style={{ width: '55px', padding: '6px', background: 'rgba(10,13,20,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'white', textAlign: 'center', fontSize: '12px' }}
                     />
@@ -1060,16 +1331,16 @@ export default function TuyaDeviceFlow({ onBack }) {
               {/* Power Slider */}
               <div style={{ marginBottom: '18px' }}>
                 <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>加热功率 (DP 102): {ctrlPower} / 10</label>
-                <input
+                <input 
                   type="range" min="0" max="10" value={ctrlPower} onChange={e => setCtrlPower(e.target.value)}
                   style={{ width: '100%' }}
                 />
               </div>
 
               {/* Action Buttons */}
-              <button
-                className="tuya-cook-button"
-                onClick={startDiyCooking}
+              <button 
+                className="tuya-cook-button" 
+                onClick={startDiyCooking} 
                 style={{ cursor: 'pointer', border: 'none', borderRadius: '10px', fontWeight: '800' }}
                 disabled={Boolean(loading) || !isOnline}
               >
@@ -1096,9 +1367,9 @@ export default function TuyaDeviceFlow({ onBack }) {
                   onChange={e => setRawDpId(e.target.value)}
                   style={{ width: '70px', padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'white', fontSize: '13px' }}
                 />
-
-                <select
-                  value={rawDpType}
+                
+                <select 
+                  value={rawDpType} 
                   onChange={e => setRawDpType(e.target.value)}
                   style={{ width: '90px', padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'white', fontSize: '13px' }}
                 >
@@ -1115,7 +1386,7 @@ export default function TuyaDeviceFlow({ onBack }) {
                   style={{ flex: 1, padding: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: 'white', fontSize: '13px' }}
                 />
 
-                <button
+                <button 
                   onClick={handleSendRawDp}
                   style={{ background: '#00e6ff', border: 'none', borderRadius: '8px', padding: '10px 16px', color: '#090d14', fontWeight: '800', fontSize: '13px', cursor: 'pointer' }}
                   disabled={!isOnline}
@@ -1127,51 +1398,12 @@ export default function TuyaDeviceFlow({ onBack }) {
           </div>
         )}
 
-        {/* Tab Panel: Logs */}
-        {selectedDevice && activeTab === 'logs' && (
-          <section className="tuya-flow-log" style={{ background: 'rgba(10,14,23,0.95)', border: '1px solid rgba(0, 230, 255, 0.3)', borderRadius: '16px', padding: '20px', marginBottom: '20px', display: 'flex', flexDirection: 'column', height: '400px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flex: '0 0 auto' }}>
-              <strong style={{ color: '#00e6ff', fontSize: '14px' }}>💻 Real-Time Console 日志记录输出</strong>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(logs.join('\n'));
-                    alert('日志已成功复制到剪贴板！');
-                  }}
-                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '4px 10px', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
-                >
-                  📋 复制日志
-                </button>
-                <button
-                  onClick={() => setLogs([])}
-                  style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', padding: '4px 10px', color: '#ef4444', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
-                >
-                  🧹 清空
-                </button>
-              </div>
-            </div>
-
-            <div style={{ flex: 1, background: '#070a0f', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', padding: '12px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '11px', color: '#38bdf8', whiteSpace: 'pre-wrap', boxSizing: 'border-box' }}>
-              {logs.length === 0 ? (
-                <div style={{ color: '#475569', textAlign: 'center', paddingTop: '100px' }}>暂无通信数据。下发或物理触发设备操作后，通信细节会在这里显示。</div>
-              ) : (
-                logs.map((log, i) => (
-                  <div key={i} style={{ marginBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.02)', paddingBottom: '2px' }}>
-                    {log}
-                  </div>
-                ))
-              )}
-              <div ref={logsEndRef} />
-            </div>
-          </section>
-        )}
-
         {/* Tab Panel: History */}
         {selectedDevice && activeTab === 'history' && (
           <section className="tuya-flow-card" style={{ background: 'rgba(20,27,45,0.7)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h3 style={{ fontSize: '15px', fontWeight: '800', margin: 0, color: '#00e6ff' }}>🕒 Heybo 后端烹饪操作历史记录</h3>
-              <button
+              <button 
                 onClick={() => loadHistory()}
                 style={{ background: 'none', border: 'none', color: '#00e6ff', fontSize: '12px', cursor: 'pointer', fontWeight: '700' }}
               >
@@ -1185,24 +1417,64 @@ export default function TuyaDeviceFlow({ onBack }) {
                   暂无云端操作历史，当通过App下发DIY烹饪命令时会自动记录。
                 </div>
               ) : (
-                historyRecords.map((rec, i) => (
-                  <div key={i} style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.02)', borderLeft: '3px solid #20f29b', borderRadius: '4px', fontSize: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', marginBottom: '4px' }}>
-                      <span>类型: <strong style={{ color: 'white' }}>{rec.operation_type === 'start_cooking' ? '启动烹饪' : rec.operation_type}</strong></span>
-                      <span>{new Date(rec.created_at || rec.started_at).toLocaleString()}</span>
+                historyRecords.map((rec, i) => {
+                  const params = rec.cooking_params_snapshot || rec;
+                  return (
+                    <div key={i} style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.02)', borderLeft: '3px solid #20f29b', borderRadius: '4px', fontSize: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', marginBottom: '4px' }}>
+                        <span>类型: <strong style={{ color: 'white' }}>{rec.operation_type === 'start_cooking' ? '启动烹饪' : rec.operation_type}</strong></span>
+                        <span>{new Date(rec.created_at || rec.started_at).toLocaleString()}</span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginTop: '6px', color: '#64748b' }}>
+                        <div>温度: <span style={{ color: 'white', fontWeight: '700' }}>{params.target_temperature_c}℃</span></div>
+                        <div>时长: <span style={{ color: 'white', fontWeight: '700' }}>{Math.round((params.target_time_seconds || 0) / 60)}分钟</span></div>
+                        <div>功率: <span style={{ color: 'white', fontWeight: '700' }}>{params.target_power}档</span></div>
+                        <div>转速: <span style={{ color: 'white', fontWeight: '700' }}>{params.target_speed}档</span></div>
+                      </div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginTop: '6px', color: '#64748b' }}>
-                      <div>温度: <span style={{ color: 'white', fontWeight: '700' }}>{rec.target_temperature_c}℃</span></div>
-                      <div>时长: <span style={{ color: 'white', fontWeight: '700' }}>{Math.round(rec.target_time_seconds / 60)}分钟</span></div>
-                      <div>功率: <span style={{ color: 'white', fontWeight: '700' }}>{rec.target_power}档</span></div>
-                      <div>转速: <span style={{ color: 'white', fontWeight: '700' }}>{rec.target_speed}档</span></div>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </section>
         )}
+
+        {/* Permanently Visible Real-Time Console Logs Output */}
+        <section className="tuya-flow-log" style={{ background: 'rgba(10,14,23,0.95)', border: '1px solid rgba(0, 230, 255, 0.3)', borderRadius: '16px', padding: '20px', marginBottom: '20px', display: 'flex', flexDirection: 'column', height: '300px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flex: '0 0 auto' }}>
+            <strong style={{ color: '#00e6ff', fontSize: '14px' }}>💻 Real-Time Console 运行日志输出 (Debugging Logs)</strong>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(logs.join('\n'));
+                  alert('日志已成功复制到剪贴板！');
+                }}
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '4px 10px', color: 'white', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+              >
+                📋 复制日志
+              </button>
+              <button 
+                onClick={() => setLogs([])}
+                style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '6px', padding: '4px 10px', color: '#ef4444', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+              >
+                🧹 清空
+              </button>
+            </div>
+          </div>
+          
+          <div style={{ flex: 1, background: '#070a0f', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', padding: '12px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '11px', color: '#38bdf8', whiteSpace: 'pre-wrap', boxSizing: 'border-box' }}>
+            {logs.length === 0 ? (
+              <div style={{ color: '#475569', textAlign: 'center', paddingTop: '60px' }}>暂无通信数据。登录、获取Token、蓝牙扫描、配网及下发操作细节会在这里实时更新。</div>
+            ) : (
+              logs.map((log, i) => (
+                <div key={i} style={{ marginBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.02)', paddingBottom: '2px' }}>
+                  {log}
+                </div>
+              ))
+            )}
+            <div ref={logsEndRef} />
+          </div>
+        </section>
 
         {/* Global Warning / Message bar */}
         <section className="tuya-flow-log" style={{ background: 'rgba(15,22,38,0.6)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: '14px', padding: '12px 16px', fontSize: '12px' }}>

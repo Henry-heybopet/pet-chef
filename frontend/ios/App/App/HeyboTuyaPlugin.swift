@@ -33,7 +33,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
         CAPPluginMethod(name: "pauseCooking", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "resetCooking", returnType: CAPPluginReturnPromise)
     ]
-
+    
     private var isInitialized = false
     private var currentHomeId: Int64 = 0
     private var subscribedDevices: [String: ThingSmartDevice] = [:]
@@ -42,9 +42,9 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
     private var activeWifiCall: CAPPluginCall?
     private var activeWifiToken = ""
     private var activeWifiMode = "EZ"
-
+    
     // MARK: - Core Plugin Methods
-
+    
     @objc func status(_ call: CAPPluginCall) {
         call.resolve([
             "platform": "ios",
@@ -55,11 +55,11 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             "homeId": currentHomeId != 0 ? Double(currentHomeId) : 0
         ])
     }
-
+    
     @objc func `init`(_ call: CAPPluginCall) {
         let appKey = call.getString("appKey") ?? "8kjrnvjwpr9vyxnare5j"
         let appSecret = call.getString("appSecret") ?? "vtkra5yp7mfcds7ruprjjgnrcqmnyc9a"
-
+        
         DispatchQueue.main.async {
             ThingSmartSDK.sharedInstance().start(withAppKey: appKey, secretKey: appSecret)
             self.isInitialized = true
@@ -69,7 +69,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             ])
         }
     }
-
+    
     @objc func loginOrRegisterWithHeyboUid(_ call: CAPPluginCall) {
         guard let heyboUid = call.getString("heyboUid") else {
             call.reject("heyboUid is required")
@@ -80,7 +80,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             call.reject("password is required")
             return
         }
-
+        
         DispatchQueue.main.async {
             ThingSmartUser.sharedInstance().loginOrRegister(withCountryCode: "86", uid: tuyaUid, password: password, createHome: true) { (uid) in
                 call.resolve([
@@ -92,7 +92,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             }
         }
     }
-
+    
     @objc func getHomeList(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             let homeManager = ThingSmartHomeManager()
@@ -114,7 +114,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             })
         }
     }
-
+    
     @objc func ensureDefaultHome(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             let homeManager = ThingSmartHomeManager()
@@ -148,16 +148,16 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             })
         }
     }
-
+    
     @objc func getDeviceList(_ call: CAPPluginCall) {
         let homeIdVal = call.getDouble("homeId") ?? 0
         let targetHomeId = homeIdVal != 0 ? Int64(homeIdVal) : self.currentHomeId
-
+        
         if targetHomeId == 0 {
             call.reject("No homeId provided or set as default")
             return
         }
-
+        
         DispatchQueue.main.async {
             let home = ThingSmartHome(homeId: targetHomeId)
             home?.getDataWithSuccess({ (homeModel) in
@@ -297,7 +297,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             })
         }
     }
-
+    
     @objc func startBleScan(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             ThingSmartBLEManager.sharedInstance().delegate = self
@@ -305,14 +305,14 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             call.resolve(["success": true])
         }
     }
-
+    
     @objc func stopBleScan(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             ThingSmartBLEManager.sharedInstance().stopListening(true)
             call.resolve(["success": true])
         }
     }
-
+    
     @objc func connectBleDevice(_ call: CAPPluginCall) {
         guard let uuid = call.getString("uuid") else {
             call.reject("uuid is required")
@@ -323,12 +323,12 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
         let password = call.getString("password") ?? ""
         let homeIdVal = call.getDouble("homeId") ?? 0
         let targetHomeId = homeIdVal != 0 ? Int64(homeIdVal) : self.currentHomeId
-
+        
         if targetHomeId == 0 {
             call.reject("No homeId provided or set as default")
             return
         }
-
+        
         DispatchQueue.main.async {
             self.activeActivatorCall = call
             ThingSmartBLEWifiActivator.sharedInstance().bleWifiDelegate = self
@@ -349,13 +349,13 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             )
         }
     }
-
+    
     @objc func subscribeDevice(_ call: CAPPluginCall) {
         guard let devId = call.getString("devId") else {
             call.reject("devId is required")
             return
         }
-
+        
         DispatchQueue.main.async {
             if let device = ThingSmartDevice(deviceId: devId) {
                 device.delegate = self
@@ -366,13 +366,13 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             }
         }
     }
-
+    
     @objc func unsubscribeDevice(_ call: CAPPluginCall) {
         guard let devId = call.getString("devId") else {
             call.reject("devId is required")
             return
         }
-
+        
         DispatchQueue.main.async {
             if let device = self.subscribedDevices[devId] {
                 device.delegate = nil
@@ -381,7 +381,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             call.resolve(["success": true, "devId": devId])
         }
     }
-
+    
     @objc func publishDps(_ call: CAPPluginCall) {
         guard let devId = call.getString("devId") else {
             call.reject("devId is required")
@@ -391,7 +391,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             call.reject("dps object is required")
             return
         }
-
+        
         DispatchQueue.main.async {
             let device = self.subscribedDevices[devId] ?? ThingSmartDevice(deviceId: devId)
             if let device = device {
@@ -409,7 +409,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             }
         }
     }
-
+    
     @objc func openBluetoothSettings(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             if let url = URL(string: "App-Prefs:root=Bluetooth") {
@@ -427,9 +427,9 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             }
         }
     }
-
+    
     // MARK: - Cooking Custom Helper Commands (Native side mirroring for JS parity)
-
+    
     @objc func startDiyCooking(_ call: CAPPluginCall) {
         guard let devId = call.getString("devId") else {
             call.reject("devId is required")
@@ -439,7 +439,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
         let cookTime = call.getInt("cookTime") ?? 1200
         let power = call.getInt("power") ?? 8
         let speed = call.getString("speed") ?? "1"
-
+        
         let dps: [AnyHashable: Any] = [
             1: true,
             3: "diy",
@@ -449,7 +449,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             107: "start",
             108: speed
         ]
-
+        
         DispatchQueue.main.async {
             let device = self.subscribedDevices[devId] ?? ThingSmartDevice(deviceId: devId)
             if let device = device {
@@ -467,7 +467,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             }
         }
     }
-
+    
     @objc func pauseCooking(_ call: CAPPluginCall) {
         guard let devId = call.getString("devId") else {
             call.reject("devId is required")
@@ -476,7 +476,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
         let dps: [AnyHashable: Any] = [
             107: "pause"
         ]
-
+        
         DispatchQueue.main.async {
             let device = self.subscribedDevices[devId] ?? ThingSmartDevice(deviceId: devId)
             if let device = device {
@@ -494,7 +494,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             }
         }
     }
-
+    
     @objc func resetCooking(_ call: CAPPluginCall) {
         guard let devId = call.getString("devId") else {
             call.reject("devId is required")
@@ -503,7 +503,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
         let dps: [AnyHashable: Any] = [
             107: "reset"
         ]
-
+        
         DispatchQueue.main.async {
             let device = self.subscribedDevices[devId] ?? ThingSmartDevice(deviceId: devId)
             if let device = device {
@@ -521,9 +521,9 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             }
         }
     }
-
+    
     // MARK: - ThingSmartBLEManagerDelegate
-
+    
     @objc public func didDiscoveryDevice(withDeviceInfo deviceInfo: ThingBLEAdvModel) {
         let name = deviceInfo.peripheral?.cbPeripheral.name ?? "Tuya BLE Device"
         self.notifyListeners("bleDeviceFound", data: [
@@ -534,23 +534,23 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             "isNearby": true
         ])
     }
-
+    
     // MARK: - ThingSmartBLEWifiActivatorDelegate
-
+    
     @objc public func bleWifiActivator(_ activator: ThingSmartBLEWifiActivator, didReceiveBLEWifiConfigDevice deviceModel: ThingSmartDeviceModel?, error: Error?) {
         guard let call = activeActivatorCall else { return }
         activeActivatorCall = nil
-
+        
         if let error = error {
             call.reject("Provisioning failed: \(error.localizedDescription)")
             return
         }
-
+        
         guard let device = deviceModel else {
             call.reject("Provisioning failed: device model is nil")
             return
         }
-
+        
         let deviceData: [String: Any] = [
             "devId": device.devId ?? "",
             "name": device.name ?? "",
@@ -558,7 +558,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             "isOnline": device.isOnline,
             "dps": device.dps ?? [:]
         ]
-
+        
         call.resolve([
             "success": true,
             "device": deviceData
@@ -595,9 +595,9 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             "device": deviceData
         ])
     }
-
+    
     // MARK: - ThingSmartDeviceDelegate
-
+    
     @objc public func device(_ device: ThingSmartDevice, dpsUpdate dps: [AnyHashable: Any]) {
         var stringKeyedDps: [String: Any] = [:]
         for (key, value) in dps {
@@ -607,15 +607,15 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
                 stringKeyedDps[numKey.stringValue] = value
             }
         }
-
+        
         self.notifyListeners("dpUpdate", data: [
             "devId": device.deviceModel.devId ?? "",
             "dps": self.jsonStringOf(stringKeyedDps)
         ])
     }
-
+    
     // MARK: - Private Helpers
-
+    
     private func jsonStringOf(_ dict: [AnyHashable: Any]) -> String {
         guard let jsonData = try? JSONSerialization.data(withJSONObject: dict, options: []) else {
             return "{}"

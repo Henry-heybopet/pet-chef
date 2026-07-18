@@ -20,6 +20,7 @@ async function request(path, { method = 'GET', body, token } = {}) {
 export const factoryDebugApi = {
   heyboMockLogin: (body) => request('/api/auth/mock-login', { method: 'POST', body }),
   registerDevice: (body, token) => request('/api/devices', { method: 'POST', body, token }),
+  syncDeviceDp: (deviceId, body, token) => request(`/api/devices/${encodeURIComponent(deviceId)}/dp-sync`, { method: 'POST', body, token }),
   recordCookingOperation: (body, token) => request('/api/operations/cooking', { method: 'POST', body, token }),
   listCookingOperations: (token) => request('/api/operations/cooking', { token }),
 };
