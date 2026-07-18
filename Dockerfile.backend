@@ -1,0 +1,41 @@
+# Pet Chef Ver B1.00 — Backend Dockerfile
+# Security-hardened Express 5 backend
+FROM node:22.22-alpine AS backend
+
+# Install OpenSSL for Prisma engine compatibility
+RUN apk add --no-cache openssl
+
+# Security: create non-root user
+RUN addgroup -S petchef && adduser -S petchef -G petchef
+
+WORKDIR /app
+
+# Install dependencies first (layer caching)
+COPY backend/package.json backend/package-lock.json* ./
+RUN npm ci --omit=dev 2>/dev/null || npm install --omit=dev
+
+# Copy application code
+COPY backend/src/ ./src/
+COPY backend/prisma/ ./prisma/
+RUN mkdir -p /app/public/uploads
+
+# Generate Prisma client during build so it is baked into the read-only image
+RUN npx prisma generate
+
+# Security hardening
+RUN chown -R petchef:petchef /app
+
+USER petchef
+
+# Read-only root filesystem exception: /tmp for Express
+VOLUME ["/tmp"]
+
+ENV NODE_ENV=production
+ENV PORT=3001
+
+EXPOSE 3001
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:3001/api/breeds || exit 1
+
+CMD ["node", "src/index.js"]
