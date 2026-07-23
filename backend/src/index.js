@@ -2,7 +2,7 @@
 // index.js — 后端主入口（修复 CommonJS 兼容）
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
@@ -1074,11 +1074,13 @@ app.post('/api/v1/pets/evaluate-bcs', async (req, res) => {
 // 健康检查
 // ============================================================
 app.get('/api/v1/health', async (req, res) => {
-  const { recipes } = await listRecipes();
+  const { recipes, source } = await listRecipes();
   res.json({
     success: true,
     version: '3.0.0',
     recipes: recipes.length,
+    database: source === 'pg' ? 'available' : 'unavailable',
+    recipeSource: source,
     breeds: breedsDb.length,
     regionalized: true,
   });
