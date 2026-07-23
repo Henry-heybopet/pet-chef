@@ -24,30 +24,32 @@ import { dogBreeds } from './data/breeds';
 const SESSION_MS = 15 * 24 * 60 * 60 * 1000;
 
 function AppUpdateGate({ state, onRetry, onUpgrade, onContinueOffline }) {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
   const checking = state.status === 'checking';
   const blocked = state.status === 'blocked';
   return (
     <main className="app-update-gate">
       <section className="app-update-card" role="alert">
         <div className="app-update-icon">{blocked ? '⬆️' : '🔄'}</div>
-        <h1>{blocked ? '发现新版本' : '正在检查版本'}</h1>
-        {checking && <p>正在确认当前 App 是否需要升级，请稍候。</p>}
+        <h1>{blocked ? t('updateAvailable') : t('checkingVersion')}</h1>
+        {checking && <p>{t('checkingVersionHelp')}</p>}
         {state.status === 'error' && (
           <>
-            <p>{state.message || '版本检查网络异常。你仍可继续使用无需联网的本地功能；联网功能可能暂时不可用。'}</p>
-            <button type="button" onClick={onRetry}>重新检查</button>
-            <button type="button" className="app-update-retry" onClick={onContinueOffline}>继续使用本地功能</button>
+            <p>{lang === 'zh' && state.message ? state.message : t('versionNetworkError')}</p>
+            <button type="button" onClick={onRetry}>{t('retryCheck')}</button>
+            <button type="button" className="app-update-retry" onClick={onContinueOffline}>{t('continueOffline')}</button>
           </>
         )}
         {blocked && (
           <>
-            <p>当前版本 {state.installedName}，服务器要求升级到 {state.release.version_name} 后继续使用。</p>
+            <p>{t('forcedUpdateMessage', { installed: state.installedName, required: state.release.version_name })}</p>
             {state.release.release_notes?.length > 0 && (
               <ul>{state.release.release_notes.map(note => <li key={note}>{note}</li>)}</ul>
             )}
-            {state.message && <p className="app-update-error">{state.message}</p>}
-            <button type="button" onClick={onUpgrade}>前往应用市场升级</button>
-            <button type="button" className="app-update-retry" onClick={onRetry}>已升级，重新检查</button>
+            {state.message && lang === 'zh' && <p className="app-update-error">{state.message}</p>}
+            <button type="button" onClick={onUpgrade}>{t('openAppStore')}</button>
+            <button type="button" className="app-update-retry" onClick={onRetry}>{t('updatedRetry')}</button>
           </>
         )}
       </section>
@@ -98,6 +100,8 @@ function LangSelector() {
 }
 
 function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLogout }) {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mode, setMode] = useState('login');
@@ -114,8 +118,8 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
     if (!authPrompt) return;
     setMode('login');
     setOpen(true);
-    setMessage(authPromptMessage || '请先登录以激活 Heybo AI 功能');
-  }, [authPrompt, authPromptMessage]);
+    setMessage(lang === 'zh' && authPromptMessage ? authPromptMessage : t('loginRequired'));
+  }, [authPrompt, authPromptMessage, lang]);
 
   const resetModal = () => {
     setOpen(false);
@@ -134,15 +138,15 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
     event.preventDefault();
     const loginValue = login.trim();
     if (!loginValue) {
-      setMessage('请输入用户名或手机号');
+      setMessage(t('enterUsernameOrPhone'));
       return;
     }
     if (action === 'signup' && !/^1[3-9]\d{9}$/.test(loginValue)) {
-      setMessage('新用户注册请输入手机号');
+      setMessage(t('signupPhoneRequired'));
       return;
     }
     if (!/^\d{6}$/.test(password)) {
-      setMessage('密码必须为6位数字');
+      setMessage(t('passwordMustSixDigits'));
       return;
     }
     setBusy(true);
@@ -150,7 +154,7 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
     setMessage('');
     try {
       const result = await api.phoneLogin({ login: loginValue, password });
-      if (!result?.success) throw new Error(result?.error || '注册/登录失败');
+      if (!result?.success) throw new Error(result?.error || t('authFailed'));
       if (result.needsUsername) {
         setSignupPhone(result.phone);
         setMaskedPhone(result.maskedPhone);
@@ -159,7 +163,7 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
       }
       finishLogin(result);
     } catch (error) {
-      setMessage(error?.message || '账号或密码错误，请重新输入');
+      setMessage(lang === 'zh' && error?.message ? error.message : t('authFailed'));
     } finally {
       setBusy(false);
     }
@@ -169,35 +173,35 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
     event.preventDefault();
     const name = username.trim();
     if (!name) {
-      setMessage('用户名不能为空');
+      setMessage(t('usernameRequired'));
       return;
     }
     if (name.length > 18) {
-      setMessage('用户名最多18位');
+      setMessage(t('usernameTooLong'));
       return;
     }
     if (!/^[\u4e00-\u9fa5A-Za-z0-9]{1,18}$/.test(name)) {
-      setMessage('用户名仅支持中文、英文和数字');
+      setMessage(t('usernameInvalidChars'));
       return;
     }
     if (/^\d+$/.test(name)) {
-      setMessage('用户名不能为纯数字');
+      setMessage(t('usernameOnlyNumbers'));
       return;
     }
     setBusy(true);
     setMessage('');
     try {
       const result = await api.phoneSignup({ phone: signupPhone, password, username: name });
-      if (!result?.success) throw new Error(result?.error || '完成登录失败');
+      if (!result?.success) throw new Error(result?.error || t('authFailed'));
       finishLogin(result);
     } catch (error) {
-      setMessage(error?.message || '该用户名已被使用，请换一个');
+      setMessage(lang === 'zh' && error?.message ? error.message : t('usernameTaken'));
     } finally {
       setBusy(false);
     }
   };
 
-  const displayName = user?.display_name || user?.username || '当前用户';
+  const displayName = user?.display_name || user?.username || t('currentUser');
 
   return (
     <>
@@ -207,12 +211,12 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
           className="home-auth-pill"
           onClick={() => token ? setMenuOpen(value => !value) : setOpen(true)}
         >
-          {token ? displayName : '登录'}
+          {token ? displayName : t('login')}
         </button>
         {token && menuOpen && (
           <div className="home-auth-menu">
-            <div className="home-auth-account">当前账号：{displayName}</div>
-            <button type="button" onClick={() => { setMenuOpen(false); onLogout(); }}>退出登录</button>
+            <div className="home-auth-account">{t('currentAccount', { name: displayName })}</div>
+            <button type="button" onClick={() => { setMenuOpen(false); onLogout(); }}>{t('logout')}</button>
           </div>
         )}
       </div>
@@ -223,19 +227,19 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
             {mode === 'login' ? (
               <form onSubmit={handleSubmit} className="auth-modal-form">
                 <div>
-                  <h2>登录 Heybo AI</h2>
-                  <p>登录后可使用 AI 食谱、宠物档案与一键烹饪功能</p>
+                  <h2>{t('loginHeybo')}</h2>
+                  <p>{t('loginBenefits')}</p>
                 </div>
                 {message && (
                   <div className="auth-modal-message">
                     <strong>{message}</strong>
-                    {message.includes('激活') && <span>登录后即可使用宠物档案、AI 食谱和一键烹饪</span>}
+                    <span>{t('loginRequiredDetail')}</span>
                   </div>
                 )}
                 <input
                   value={login}
                   onChange={event => setLogin(event.target.value)}
-                  placeholder="用户名 / 手机号"
+                  placeholder={t('usernameOrPhone')}
                   autoComplete="username"
                 />
                 <input
@@ -244,34 +248,34 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
                   inputMode="numeric"
                   pattern="[0-9]*"
                   type="password"
-                  placeholder="6位数字密码"
+                  placeholder={t('sixDigitPassword')}
                   autoComplete="current-password"
                 />
                 <div className="auth-modal-actions">
                   <button type="button" className="auth-modal-register" disabled={busy} onClick={event => handleSubmit(event, 'signup')}>
-                    {busy && authAction === 'signup' ? '注册中' : '新用户注册'}
+                    {busy && authAction === 'signup' ? t('signingUp') : t('newUserSignup')}
                   </button>
                   <button type="submit" disabled={busy}>
-                    {busy && authAction === 'login' ? '登录中' : '登录'}
+                    {busy && authAction === 'login' ? t('loggingIn') : t('login')}
                   </button>
                 </div>
               </form>
             ) : (
               <form onSubmit={handleSignup} className="auth-modal-form">
                 <div>
-                  <h2>设置用户名</h2>
-                  <p>检测到该手机号首次使用，请设置一个用户名</p>
+                  <h2>{t('setUsername')}</h2>
+                  <p>{t('firstUseSetUsername')}</p>
                 </div>
-                <div className="auth-modal-phone">手机号：{maskedPhone}</div>
+                <div className="auth-modal-phone">{t('phoneLabel', { phone: maskedPhone })}</div>
                 {message && <div className="auth-modal-message"><strong>{message}</strong></div>}
                 <input
                   value={username}
                   onChange={event => setUsername(event.target.value.trim())}
-                  placeholder="用户名（18位以内中英文数字）"
+                  placeholder={t('usernameRulesPlaceholder')}
                   maxLength={18}
                   autoComplete="nickname"
                 />
-                <button type="submit" disabled={busy}>{busy ? '处理中' : '完成登录'}</button>
+                <button type="submit" disabled={busy}>{busy ? t('processing') : t('completeLogin')}</button>
               </form>
             )}
             <button type="button" className="auth-modal-close" onClick={resetModal}>×</button>
@@ -341,10 +345,12 @@ function TuyaSdkPanel() {
 }
 
 function AiWaitingModal() {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
   return (
     <div className="ai-waiting-overlay" role="status" aria-live="polite">
       <div className="ai-waiting-modal">
-        <div className="ai-waiting-title">宠物档案已更新，正在重新推演，请稍候。。。</div>
+        <div className="ai-waiting-title">{t('profileReanalyzing')}</div>
         <div className="ai-waiting-visual" aria-hidden="true">
           <img src="/heybo-ai-thinking.png" alt="" />
         </div>
@@ -402,8 +408,8 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken,
         <button onClick={onDeviceEntry} className={`home-action-button home-action-device ${authToken ? '' : 'is-locked'}`}>
           <div className="home-action-icon">🍲</div>
           <div>
-            <div className="home-action-title" style={{ color: '#7CFFB2' }}>烹饪</div>
-            <div className="home-action-desc">鲜食机 · 绑定 · 记录 · 状态</div>
+            <div className="home-action-title" style={{ color: '#7CFFB2' }}>{t('homeCookTitle')}</div>
+            <div className="home-action-desc">{t('homeCookDesc')}</div>
           </div>
           <div style={{ marginLeft: 'auto', color: '#7CFFB2', fontSize: 20 }}>→</div>
         </button>
@@ -416,6 +422,7 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken,
 function AppInner() {
   const { profiles, profile, setActiveId, addProfile, updateProfile, deleteProfile, replaceProfiles, hasProfile } = useDogProfile();
   const { lang } = useLanguage();
+  const t = useTranslation(lang);
   const [screen, setScreen] = useState('home');
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [hasCookedBefore, setHasCookedBefore] = useState(false);
@@ -1050,9 +1057,9 @@ function AppInner() {
       {screen === 'mall_placeholder' && (
         <div className="animate-fade flex-col" style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: '40px 20px', color: 'var(--gray)', textAlign: 'center', background: 'var(--dark)' }}>
           <span style={{ fontSize: '48px', marginBottom: '16px' }}>🛒</span>
-          <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '800', margin: '0 0 8px 0' }}>宠物商城</h2>
-          <p style={{ fontSize: '13px', color: 'var(--gray)', margin: 0 }}>全新宠物鲜食与功能用品商城筹备中，敬请期待！</p>
-          <button className="btn btn-secondary" style={{ marginTop: '24px', padding: '8px 24px' }} onClick={goHome}>返回首页</button>
+          <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '800', margin: '0 0 8px 0' }}>{t('mallTitle')}</h2>
+          <p style={{ fontSize: '13px', color: 'var(--gray)', margin: 0 }}>{t('mallComingSoon')}</p>
+          <button className="btn btn-secondary" style={{ marginTop: '24px', padding: '8px 24px' }} onClick={goHome}>{t('backHome')}</button>
         </div>
       )}
 

@@ -9,7 +9,7 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
 
   return (
     <div className="animate-fade flex-col" style={{ flex: 1, padding: '0 24px 32px' }}>
-      <TopBar onBack={onBack} title={lang === 'zh' ? '宠物管理主页' : 'Pet Management'} />
+      <TopBar onBack={onBack} title={t('petManagementTitle')} />
       
       {/* A Segment: Add Pet Entry */}
       <div 
@@ -31,31 +31,39 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
       >
         <span style={{ fontSize: '24px', color: 'var(--primary)', fontWeight: 'bold' }}>+</span>
         <span style={{ fontSize: '16px', color: 'var(--primary)', fontWeight: 'bold' }}>
-          {lang === 'zh' ? '添加我的宠物' : 'Add My Pet'}
+          {t('addMyPet')}
         </span>
       </div>
 
       {/* B Segment: Pets List Title */}
       <h3 style={{ fontSize: '15px', color: 'var(--gray)', fontWeight: 'bold', margin: '0 0 16px 4px' }}>
-        {lang === 'zh' ? '我的宠物' : 'My Pets'}
+        {t('myPets')}
       </h3>
 
       {/* Pets List Cards */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {profiles.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--gray)', fontSize: '13px' }}>
-            {lang === 'zh' ? '暂无宠物档案，请点击上方按钮添加！' : 'No pet profiles found, click above to add!'}
+            {t('noPetProfiles')}
           </div>
         ) : (
           profiles.map(pet => {
             const breedLabel = tData(pet.breedName, lang);
             const sex = pet.sex || pet.gender;
-            const genderLabel = sex === 'female' ? (lang === 'zh' ? '母 ♀' : 'Female ♀') : (lang === 'zh' ? '公 ♂' : 'Male ♂');
+            const genderLabel = sex === 'female' ? t('female') : t('male');
             const ageText = pet.age_months 
-              ? `${Math.floor(pet.age_months / 12)}岁${Math.round(pet.age_months % 12)}个月` 
-              : `${pet.age || 0}岁`;
+              ? t('petAgeYearsMonths', { years: Math.floor(pet.age_months / 12), months: Math.round(pet.age_months % 12) })
+              : t('petAgeYears', { years: pet.age || 0 });
               
-            const allergensList = pet.allergensText?.trim() || pet.allergens?.join('/') || (lang === 'zh' ? '无' : 'None');
+            const allergensList = pet.allergensText?.trim() || pet.allergens?.join('/') || t('noneValue');
+            const goalKey = {
+              maintenance: 'goalMaintenance',
+              weight_loss: 'goalWeightLoss',
+              muscle_gain: 'goalMuscleGain',
+              post_surgery: 'goalPostSurgery',
+              coat_care: 'goalCoatCare',
+              gastrointestinal_care: 'goalGastrointestinal',
+            }[pet.feedingGoal];
             const avatar = getPetAvatarUrl(pet, breeds);
 
             return (
@@ -121,7 +129,7 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                       e.target.style.color = 'var(--gray)';
                     }}
                   >
-                    {t('edit') || '编辑'}
+                    {t('edit')}
                   </button>
                 </div>
 
@@ -157,7 +165,7 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                         borderRadius: '4px',
                         fontWeight: '600'
                       }}>
-                        BCS {pet.bcs}分
+                        {t('bcsPoints', { score: pet.bcs })}
                       </span>
                     )}
                   </div>
@@ -166,15 +174,15 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '11px', marginTop: 4 }}>
                     <div style={{ display: 'flex', gap: 4 }}>
                       <span style={{ color: 'var(--secondary)', fontWeight: 'bold' }}>
-                        {lang === 'zh' ? '目标' : 'Goal'}:
+                        {t('goalLabel')}:
                       </span>
                       <span style={{ color: 'var(--text)' }}>
-                        {pet.feedingGoal || (lang === 'zh' ? '维持体态' : 'Maintain Body Condition')}
+                        {goalKey ? t(goalKey) : (pet.feedingGoal || t('maintainBody'))}
                       </span>
                     </div>
                     <div style={{ display: 'flex', gap: 4 }}>
                       <span style={{ color: '#FF9600', fontWeight: 'bold' }}>
-                        {lang === 'zh' ? '过敏' : 'Allergens'}:
+                        {t('allergensLabel')}:
                       </span>
                       <span style={{ color: 'var(--text)' }}>
                         {allergensList}
