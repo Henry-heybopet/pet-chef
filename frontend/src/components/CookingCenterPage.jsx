@@ -1,9 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/index';
 import { HeyboTuya } from '../native/heyboTuya';
+import { useLanguage } from '../i18n/LanguageContext';
+import { useTranslation } from '../i18n/translations';
+import { tData } from '../i18n/dataTranslations';
 
-const PAIRING_STEPS = ['正在连接设备', '正在发送 Wi-Fi 信息', '正在连接 Heybo 云端', '正在绑定到当前账号'];
-const START_CHECKS = ['加入食材', '加入适量的水', '盖上鲜食杯盖', '周围没有幼童和宠物'];
+const PAIRING_STEPS = ['pairConnectDevice', 'pairSendWifi', 'pairConnectCloud', 'pairBindAccount'];
+const START_CHECKS = [
+  { code: 'ingredients', key: 'startCheckIngredients' },
+  { code: 'water', key: 'startCheckWater' },
+  { code: 'lid', key: 'startCheckLid' },
+  { code: 'clear_area', key: 'startCheckClearArea' },
+];
 const PET_CHEF_PID = 'ak2kofibhuvdtqip';
 const BLE_SCAN_MS = 60000;
 const COOKING_RUNTIME_KEY = 'petchef_cooking_runtime';
@@ -73,19 +81,29 @@ function uniqueDevices(devices) {
     return devId && !isMock;
   }).map(device => [device.devId, device])).values());
 }
-const PALATABILITY_OPTIONS = ['光盘行动', '吃了一半', '挑食行为', '完全不吃'];
-const STOOL_OPTIONS = ['大便干燥', '大便正常', '软便', '拉肚子'];
+const PALATABILITY_OPTIONS = [
+  { code: 'finished_all', value: '光盘行动', key: 'palatabilityFinished' },
+  { code: 'ate_half', value: '吃了一半', key: 'palatabilityHalf' },
+  { code: 'picky', value: '挑食行为', key: 'palatabilityPicky' },
+  { code: 'refused', value: '完全不吃', key: 'palatabilityRefused' },
+];
+const STOOL_OPTIONS = [
+  { code: 'dry', value: '大便干燥', key: 'stoolDry' },
+  { code: 'normal', value: '大便正常', key: 'stoolNormal' },
+  { code: 'soft', value: '软便', key: 'stoolSoft' },
+  { code: 'diarrhea', value: '拉肚子', key: 'stoolDiarrhea' },
+];
 const SPEED_RPM = { 0: 0, 1: 60, 2: 120, 3: 230, 4: 500, 5: 1200, 6: 2500, 7: 4000, 8: 5500, 9: 7500, 10: 9500 };
-const FAULT_LABELS = {
-  1: 'E01 盖子没有盖好',
-  2: 'E02 鲜食杯没有安装好',
-  3: 'E03 马达堵转',
-  4: 'E04 鲜食杯温度超过145度',
-  5: 'E05 马达温度超过80度',
-  7: 'E07 换挡位失败',
-  8: 'E04 马达NTC失败',
-  11: 'E11 高速搅拌时温度超过90度',
-  12: 'E12 电子秤超过5KG',
+const FAULT_KEYS = {
+  1: 'deviceFaultLid',
+  2: 'deviceFaultCup',
+  3: 'deviceFaultMotorBlocked',
+  4: 'deviceFaultCupHot',
+  5: 'deviceFaultMotorHot',
+  7: 'deviceFaultGear',
+  8: 'deviceFaultNtc',
+  11: 'deviceFaultHighSpeedHot',
+  12: 'deviceFaultScale',
 };
 
 function parseDps(device) {
@@ -96,22 +114,22 @@ function parseDps(device) {
   return device.dps;
 }
 
-function formatSpeed(value) {
+function formatSpeed(value, t) {
   if (value === undefined || value === null || value === '') return '--';
   const level = Number(value);
-  return SPEED_RPM[level] === undefined ? `${value}档` : `${level}档（${SPEED_RPM[level]}转/分钟）`;
+  return SPEED_RPM[level] === undefined ? t('deviceLevel', { level: value }) : t('deviceSpeedLevel', { level, rpm: SPEED_RPM[level] });
 }
 
-function formatPower(value) {
+function formatPower(value, t) {
   if (value === undefined || value === null || value === '') return '--';
   const level = Number(value);
-  return level >= 1 && level <= 10 ? `${level}档（${level * 100}W）` : `${value}档`;
+  return level >= 1 && level <= 10 ? t('devicePowerLevel', { level, watts: level * 100 }) : t('deviceLevel', { level: value });
 }
 
-function getFaultInfo(value) {
-  if (value === undefined || value === null || value === '' || Number(value) === 0) return { code: '', label: '无' };
+function getFaultInfo(value, t) {
+  if (value === undefined || value === null || value === '' || Number(value) === 0) return { code: '', label: t('noneValue') };
   const fault = Number(value);
-  return { code: `DP12=${value}`, label: FAULT_LABELS[fault] || `未知故障 ${value}` };
+  return { code: `DP12=${value}`, label: FAULT_KEYS[fault] ? t(FAULT_KEYS[fault]) : t('deviceFaultUnknown', { value }) };
 }
 
 function isLidOpenFault(dps) {
@@ -130,9 +148,9 @@ function stirDelayMinutes(totalGrams) {
   return 4;
 }
 
-function formatCookMinutes(cooking) {
+function formatCookMinutes(cooking, t) {
   const minutes = cooking?.cookMinutes ?? Math.ceil(Number(cooking?.cookTime || 0) / 60);
-  return minutes ? `${minutes}分钟` : '--';
+  return minutes ? t('minutesValue', { value: minutes }) : '--';
 }
 
 function formatRemainTime(value) {
@@ -142,9 +160,9 @@ function formatRemainTime(value) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-function formatClock(value) {
+function formatClock(value, lang) {
   if (!value) return '--';
-  return new Date(value).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  return new Date(value).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
 
 function maskId(value) {
@@ -171,13 +189,13 @@ function classifyBleDevice(device) {
   return { isTuya, match, reason, name, productId };
 }
 
-function scanFailureMessage(summary) {
-  if (!summary) return '没有发现可添加设备。';
-  if (summary.cancelled) return '已取消扫描。';
-  if (summary.rawCount === 0) return '未发现附近蓝牙设备，请靠近鲜食机，并确认手机蓝牙已开启。';
-  if (summary.rawCount > 0 && !summary.hasTuya) return '附近有蓝牙设备，但未发现可配网的 Heybo Pet 鲜食机。请确认鲜食机已进入配网模式。';
-  if (summary.rawCount > 0 && summary.hasPidMismatch) return '发现 Tuya 设备，但型号或 PID 不匹配，请检查设备型号或 PID 配置。';
-  return '附近有蓝牙设备，但未发现可添加的 Heybo Pet 鲜食机。';
+function scanFailureMessage(summary, t) {
+  if (!summary) return t('scanNoDevice');
+  if (summary.cancelled) return t('scanCancelled');
+  if (summary.rawCount === 0) return t('scanNoBluetooth');
+  if (summary.rawCount > 0 && !summary.hasTuya) return t('scanNoCooker');
+  if (summary.rawCount > 0 && summary.hasPidMismatch) return t('scanPidMismatch');
+  return t('scanNoCompatible');
 }
 
 function listPermissions(value) {
@@ -208,32 +226,34 @@ function formatDuration(ms) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-function getDeviceView(device) {
+function getDeviceView(device, t) {
   const dps = parseDps(device);
   const dp5 = dps[5] ?? dps.status;
   const online = device?.isOnline ?? device?.onlineStatus ?? device?.online_status ?? device?.status;
   const isOffline = online === false || online === 'offline';
-  const statusMap = { standby: '待机', cooking: '低温烹饪中', pause: '暂停', done: '烹饪完成' };
+  const statusCode = isOffline ? 'offline' : (['standby', 'cooking', 'pause', 'done'].includes(dp5) ? dp5 : ['standby', 'cooking', 'pause', 'done'].includes(device?.dp_status) ? device.dp_status : 'standby');
+  const statusMap = { standby: 'deviceStatusStandby', cooking: 'deviceStatusCooking', pause: 'deviceStatusPaused', done: 'deviceStatusDone', offline: 'deviceStatusOffline' };
   const temperature = dps[10] ?? dps.temperature ?? dps.cook_temperature ?? dps[9] ?? '--';
   const speed = dps[108] ?? dps.cook_mode_speed;
   const power = dps[102] ?? dps.cook_mode_power;
   const faultValue = dps[12] ?? dps.fault;
-  const fault = getFaultInfo(faultValue);
+  const fault = getFaultInfo(faultValue, t);
   return {
     devId: device?.devId || device?.tuya_device_id || '',
     id: device?.id || '',
-    name: device?.device_name || device?.name || '厨房鲜食机',
+    name: device?.device_name || device?.name || t('defaultCookerName'),
     model: device?.model || 'Pet Chef S1',
     online: !isOffline,
-    status: isOffline ? '离线' : (statusMap[dp5] || statusMap[device?.dp_status] || '待机'),
+    statusCode,
+    status: t(statusMap[statusCode]),
     temperature,
-    speed: formatSpeed(speed),
-    power: formatPower(power),
+    speed: formatSpeed(speed, t),
+    power: formatPower(power, t),
     remaining: formatRemainTime(dps[8] ?? dps.remain_time ?? dps.remainTime),
-    wifi: device?.wifi_name || device?.wifiName || 'Wi-Fi 信号良好',
+    wifi: device?.wifi_name || device?.wifiName || t('deviceWifiGood'),
     lastRecipe: device?.last_recipe_name || device?.lastRecipeName || '',
-    cupStatus: Number(faultValue) === 2 ? '未安装好' : '正常',
-    lidStatus: Number(faultValue) === 1 ? '未盖好' : '正常',
+    cupStatus: Number(faultValue) === 2 ? t('deviceNotInstalled') : t('deviceNormal'),
+    lidStatus: Number(faultValue) === 1 ? t('deviceNotClosed') : t('deviceNormal'),
     fault: fault.label,
     faultCode: fault.code,
   };
@@ -253,13 +273,13 @@ function getRecipeCookingParams(context) {
   return { recipe, params, temperature, cookTime, cookMinutes, preheatMinutes, speed, power, steps };
 }
 
-function formatDate(value) {
+function formatDate(value, lang) {
   if (!value) return '';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString('zh-CN');
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString(lang);
 }
 
-function formatRecordTime(value) {
+function formatRecordTime(value, lang, t) {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
@@ -268,34 +288,34 @@ function formatRecordTime(value) {
   yesterday.setDate(today.getDate() - 1);
   const sameDay = date.toDateString() === today.toDateString();
   const yesterdayDay = date.toDateString() === yesterday.toDateString();
-  const time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
-  if (sameDay) return `今天 ${time}`;
-  if (yesterdayDay) return `昨天 ${time}`;
-  return `${date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })} ${time}`;
+  const time = date.toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit', hour12: false });
+  if (sameDay) return t('dateToday', { time });
+  if (yesterdayDay) return t('dateYesterday', { time });
+  return `${date.toLocaleDateString(lang, { month: '2-digit', day: '2-digit' })} ${time}`;
 }
 
-function statusLabel(status) {
-  if (status === 'completed' || status === 'success') return '已完成';
-  if (status === 'interrupted') return '中断';
-  if (status === 'failed') return '失败';
-  if (status === 'created') return '进行中';
-  return status || '已完成';
+function statusLabel(status, t) {
+  if (status === 'completed' || status === 'success') return t('operationCompleted');
+  if (status === 'interrupted') return t('operationInterrupted');
+  if (status === 'failed') return t('operationFailed');
+  if (status === 'created') return t('operationInProgress');
+  return status || t('operationCompleted');
 }
 
-function makeRecord(operation, recipesById, petsById, fallbackPet) {
+function makeRecord(operation, recipesById, petsById, fallbackPet, lang, t) {
   const recipe = recipesById[operation.recipe_id] || recipesById[operation.recipeId];
   const pet = petsById[operation.pet_id] || petsById[operation.petId];
   const totalWeight = operation.total_weight_gram || operation.totalWeightGram || operation.total_grams || operation.display_grams || operation.target_total_grams || 0;
   return {
     id: operation.id,
-    time: formatRecordTime(operation.started_at || operation.startedAt || operation.created_at),
+    time: formatRecordTime(operation.started_at || operation.startedAt || operation.created_at, lang, t),
     recipeId: recipe?.id || operation.recipe_id || operation.recipeId || '',
-    recipeName: recipe?.name || operation.recipe_name || operation.recipeName || '未命名食谱',
+    recipeName: recipe?.name || operation.recipe_name || operation.recipeName || t('unnamedRecipe'),
     petId: pet?.id || operation.pet_id || operation.petId || '',
-    petName: pet?.name || operation.pet_name || operation.petName || fallbackPet?.name || '未选择宠物',
+    petName: pet?.name || operation.pet_name || operation.petName || fallbackPet?.name || t('petNotSelected'),
     totalWeightGram: totalWeight,
-    status: statusLabel(operation.status || operation.result),
-    eta: operation.estimated_time || operation.eta || '约 12 分钟',
+    status: statusLabel(operation.status || operation.result, t),
+    eta: operation.estimated_time || operation.eta || t('estimatedMinutes', { value: 12 }),
     operation,
     recipe,
     pet,
@@ -311,20 +331,24 @@ function GhostButton({ children, danger, ...props }) {
 }
 
 function PairingKeysGuide() {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
   return (
     <div className="cooking-pairing-guide">
       <img
         src="/pairing-mode-keys.png"
-        alt="同时长按温度键和功率键 5 秒，启动配网模式"
+        alt={t('pairingKeysGuideAlt')}
       />
       <div>
-        红圈位置为温度键和功率键，同时长按 5 秒进入配网模式。
+        {t('pairingKeysGuideText')}
       </div>
     </div>
   );
 }
 
 function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
   const [device, setDevice] = useState(null);
   const [wifi, setWifi] = useState(null);
   const [wifiName, setWifiName] = useState('');
@@ -349,7 +373,7 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
   const filteredDevicesRef = useRef([]);
 
   const addScanLog = (message) => {
-    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const time = new Date().toLocaleTimeString(lang, { hour12: false });
     setScanLogs(prev => [...prev.slice(-79), `${time} ${message}`]);
   };
 
@@ -426,7 +450,7 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
         const missingAfterRequest = listPermissions(requested?.missingPermissions);
         if (!requested?.canStartBleScan) {
           addScanLog(`permission denied: stop BLE scan, missing=${missingAfterRequest.length ? missingAfterRequest.join(',') : 'unknown'}`);
-          setPermissionNotice('需要蓝牙和定位权限才能搜索鲜食机');
+          setPermissionNotice(t('pairingPermissionsRequired'));
           setEmpty(true);
           setScanning(false);
           setScanEndsAt(0);
@@ -555,112 +579,108 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
 
         {!device && (
           <div className="cooking-sheet-flow">
-            <h2>添加鲜食机</h2>
-            <p>请先让鲜食机进入配网模式：</p>
+            <h2>{t('addCooker')}</h2>
+            <p>{t('pairingModeIntro')}</p>
             <ol>
-              <li>打开鲜食机电源</li>
-              <li>
-                同时长按温度键和功率键 5 秒，启动配网模式
-              </li>
-              <li>指示灯闪烁后点击下一步</li>
+              <li>{t('pairingPowerOn')}</li>
+              <li>{t('pairingHoldKeys')}</li>
+              <li>{t('pairingIndicatorNext')}</li>
             </ol>
             <PairingKeysGuide />
             {scanning && <div className="cooking-radar"><span /></div>}
             {scanning && (
               <div>
-                <p>正在寻找附近可添加的 Heybo Pet 设备… 剩余 {remainingSeconds} 秒</p>
-                <GhostButton onClick={() => stopScan(true)}>取消扫描</GhostButton>
+                <p>{t('pairingScanning', { seconds: remainingSeconds })}</p>
+                <GhostButton onClick={() => stopScan(true)}>{t('cancelScan')}</GhostButton>
               </div>
             )}
             {foundDevices.map(item => (
               <div key={item.uuid} className="cooking-scan-result">
-                <div><strong>Pet Chef S1</strong><span>信号良好｜可绑定</span></div>
-                <PrimaryButton onClick={() => setDevice(item)}>选择</PrimaryButton>
+                <div><strong>Pet Chef S1</strong><span>{t('pairingSignalGood')}</span></div>
+                <PrimaryButton onClick={() => setDevice(item)}>{t('select')}</PrimaryButton>
               </div>
             ))}
             {empty && (
               <div>
-                <div className="cooking-warning">{permissionNotice || scanFailureMessage(scanSummary)}</div>
+                <div className="cooking-warning">{permissionNotice || scanFailureMessage(scanSummary, t)}</div>
                 {permissionNotice && (
                   <div className="cooking-sheet-actions">
-                    <GhostButton onClick={openPermissionSettings}>去系统设置</GhostButton>
-                    <GhostButton disabled={scanning} onClick={scan}>重新申请权限</GhostButton>
+                    <GhostButton onClick={openPermissionSettings}>{t('openSystemSettings')}</GhostButton>
+                    <GhostButton disabled={scanning} onClick={scan}>{t('requestPermissionsAgain')}</GhostButton>
                   </div>
                 )}
                 {!permissionNotice && scanSummary?.rawCount === 0 && (
                   <>
                     <ol>
-                      <li>打开鲜食机电源</li>
-                      <li>
-                        同时长按温度键和功率键 5 秒，启动配网模式
-                      </li>
-                      <li>确认指示灯闪烁</li>
-                      <li>不要在手机系统蓝牙设置中直接连接设备</li>
-                      <li>如果设备曾绑定过其它 App 或账号，请先解绑或恢复出厂配网状态</li>
-                      <li>手机靠近鲜食机后重试</li>
+                      <li>{t('pairingPowerOn')}</li>
+                      <li>{t('pairingHoldKeys')}</li>
+                      <li>{t('pairingConfirmBlink')}</li>
+                      <li>{t('pairingAvoidSystemBluetooth')}</li>
+                      <li>{t('pairingUnbindPrevious')}</li>
+                      <li>{t('pairingMoveCloser')}</li>
                     </ol>
                     <PairingKeysGuide />
                   </>
                 )}
                 {!permissionNotice && (
                   <div className="cooking-sheet-actions">
-                    <GhostButton disabled={scanning} onClick={scan}>重新扫描</GhostButton>
-                    <GhostButton disabled={scanning} onClick={scan}>我已确认设备在配网模式</GhostButton>
+                    <GhostButton disabled={scanning} onClick={scan}>{t('scanAgain')}</GhostButton>
+                    <GhostButton disabled={scanning} onClick={scan}>{t('pairingModeConfirmed')}</GhostButton>
                   </div>
                 )}
               </div>
             )}
-            {!scanning && !foundDevices.length && !empty && <PrimaryButton onClick={scan}>开始扫描</PrimaryButton>}
+            {!scanning && !foundDevices.length && !empty && <PrimaryButton onClick={scan}>{t('startScan')}</PrimaryButton>}
           </div>
         )}
 
         {device && !wifi && progress < 0 && (
           <div className="cooking-sheet-flow">
-            <h2>选择 2.4G Wi-Fi</h2>
-            <p>当前手机连接的 Wi-Fi 会作为鲜食机配网 Wi-Fi。</p>
+            <h2>{t('select24GWifi')}</h2>
+            <p>{t('pairingCurrentWifiHelp')}</p>
             <input
               className="cooking-wifi-input"
               value={wifiName}
               onChange={event => setWifiName(event.target.value)}
-              placeholder={detectedWifiName || '未获取到当前 Wi-Fi 名称，请确认定位权限后重试'}
+              placeholder={detectedWifiName || t('wifiNameUnavailable')}
             />
             {detectedWifiName && (
               <div className="cooking-wifi-current">
                 <strong>{detectedWifiName}</strong>
-                <span>当前手机 Wi-Fi</span>
+                <span>{t('currentPhoneWifi')}</span>
               </div>
             )}
-            <PrimaryButton disabled={!wifiName.trim()} onClick={() => setWifi({ name: wifiName.trim(), type: 'manual', desc: '手动输入' })}>下一步</PrimaryButton>
+            <PrimaryButton disabled={!wifiName.trim()} onClick={() => setWifi({ name: wifiName.trim(), type: 'manual', desc: 'manual' })}>{t('next')}</PrimaryButton>
           </div>
         )}
 
         {device && wifi && progress < 0 && (
           <div className="cooking-sheet-flow">
-            <h2>输入 Wi-Fi 密码</h2>
+            <h2>{t('enterWifiPassword')}</h2>
             <p>{wifiName.trim() || wifi.name}</p>
-            {wifi.type === 'dual' && <div className="cooking-warning">双频同名 Wi-Fi 可绑定，但建议优先使用明确的 2.4G 网络。</div>}
+            {wifi.type === 'dual' && <div className="cooking-warning">{t('dualBandWifiWarning')}</div>}
             <div className="cooking-password-row">
-              <input type={showPassword ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} placeholder="请输入 Wi-Fi 密码" />
-              <button onClick={() => setShowPassword(!showPassword)}>{showPassword ? '隐藏' : '显示'}</button>
+              <input type={showPassword ? 'text' : 'password'} value={password} onChange={event => setPassword(event.target.value)} placeholder={t('wifiPasswordPlaceholder')} />
+              <button onClick={() => setShowPassword(!showPassword)}>{showPassword ? t('hidePassword') : t('showPassword')}</button>
             </div>
-            <PrimaryButton disabled={!password} onClick={bind}>一键绑定</PrimaryButton>
+            <PrimaryButton disabled={!password} onClick={bind}>{t('bindNow')}</PrimaryButton>
           </div>
         )}
 
         {progress >= 0 && (
           <div className="cooking-sheet-flow">
-            <h2>{failed ? '绑定失败' : success ? '绑定成功' : '正在绑定鲜食机'}</h2>
-            {PAIRING_STEPS.map((label, index) => (
-              <div key={label} className={`cooking-progress-step ${index <= progress ? 'is-active' : ''} ${success ? 'is-done' : ''}`}>
+            <h2>{failed ? t('bindFailed') : success ? t('bindSucceeded') : t('bindingCooker')}</h2>
+            {PAIRING_STEPS.map((labelKey, index) => (
+              <div key={labelKey} className={`cooking-progress-step ${index <= progress ? 'is-active' : ''} ${success ? 'is-done' : ''}`}>
                 <span>{success && index === PAIRING_STEPS.length - 1 ? '✓' : index + 1}</span>
-                <strong>{label}</strong>
+                <strong>{t(labelKey)}</strong>
               </div>
             ))}
-            {success && <p className="cooking-success">Pet Chef S1 已绑定到当前用户账号</p>}
+            {success && <p className="cooking-success">{t('bindSuccessAccount')}</p>}
             {failed && (
               <div className="cooking-failure">
-                <strong>可能是以下原因：</strong>
-                <p>1. Wi-Fi 密码错误<br />2. 当前网络不是 2.4G Wi-Fi<br />3. 手机没有连接到 Heybo_PetChef 热点<br />4. 设备距离路由器太远<br />5. 设备已退出配网模式</p>
+                <strong>{t('bindFailurePossibleReasons')}</strong>
+                <p style={{ whiteSpace: 'pre-line' }}>{t('bindFailureChecklist')}</p>
               </div>
             )}
           </div>
@@ -668,8 +688,8 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
 
         {failed && (
           <div className="cooking-sheet-actions">
-            <GhostButton onClick={() => { setProgress(-1); setFailed(false); setPassword(''); }}>重新输入密码</GhostButton>
-            <GhostButton onClick={() => { setProgress(-1); setFailed(false); setDevice(null); }}>返回自动扫描</GhostButton>
+            <GhostButton onClick={() => { setProgress(-1); setFailed(false); setPassword(''); }}>{t('reenterPassword')}</GhostButton>
+            <GhostButton onClick={() => { setProgress(-1); setFailed(false); setDevice(null); }}>{t('backToScan')}</GhostButton>
           </div>
         )}
       </div>
@@ -678,36 +698,42 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
 }
 
 function RecordRow({ record, onFeedback }) {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
+  const date = formatDate(record.operation?.started_at || record.operation?.created_at, lang);
+  const recipeName = tData(record.recipeName, lang);
   return (
     <div className="cooking-record-row">
       <div>
-        <strong>{formatDate(record.operation?.started_at || record.operation?.created_at)}，“{record.operation?.device_name || '厨房鲜食机'}”为“{record.petName}”，制作“{record.recipeName}”</strong>
+        <strong>{t('cookingRecordSentence', { date, device: record.operation?.device_name || t('defaultCookerName'), pet: record.petName, recipe: recipeName })}</strong>
       </div>
-      <GhostButton onClick={() => onFeedback(record)}>喂食反馈</GhostButton>
+      <GhostButton onClick={() => onFeedback(record)}>{t('feedingFeedback')}</GhostButton>
     </div>
   );
 }
 
 function FeedbackModal({ record, onCancel, onConfirm }) {
-  const [palatability, setPalatability] = useState('');
-  const [stool, setStool] = useState('');
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
+  const [palatability, setPalatability] = useState(null);
+  const [stool, setStool] = useState(null);
 
   return (
     <div className="cooking-sheet-mask">
       <div className="cooking-confirm-card cooking-feedback-card">
-        <h2>喂食反馈</h2>
-        <p>{record.recipeName}｜{record.petName}</p>
-        <strong>适口性</strong>
+        <h2>{t('feedingFeedback')}</h2>
+        <p>{tData(record.recipeName, lang)}｜{record.petName}</p>
+        <strong>{t('palatability')}</strong>
         <div className="cooking-option-grid">
-          {PALATABILITY_OPTIONS.map(item => <button key={item} className={palatability === item ? 'is-active' : ''} onClick={() => setPalatability(item)}>{item}</button>)}
+          {PALATABILITY_OPTIONS.map(item => <button key={item.code} className={palatability?.code === item.code ? 'is-active' : ''} onClick={() => setPalatability(item)}>{t(item.key)}</button>)}
         </div>
-        <strong>粪便状态</strong>
+        <strong>{t('stoolStatus')}</strong>
         <div className="cooking-option-grid">
-          {STOOL_OPTIONS.map(item => <button key={item} className={stool === item ? 'is-active' : ''} onClick={() => setStool(item)}>{item}</button>)}
+          {STOOL_OPTIONS.map(item => <button key={item.code} className={stool?.code === item.code ? 'is-active' : ''} onClick={() => setStool(item)}>{t(item.key)}</button>)}
         </div>
         <div className="cooking-feedback-actions">
-          <GhostButton onClick={onCancel}>取消</GhostButton>
-          <PrimaryButton disabled={!palatability || !stool} onClick={() => onConfirm({ palatability, stool })}>确认</PrimaryButton>
+          <GhostButton onClick={onCancel}>{t('cancelBtn')}</GhostButton>
+          <PrimaryButton disabled={!palatability || !stool} onClick={() => onConfirm({ palatability: palatability.value, stool: stool.value })}>{t('confirm')}</PrimaryButton>
         </div>
       </div>
     </div>
@@ -715,30 +741,32 @@ function FeedbackModal({ record, onCancel, onConfirm }) {
 }
 
 function SafetyStartModal({ lidOpen, onCancel, onConfirm }) {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
   const [checked, setChecked] = useState({});
-  const allChecked = START_CHECKS.every(item => checked[item]);
+  const allChecked = START_CHECKS.every(item => checked[item.code]);
 
   return (
     <div className="cooking-sheet-mask">
       <div className="cooking-confirm-card">
-        <h2>启动前确认</h2>
+        <h2>{t('startSafetyConfirmation')}</h2>
         <div className="cooking-check-list">
           {START_CHECKS.map(item => (
-            <label key={item} className="cooking-check-item">
+            <label key={item.code} className="cooking-check-item">
               <input
                 type="checkbox"
-                disabled={lidOpen && item === '盖上鲜食杯盖'}
-                checked={Boolean(checked[item])}
-                onChange={event => setChecked({ ...checked, [item]: event.target.checked })}
+                disabled={lidOpen && item.code === 'lid'}
+                checked={Boolean(checked[item.code])}
+                onChange={event => setChecked({ ...checked, [item.code]: event.target.checked })}
               />
-              <span>{item}</span>
+              <span>{t(item.key)}</span>
             </label>
           ))}
         </div>
-        {lidOpen && <div className="cooking-warning">鲜食杯盖未盖好，请盖好杯盖后再启动。</div>}
+        {lidOpen && <div className="cooking-warning">{t('lidStartWarning')}</div>}
         <div className="cooking-start-actions">
-          <GhostButton onClick={onCancel}>取消</GhostButton>
-          <PrimaryButton disabled={!allChecked || lidOpen} onClick={onConfirm}>启动一键烹饪</PrimaryButton>
+          <GhostButton onClick={onCancel}>{t('cancelBtn')}</GhostButton>
+          <PrimaryButton disabled={!allChecked || lidOpen} onClick={onConfirm}>{t('startCooking')}</PrimaryButton>
         </div>
       </div>
     </div>
@@ -746,17 +774,19 @@ function SafetyStartModal({ lidOpen, onCancel, onConfirm }) {
 }
 
 function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, runStartedAt, runElapsedMs, nowTick, onBack, onChooseRecipe, onStart, onPause, onResume, onStop }) {
-  const view = getDeviceView(device);
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
+  const view = getDeviceView(device, t);
   const cooking = getRecipeCookingParams(recipeContext);
   const hasRecipe = Boolean(cooking.recipe);
-  const isPaused = view.status === '暂停';
-  const isCooking = view.status === '低温烹饪中';
+  const isPaused = view.statusCode === 'pause';
+  const isCooking = view.statusCode === 'cooking';
   const isActive = isCooking || isPaused;
   const elapsedMs = runElapsedMs + (isCooking && runStartedAt ? nowTick - runStartedAt : 0);
   const preheatMs = Number(cooking.preheatMinutes || 0) * 60 * 1000;
   const totalMs = Number(cooking.cookTime || 0) * 1000;
   const activeStep = !isActive ? 0 : totalMs && elapsedMs >= totalMs ? 3 : preheatMs && elapsedMs >= preheatMs ? 2 : 1;
-  const stepLabels = ['放入食材', '预加热', '低温烹饪', '烹饪完成'];
+  const stepLabels = [t('stageLoad'), t('stagePreheat'), t('stageCook'), t('stageDone')];
   const stopTimer = useRef(null);
   const longPressed = useRef(false);
   const clearStopTimer = () => {
@@ -772,7 +802,7 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
       onStop();
     }, 800);
   };
-  const mainLabel = isPaused ? '恢复烹饪/长按停止烹饪' : isCooking ? '暂停烹饪' : '一键启动烹饪';
+  const mainLabel = isPaused ? t('resumeOrHoldStop') : isCooking ? t('pauseCooking') : t('startCooking');
   const runMainAction = () => {
     if (longPressed.current) {
       longPressed.current = false;
@@ -788,15 +818,15 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
       <div className="cooking-sheet cooking-detail-sheet" onClick={event => event.stopPropagation()}>
         <div className="cooking-detail-head">
           <h2>{view.name}</h2>
-          <span>{liveStatusError ? `运行时间：${liveStatusError}` : `运行时间：${isActive || runElapsedMs ? formatDuration(elapsedMs) : '--'}`}</span>
+          <span>{t('cookingRunTime', { value: isActive || runElapsedMs ? formatDuration(elapsedMs) : '--' })}</span>
         </div>
         <div className="cooking-lux-panel">
-          <img src="/machine.jpg" alt="Pet Chef 鲜食机" onError={event => { event.currentTarget.src = '/machine.png'; }} />
+          <img src="/machine.jpg" alt={t('cookerImageAlt')} onError={event => { event.currentTarget.src = '/machine.png'; }} />
           <div className="cooking-lux-metrics">
-            <div><span>🌡️ 当前温度</span><strong>{view.temperature}℃</strong></div>
-            <div><span>🔄 当前转速</span><strong>{view.speed}</strong></div>
-            <div><span>⚡ 当前功率</span><strong>{view.power}</strong></div>
-            <div><span>💧 当前状态</span><strong>{view.status}</strong></div>
+            <div><span>🌡️ {t('currentTemperature')}</span><strong>{view.temperature}℃</strong></div>
+            <div><span>🔄 {t('currentSpeed')}</span><strong>{view.speed}</strong></div>
+            <div><span>⚡ {t('currentPower')}</span><strong>{view.power}</strong></div>
+            <div><span>💧 {t('currentStatus')}</span><strong>{view.status}</strong></div>
           </div>
         </div>
         <div className={`cooking-lux-progress ${isActive ? 'is-running' : ''}`}>
@@ -809,19 +839,19 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
           ))}
         </div>
         <div className="cooking-lux-steps">
-          <h3>📋 烹饪步骤</h3>
-          <p>1. 烹饪温度：{hasRecipe ? `${cooking.temperature ?? '--'}℃` : '--'}</p>
-          <p>2. 烹饪时间：{hasRecipe ? formatCookMinutes(cooking) : '--'}</p>
-          <p>3. 烹饪转速：{hasRecipe ? formatSpeed(cooking.speed) : '--'}</p>
-          <p>4. 烹饪功率：{hasRecipe ? formatPower(cooking.power) : '--'}</p>
-          {!hasRecipe && <small>请先选择食谱后再启动烹饪。</small>}
+          <h3>📋 {t('cookingSteps')}</h3>
+          <p>1. {t('cookingTemperature')}: {hasRecipe ? `${cooking.temperature ?? '--'}℃` : '--'}</p>
+          <p>2. {t('cookingTime')}: {hasRecipe ? formatCookMinutes(cooking, t) : '--'}</p>
+          <p>3. {t('cookingSpeed')}: {hasRecipe ? formatSpeed(cooking.speed, t) : '--'}</p>
+          <p>4. {t('cookingPower')}: {hasRecipe ? formatPower(cooking.power, t) : '--'}</p>
+          {!hasRecipe && <small>{t('selectRecipeBeforeStart')}</small>}
         </div>
         {view.faultCode && (!isLidOpenFault(parseDps(device)) || isActive) && (
           <div className="cooking-warning">{view.faultCode}｜{view.fault}</div>
         )}
         <div className="cooking-detail-actions">
-          <GhostButton onClick={onBack}>返回</GhostButton>
-          <GhostButton onClick={onChooseRecipe}>选择食谱</GhostButton>
+          <GhostButton onClick={onBack}>{t('back')}</GhostButton>
+          <GhostButton onClick={onChooseRecipe}>{t('selectRecipe')}</GhostButton>
           <PrimaryButton
             disabled={!hasRecipe && !isActive}
             onPointerDown={startStopTimer}
@@ -840,6 +870,8 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
 }
 
 export default function CookingCenterPage({ onBack, authToken, recipeContext, onChooseRecipe }) {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
   const [devices, setDevices] = useState([]);
   const [pets, setPets] = useState([]);
   const [recipes, setRecipes] = useState([]);
@@ -869,17 +901,17 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const recipesById = useMemo(() => Object.fromEntries(recipes.map(recipe => [recipe.id, recipe])), [recipes]);
   const petsById = useMemo(() => Object.fromEntries(pets.map(pet => [pet.id, pet])), [pets]);
   const records = useMemo(
-    () => operations.map(operation => makeRecord(operation, recipesById, petsById, pets[0])).sort((a, b) => new Date(b.operation?.created_at || 0) - new Date(a.operation?.created_at || 0)),
-    [operations, recipesById, petsById, pets],
+    () => operations.map(operation => makeRecord(operation, recipesById, petsById, pets[0], lang, t)).sort((a, b) => new Date(b.operation?.created_at || 0) - new Date(a.operation?.created_at || 0)),
+    [operations, recipesById, petsById, pets, lang],
   );
   const selectedDeviceRecords = useMemo(() => {
-    const view = getDeviceView(selectedDevice);
+    const view = getDeviceView(selectedDevice, t);
     if (!view.devId && !view.id) return records;
     return records.filter(record => {
       const op = record.operation || {};
       return op.tuya_device_id === view.devId || op.device_id === view.id || op.device_name === view.name;
     });
-  }, [records, selectedDevice]);
+  }, [records, selectedDevice, lang]);
   const latestRecord = selectedDeviceRecords[0] || records[0];
 
   const refreshData = async () => {
@@ -914,7 +946,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       setLastStatusAt(new Date().toISOString());
       setLiveStatusError('');
     } catch (error) {
-      setLiveStatusError(error?.message || '设备缓存刷新失败');
+      setLiveStatusError(lang === 'zh' && error?.message ? error.message : t('deviceCacheRefreshFailed'));
     }
   };
 
@@ -926,7 +958,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       tuya_home_id: String(homeId || ''),
       tuya_pid: device.productId,
       product_type: device.productId === 'ak2kofibhuvdtqip' || device.isPetChef ? 'pet_chef' : 'other',
-      device_name: device.name || '厨房鲜食机',
+      device_name: device.name || t('defaultCookerName'),
       status: device.isOnline === false ? 'offline' : 'online',
     }, authToken);
     await api.syncDeviceDp(device.devId, {
@@ -947,7 +979,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       .then(session => {
         if (alive && session?.homeId) setTuyaHomeId(session.homeId);
       })
-      .catch(error => setLiveStatusError(error?.message || 'Tuya 会话初始化失败'));
+      .catch(error => setLiveStatusError(lang === 'zh' && error?.message ? error.message : t('tuyaSessionInitFailed')));
     return () => { alive = false; };
   }, [authToken]);
 
@@ -1001,7 +1033,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       saveCookingRuntime(devId, mergedDps);
       if (isLidOpenFault(mergedDps) && !safetyRef.current.lidAlerted) {
         safetyRef.current.lidAlerted = true;
-        setMessage('鲜食杯盖未盖好，请检查杯盖。');
+        setMessage(t('lidCheckWarning'));
         return;
       }
     }).then(result => { listener = result; });
@@ -1016,12 +1048,12 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const handleStartCooking = async () => {
     const cooking = getRecipeCookingParams(recipeContext);
     if (!selectedDevice || !cooking.recipe) {
-      setMessage('请先选择食谱。');
+      setMessage(t('selectRecipeFirst'));
       return;
     }
     const currentDps = parseDps(selectedDevice);
     if (isLidOpenFault(currentDps)) {
-      setMessage('鲜食杯盖未盖好，请盖好杯盖后再启动。');
+      setMessage(t('lidStartWarning'));
       return;
     }
     clearStirTimer(selectedDevice.devId);
@@ -1076,7 +1108,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
           : device;
       }));
     }, error => {
-      if (mountedRef.current) setMessage(`预热完成后下发转速失败：${error?.message || String(error)}`);
+      if (mountedRef.current) setMessage(t('speedCommandFailed'));
     });
     const startedAt = Date.now();
     setRunElapsedMs(0);
@@ -1089,9 +1121,9 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     }));
     await api.recordCookingOperation({
       tuya_device_id: selectedDevice.devId,
-      device_name: selectedDevice.name || '厨房鲜食机',
+      device_name: selectedDevice.name || t('defaultCookerName'),
       recipe_id: cooking.recipe.id || '',
-      recipe_name: cooking.recipe.name || cooking.recipe.recipeName || '当前食谱',
+      recipe_name: cooking.recipe.name || cooking.recipe.recipeName || t('currentRecipe'),
       pet_id: recipeContext?.profile?.id || '',
       pet_name: recipeContext?.profile?.name || '',
       total_weight_gram: recipeContext?.displayGrams || 0,
@@ -1100,7 +1132,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       started_at: new Date().toISOString(),
       cooking_params_snapshot: cooking.params,
     }, authToken);
-    setMessage(`已启动预加热，${preheatMinutes}分钟后开始搅拌。`);
+    setMessage(t('preheatStarted', { minutes: preheatMinutes }));
     setStartConfirmOpen(false);
   };
 
@@ -1128,13 +1160,13 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         ? { ...device, dps: { ...parseDps(device), ...pausedDps } }
         : device;
     }));
-    setMessage('已下发暂停指令。');
+    setMessage(t('pauseSent'));
   };
 
   const handleResumeCooking = async () => {
     if (!selectedDevice?.devId) return;
     if (isLidOpenFault(parseDps(selectedDevice))) {
-      setMessage('鲜食杯盖未盖好，请盖好杯盖后再恢复烹饪。');
+      setMessage(t('lidResumeWarning'));
       return;
     }
     safetyRef.current = { lidAlerted: false };
@@ -1156,7 +1188,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         ? { ...device, dps: { ...parseDps(device), ...resumedDps } }
         : device;
     }));
-    setMessage('已恢复烹饪。');
+    setMessage(t('cookingResumed'));
   };
 
   const handleStopCooking = async () => {
@@ -1181,7 +1213,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         ? { ...device, dps: { ...parseDps(device), 5: 'standby', 107: 'reset', 102: undefined, 108: undefined } }
         : device;
     }));
-    setMessage('已停止烹饪。');
+    setMessage(t('cookingStopped'));
   };
 
   const handleFeedbackSave = async (feedback) => {
@@ -1198,7 +1230,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       // TODO: 后端提供食谱优化画像字段后，把反馈聚合回 recipe 画像。
     }, authToken);
     setFeedbackRecord(null);
-    setMessage('喂食反馈已保存。');
+    setMessage(t('feedingFeedbackSaved'));
   };
 
   const handleUnbind = async () => {
@@ -1206,7 +1238,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     const devId = unbindTarget.devId || unbindTarget.tuya_device_id;
     const isMock = unbindTarget.mock || unbindTarget.isMock || unbindTarget.demo || /^(demo_|web_|mock_)/.test(String(devId || ''));
     if (isMock) {
-      setMessage('这是测试设备，正式消费者 App 不执行 Tuya 解绑。');
+      setMessage(t('mockDeviceUnbindBlocked'));
       setUnbindTarget(null);
       return;
     }
@@ -1222,42 +1254,42 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   }, [recipeContext, selectedDevice?.devId]);
 
   const hasDevice = devices.length > 0;
-  const view = getDeviceView(selectedDevice);
+  const view = getDeviceView(selectedDevice, t);
 
   return (
     <div className="cooking-center-page">
       <button className="cooking-center-back" onClick={onBack}>‹</button>
       <section className="cooking-center-hero">
-        <img src="/machine.jpg" alt="Pet Chef 鲜食机" />
+        <img src="/machine.jpg" alt={t('cookerImageAlt')} />
         <button className="cooking-add-button" onClick={() => setSheetOpen(true)}>+</button>
         <div className="cooking-hero-copy">
-          <h1>Heybo Pet 智能烹饪中心</h1>
-          {hasDevice ? <p>{view.name}｜{view.online ? '在线' : '离线'}<br />{latestRecord ? `上次使用：${latestRecord.time}｜${latestRecord.recipeName}` : '暂无使用记录'}</p> : <p>连接你的 Pet Chef 鲜食机<br />绑定后即可一键烹饪、查看记录和设备状态</p>}
-          {!hasDevice && <PrimaryButton onClick={() => setSheetOpen(true)}>添加鲜食机</PrimaryButton>}
+          <h1>{t('cookingCenterTitle')}</h1>
+          {hasDevice ? <p>{view.name}｜{view.online ? t('online') : t('offline')}<br />{latestRecord ? t('lastUsed', { time: latestRecord.time, recipe: tData(latestRecord.recipeName, lang) }) : t('noUsageRecords')}</p> : <p>{t('connectCookerIntro')}<br />{t('connectCookerBenefits')}</p>}
+          {!hasDevice && <PrimaryButton onClick={() => setSheetOpen(true)}>{t('addCooker')}</PrimaryButton>}
         </div>
       </section>
 
       <section className="cooking-center-section">
-        <h2>我的鲜食机</h2>
+        <h2>{t('myCookers')}</h2>
         <div className="cooking-device-list">
           {hasDevice ? devices.map(device => {
-            const item = getDeviceView(device);
+            const item = getDeviceView(device, t);
             return (
               <div key={item.devId} className={`cooking-device-card ${item.devId === view.devId ? 'is-active' : ''}`} onClick={() => { setSelectedDevId(item.devId); setDetailDevice(device); }}>
                 <div className="cooking-device-card-title">
                   <strong>{item.name}</strong>
-                  <GhostButton danger onClick={event => { event.stopPropagation(); setUnbindTarget(device); }}>解绑</GhostButton>
+                  <GhostButton danger onClick={event => { event.stopPropagation(); setUnbindTarget(device); }}>{t('unbind')}</GhostButton>
                 </div>
                 <span>{item.status}</span>
               </div>
             );
-          }) : <div className="cooking-center-card">尚未绑定鲜食机，点击添加后开始扫描。</div>}
+          }) : <div className="cooking-center-card">{t('noCookerBound')}</div>}
         </div>
       </section>
 
       <section className="cooking-center-section cooking-records-section">
-        <h2>使用记录</h2>
-        {records.length ? records.map(record => <RecordRow key={record.id} record={record} onFeedback={setFeedbackRecord} />) : <div className="cooking-center-card">暂无使用记录。完成一次制作后会显示在这里。</div>}
+        <h2>{t('usageRecords')}</h2>
+        {records.length ? records.map(record => <RecordRow key={record.id} record={record} onFeedback={setFeedbackRecord} />) : <div className="cooking-center-card">{t('noUsageRecordsHelp')}</div>}
       </section>
 
       {message && <div className="cooking-toast">{message}</div>}
@@ -1276,7 +1308,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
           onChooseRecipe={onChooseRecipe}
           onStart={() => {
             if (!recipeContext) {
-              setMessage('请先选择食谱。');
+              setMessage(t('selectRecipeFirst'));
               return;
             }
             setStartConfirmOpen(true);
@@ -1292,11 +1324,11 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       {unbindTarget && (
         <div className="cooking-sheet-mask">
           <div className="cooking-confirm-card">
-            <h2>确认解绑这台鲜食机？</h2>
-            <p>解绑后，该设备将不再显示在你的账号下。</p>
+            <h2>{t('confirmUnbindCooker')}</h2>
+            <p>{t('unbindCookerExplanation')}</p>
             <div>
-              <GhostButton onClick={() => setUnbindTarget(null)}>取消</GhostButton>
-              <GhostButton danger onClick={handleUnbind}>确认解绑</GhostButton>
+              <GhostButton onClick={() => setUnbindTarget(null)}>{t('cancelBtn')}</GhostButton>
+              <GhostButton danger onClick={handleUnbind}>{t('confirmUnbind')}</GhostButton>
             </div>
           </div>
         </div>
