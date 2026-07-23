@@ -6,7 +6,7 @@ import { useTranslation } from '../i18n/translations';
 const blankIngredient = () => ({ name: '', grams: '' });
 const numeric = value => Number(value) || 0;
 
-export function FreshMatchScreen({ profiles, authToken, onBack, onAddPet, onResult, initialDraft }) {
+export function FreshCheckScreen({ profiles, authToken, onBack, onAddPet, onResult, initialDraft }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
   const pets = useMemo(() => (profiles || []).filter(pet => !pet.species || pet.species === 'dog'), [profiles]);
@@ -41,7 +41,7 @@ export function FreshMatchScreen({ profiles, authToken, onBack, onAddPet, onResu
     } catch (error) { window.alert(error.message || '鲜食验证失败'); } finally { setBusy(false); }
   };
 
-  return <div className="fresh-match-page fresh-check-page animate-fade">
+  return <div className="fresh-check-page animate-fade">
     <button className="fresh-back" type="button" onClick={onBack}>←</button>
     <header className="fresh-hero"><h1>{t('freshCheckTitle')}</h1><div className="fresh-kicker">AI Nutrition Powered by HeyboPet Agent</div></header>
     <section className="fresh-section">
@@ -64,7 +64,7 @@ function Radar({ scores = [] }) {
   return <div className="fresh-radar"><svg viewBox="0 0 200 184" role="img" aria-label="六维鲜食验证评分">{rings.map((ring, index) => <polygon key={index} points={ring} className={`fresh-radar-grid ${index === rings.length - 1 ? 'is-outer' : 'is-inner'}`} />)}{[0, 1, 2, 3, 4, 5].map(index => { const angle = -Math.PI / 2 + index * Math.PI / 3; return <line key={index} x1="100" y1="92" x2={100 + 72 * Math.cos(angle)} y2={92 + 72 * Math.sin(angle)} className="fresh-radar-axis" />; })}<polygon points={points} className="fresh-radar-area" />{scores.map((item, index) => { const angle = -Math.PI / 2 + index * Math.PI / 3; return <text key={item.key} x={100 + 88 * Math.cos(angle)} y={96 + 88 * Math.sin(angle)} textAnchor="middle">{item.label}<tspan x={100 + 88 * Math.cos(angle)} dy="13">{item.value}</tspan></text>; })}</svg></div>;
 }
 
-export function FreshMatchResultScreen({ result, authToken, onResultUpdate, onAdjust, onBack }) {
+export function FreshCheckResultScreen({ result, authToken, onResultUpdate, onAdjust, onBack }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
   const bPack = result?.b_pack || {};
@@ -107,7 +107,7 @@ export function FreshMatchResultScreen({ result, authToken, onResultUpdate, onAd
   const FindingList = ({ items }) => items.map((item, index) => { const level = item.risk_level || item.level; return <article className={`fresh-check-finding risk-${level === 'notice' ? 'warning' : level}`} key={`${item.risk_code || item.code || 'finding'}-${index}`}><strong>{item.title}</strong><p><b>{t('why')}</b>{item.reason}</p><p><b>{t('howAdjust')}</b>{item.adjustment}</p></article>; });
   const PackOption = ({ option }) => <label className={option.enabled ? '' : 'is-disabled'}><input type="radio" name="fresh-b-pack" value={option.category} checked={selectedCategory === option.category} disabled={!option.enabled} onChange={() => setSelectedCategory(option.category)} /><span><strong>{option.name}{option.recommended && <em>推荐</em>}</strong><small>{option.category} · {option.reason}</small>{option.enabled && <small className="fresh-b-pack-dose">每100克食材配10克；烹饪完成后拌入</small>}</span></label>;
 
-  return <div className="fresh-match-page fresh-result-page animate-fade">
+  return <div className="fresh-check-page fresh-result-page animate-fade">
     <header className="fresh-hero"><h1>{t('freshCheckResult')}</h1><div className="fresh-kicker">{result.pet?.name} · {result.recipe?.total_weight_g || 0} g{localizing ? ' · …' : ''}</div></header>
     <Radar scores={result.scores} />
     {adjustments.length > 0 && <section className="fresh-result-card"><h2>{t('needsAdjustment')}</h2><FindingList items={adjustments} /></section>}

@@ -15,7 +15,7 @@ import RecipeList from './components/RecipeList';
 import RecipeMake from './components/RecipeMake';
 import CookingScreen from './components/CookingScreen';
 import CookingCenterPage from './components/CookingCenterPage';
-import { FreshMatchResultScreen, FreshMatchScreen } from './components/FreshMatchScreen';
+import { FreshCheckResultScreen, FreshCheckScreen } from './components/FreshCheckScreen';
 import BottomTabBar from './components/BottomTabBar';
 import RecipeCategoryCatalog from './components/RecipeCategoryCatalog';
 import PetProfileDetails from './components/PetProfileDetails';
@@ -422,8 +422,8 @@ function AppInner() {
   const [aiProfile, setAiProfile] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
-  const [freshMatchResult, setFreshMatchResult] = useState(null);
-  const [freshMatchDraft, setFreshMatchDraft] = useState(null);
+  const [freshCheckResult, setFreshCheckResult] = useState(null);
+  const [freshCheckDraft, setFreshCheckDraft] = useState(null);
   const [cookingData, setCookingData] = useState(null);
   const [entrySource, setEntrySource] = useState(null);
   const [editingPet, setEditingPet] = useState(null);
@@ -491,8 +491,8 @@ function AppInner() {
       case 'recipe_catalog':
       case 'recipe_list':
       case 'recipe_make':
-      case 'fresh_match':
-      case 'fresh_match_result':
+      case 'fresh_check':
+      case 'fresh_check_result':
         return 'recipes';
       case 'pet_management':
       case 'dog_setup':
@@ -830,7 +830,7 @@ function AppInner() {
   };
 
   const handleAIEntry = () => requireAuth(() => {
-    setScreen('fresh_match');
+    setScreen('fresh_check');
   });
   const handleDeviceEntry = () => requireAuth(() => setScreen('device_flow'));
 
@@ -919,8 +919,8 @@ function AppInner() {
     if (screen === 'dog_setup') setScreen('pet_management');
     if (screen === 'pet_management' || screen === 'device_flow' || screen === 'mall_placeholder') setScreen('home');
     if (screen === 'ai_analysis') setScreen('pet_management');
-    if (screen === 'fresh_match') setScreen('home');
-    if (screen === 'fresh_match_result') setScreen('fresh_match');
+    if (screen === 'fresh_check') setScreen('home');
+    if (screen === 'fresh_check_result') setScreen('fresh_check');
     if (screen === 'recipe_catalog') setScreen('home');
     if (screen === 'recipe_list') {
       if (entrySource === 'catalog') setScreen('recipe_catalog');
@@ -1001,17 +1001,17 @@ function AppInner() {
           lang={lang}
         />
       )}
-      {screen === 'fresh_match' && (
-        <FreshMatchScreen
+      {screen === 'fresh_check' && (
+        <FreshCheckScreen
           profiles={profiles}
           authToken={authToken}
           onBack={goHome}
           onAddPet={handleAddPet}
-          initialDraft={freshMatchDraft}
-          onResult={(result, draft) => { setFreshMatchDraft(draft); setFreshMatchResult(result); setScreen('fresh_match_result'); }}
+          initialDraft={freshCheckDraft}
+          onResult={(result, draft) => { setFreshCheckDraft(draft); setFreshCheckResult(result); setScreen('fresh_check_result'); }}
         />
       )}
-      {screen === 'fresh_match_result' && <FreshMatchResultScreen result={freshMatchResult} authToken={authToken} onResultUpdate={setFreshMatchResult} onAdjust={() => setScreen('fresh_match')} onBack={goHome} />}
+      {screen === 'fresh_check_result' && <FreshCheckResultScreen result={freshCheckResult} authToken={authToken} onResultUpdate={setFreshCheckResult} onAdjust={() => setScreen('fresh_check')} onBack={goHome} />}
       {screen === 'dog_setup' && <DogSetup onBack={goHome} profile={editingPet} onSave={handleProfileSave} onSelectCategory={handleSelectCategory} onShowAnalysis={handleShowAnalysis} lang={lang} />}
       {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} onSelectRecipe={handleSelectRecipe} lang={lang} authToken={authToken} />}
       {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={profile} onSelectRecipe={handleSelectRecipe} lang={lang} />}

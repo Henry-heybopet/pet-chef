@@ -364,7 +364,7 @@ body {
   border: 1px solid rgba(0, 230, 255, 0.3);
 }
 
-.fresh-match-page {
+.fresh-check-page {
   flex: 1;
   min-height: 100dvh;
   padding: calc(22px + var(--safe-top)) 18px calc(96px + var(--safe-bottom));
