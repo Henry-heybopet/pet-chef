@@ -26,6 +26,12 @@ function stirDelayMinutes(totalGrams) {
   return 4;
 }
 
+function cookingDurationMultiplier(totalGrams) {
+  if (totalGrams <= 200) return 1;
+  if (totalGrams <= 400) return 1.6;
+  return 2.4;
+}
+
 function calcCookingParams(recipe, totalGrams) {
   const { cooking_base, ingredients, water_content_pct } = recipe;
   
@@ -34,8 +40,10 @@ function calcCookingParams(recipe, totalGrams) {
   
   const preheat_minutes = stirDelayMinutes(totalGrams);
   const preheat_seconds = preheat_minutes * 60;
-  const cook_minutes = Number(cooking_base.cook_minutes || 10);
-  const cook_seconds = cook_minutes * 60;
+  const base_cook_minutes = Number(cooking_base.cook_minutes || 10);
+  const cook_time_multiplier = cookingDurationMultiplier(totalGrams);
+  const cook_seconds = Math.ceil(base_cook_minutes * cook_time_multiplier * 60);
+  const cook_minutes = Math.ceil(cook_seconds / 60);
   const total_seconds = preheat_seconds + cook_seconds;
   
   // ——— 阶段时间分配 ———
@@ -77,6 +85,8 @@ function calcCookingParams(recipe, totalGrams) {
     temperature: cooking_base.temperature,
     power: cooking_base.power,
     speed: cooking_base.speed,
+    base_cook_minutes,
+    cook_time_multiplier,
     cook_minutes,
     preheat_minutes,
     preheat_seconds,

@@ -20,14 +20,29 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
   const [cookData, setCookData] = useState(null);
   const [packCount, setPackCount] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [paramsLoading, setParamsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const displayGrams = packCount * 200;
 
   useEffect(() => {
     if (!recipe || !profile) return;
-    api.cookParams({ recipeId: recipe.id, breedId: profile.breedId, weight: profile.weight, age: profile.age }).then(d => {
+    let alive = true;
+    setParamsLoading(true);
+    setError('');
+    api.cookParams({ recipeId: recipe.id, breedId: profile.breedId, weight: profile.weight, age: profile.age, totalGrams: displayGrams }).then(d => {
+      if (!alive) return;
       if (d.success) setCookData(d);
+      else setError(d.error || '烹饪参数计算失败');
+    }).catch(err => {
+      if (alive) setError(err.message || '烹饪参数计算失败');
+    }).finally(() => {
+      if (!alive) return;
       setLoading(false);
+      setParamsLoading(false);
     });
-  }, [recipe, profile]);
+    return () => { alive = false; };
+  }, [recipe, profile, displayGrams]);
 
   if (loading) {
     return (
@@ -42,7 +57,6 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
   if (!cookData) return null;
 
   const { intake, ingredientList, cookParams } = cookData;
-  const displayGrams = packCount * 200;
   const packOptions = [1, 2, 3];
 
   const displayIngredients = ingredientList.map(ing => ({
@@ -109,6 +123,7 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
         </div>
       </div>
       <div style={{ padding: '0 24px', flex: 1 }}>
+        {error && <div style={{ color: '#FF4D5E', fontSize: 12, marginBottom: 10 }}>{error}</div>}
         <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 12 }}>
           {t('ingredientList')} · {displayIngredients.length} {t('types')} · {t('thisPrep')} <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{displayGrams}g</span>
         </div>
@@ -135,9 +150,9 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
       </div>
       <div className="glass" style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, padding: '16px 24px', display: 'flex', gap: 12, zIndex: 100, background: 'rgba(10,13,20,0.95)', borderTop: '1px solid var(--border)' }}>
         <button className="btn-secondary" style={{ flex: 1 }} onClick={onBack}>{t('back')}</button>
-        <button className="btn-primary" style={{ flex: 2, boxShadow: '0 0 24px rgba(0,230,255,0.35)' }}
+        <button className="btn-primary" disabled={paramsLoading} style={{ flex: 2, boxShadow: '0 0 24px rgba(0,230,255,0.35)', opacity: paramsLoading ? 0.6 : 1 }}
           onClick={() => onStartCooking({ recipe, profile, intake, cookParams, displayGrams, displayIngredients, packCount, packGrams: 200 })}>
-          {t('startCook')}
+          {paramsLoading ? '参数计算中...' : t('startCook')}
         </button>
       </div>
     </div>
