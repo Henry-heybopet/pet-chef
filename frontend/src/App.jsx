@@ -390,6 +390,7 @@ function AppInner() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
   const [freshMatchResult, setFreshMatchResult] = useState(null);
+  const [freshMatchDraft, setFreshMatchDraft] = useState(null);
   const [cookingData, setCookingData] = useState(null);
   const [entrySource, setEntrySource] = useState(null);
   const [editingPet, setEditingPet] = useState(null);
@@ -922,10 +923,11 @@ function AppInner() {
           authToken={authToken}
           onBack={goHome}
           onAddPet={handleAddPet}
-          onResult={(result) => { setFreshMatchResult(result); setScreen('fresh_match_result'); }}
+          initialDraft={freshMatchDraft}
+          onResult={(result, draft) => { setFreshMatchDraft(draft); setFreshMatchResult(result); setScreen('fresh_match_result'); }}
         />
       )}
-      {screen === 'fresh_match_result' && <FreshMatchResultScreen result={freshMatchResult} onBack={() => setScreen('fresh_match')} onStartCooking={handleStartCooking} />}
+      {screen === 'fresh_match_result' && <FreshMatchResultScreen result={freshMatchResult} authToken={authToken} onResultUpdate={setFreshMatchResult} onAdjust={() => setScreen('fresh_match')} onBack={goHome} />}
       {screen === 'dog_setup' && <DogSetup onBack={goHome} profile={editingPet} onSave={handleProfileSave} onSelectCategory={handleSelectCategory} onShowAnalysis={handleShowAnalysis} lang={lang} />}
       {screen === 'ai_analysis' && <AIAnalysisScreen onBack={goBack} profile={aiProfile} onSelectCategory={(cat, p) => { setEntrySource('ai'); handleSelectCategory(cat, p); }} onSelectRecipe={handleSelectRecipe} lang={lang} authToken={authToken} />}
       {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={profile} onSelectRecipe={handleSelectRecipe} lang={lang} />}

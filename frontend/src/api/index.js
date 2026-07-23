@@ -114,6 +114,8 @@ export const api = {
   aiAnalysis: (petId, lang, token) => authedPost('/api/ai-analysis', { pet_id: petId, lang }, token),
   aiAnalysisByPet: (petId, lang, token) => authedPost('/api/ai-analysis', { pet_id: petId, lang }, token),
   freshMatchAnalyze: (body, token) => authedPost('/api/fresh-match/analyze', body, token),
+  freshCheckRecognize: (body, token) => authedPost('/api/fresh-check/recognize', body, token),
+  freshCheckAnalyze: (body, token) => authedPost('/api/fresh-check/analyze', body, token),
   aiRecipe: async (body) => {
     return post('/api/ai-recipe', body);
   },

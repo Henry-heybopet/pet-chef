@@ -7,8 +7,8 @@ const T = {
   'slogan3': ["用科技为爱宠做一顿'处方级'鲜食","Tech-powered prescription-grade fresh food","Technologie für rezeptgenaues Frischfutter","Alimentation fraîche de qualité prescriptive","Comida fresca de grado prescriptivo","Cibo fresco di qualità prescrittiva","テクノロジーで処方グレードの手作り食を","기술로 처방급 생식을"],
   'myDog': ['我的爱宠','My Pet','Mein Hund','Mon Chien','Mi Perro','Il Mio Cane','愛犬','나의 반려견'],
   'myDogDesc': ['管理基础档案与体态目标','Manage base profile & targets','Profil · Rezepte wählen','Profil · Choisir recettes','Perfil · Elegir recetas','Profilo · Scegli ricette','プロフィール管理・レシピ选择','프로필 관리 · 레시피 선택'],
-  'aiRecipe': ['Fresh Match鲜食智配','Fresh Match','Fresh Match','Fresh Match','Fresh Match','Fresh Match','Fresh Match','Fresh Match'],
-  'aiRecipeDesc': ['Powered by Heybo AI','Powered by Heybo AI','Powered by Heybo AI','Powered by Heybo AI','Powered by Heybo AI','Powered by Heybo AI','Powered by Heybo AI','Powered by Heybo AI'],
+  'aiRecipe': ['Fresh Check 鲜食验证','Fresh Check','Fresh Check','Fresh Check','Fresh Check','Fresh Check','Fresh Check','Fresh Check'],
+  'aiRecipeDesc': ['AI Nutrition Powered by HeyboPet Agent','AI Nutrition Powered by HeyboPet Agent','AI Nutrition Powered by HeyboPet Agent','AI Nutrition Powered by HeyboPet Agent','AI Nutrition Powered by HeyboPet Agent','AI Nutrition Powered by HeyboPet Agent','AI Nutrition Powered by HeyboPet Agent','AI Nutrition Powered by HeyboPet Agent'],
   'deviceControl': ['设备闭环','Device Flow','Geräte-Steuerung','Contrôle Appareil','Control Dispositivo','Controllo Dispositivo','デバイス連携','기기 연동'],
   'deviceControlDesc': ['登录 · 配网 · 设备列表 · 85°C DIY','Login, pair, status, DIY','Login, pair, status, DIY','Login, pair, status, DIY','Login, pair, status, DIY','Login, pair, status, DIY','ログイン・ペアリング・DIY','로그인 · 페어링 · DIY'],
   // DogSetup

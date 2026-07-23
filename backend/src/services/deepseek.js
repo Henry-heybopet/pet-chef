@@ -201,4 +201,51 @@ async function classifyFreshMatchIngredients({ ingredients }) {
   return JSON.parse(String(content).replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
 }
 
-module.exports = { evaluatePetBCS, analyzeFreshMatch, classifyFreshMatchIngredients };
+async function freshCheckCompletion(system, user) {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not configured');
+  const response = await axios.post(`${process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1'}/chat/completions`, {
+    model: process.env.DEEPSEEK_MODEL || 'deepseek-chat', messages: [{ role: 'system', content: system }, { role: 'user', content: user }], temperature: 0, response_format: { type: 'json_object' },
+  }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 18000 });
+  return JSON.parse(String(response.data.choices?.[0]?.message?.content || '{}').replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
+}
+
+async function recognizeFreshCheckRecipe({ text }) {
+  const content = `识别以下宠物鲜食食谱的食材和克重，仅返回 JSON：{"ingredients":[{"name":"鸡胸肉","grams":200}]}。文本：${text || ''}`;
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not configured');
+  const response = await axios.post(`${process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1'}/chat/completions`, {
+    model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+    messages: [{ role: 'system', content: '你是宠物鲜食食谱识别助手。只识别文本中明确出现的食材与克重；不确定时不要猜测。只返回 JSON。' }, { role: 'user', content }],
+    temperature: 0, response_format: { type: 'json_object' },
+  }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 18000 });
+  return JSON.parse(String(response.data.choices?.[0]?.message?.content || '{}').replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
+}
+
+async function analyzeFreshCheck({ pet, report }) {
+  return freshCheckCompletion(
+    `你是 HeyboPet Agent 的犬用鲜食营养复核助手。只能基于报告中已计算的食材重量比例、估算蛋白质/脂肪/碳水克数、每1000kcal指标及FEDIAF阶段阈值进行复核。
+本地确定性规则是最终评分依据，你不能修改评分、删除风险或声称营养包能修复宏量结构。数据覆盖不足时必须标记 uncertain，不作医疗诊断。
+summary 只写一条具体可执行的食材调整建议，不要重复页面已有的克数、比例、每1000kcal数值或“达到/低于标准”等结论。
+只返回 JSON：{"summary":"一句具体调整建议","macro_assessment":{"protein_status":"adequate|low|uncertain","fat_status":"adequate|low|uncertain","carb_structure_status":"reasonable|high|uncertain","reasoning":"后台复核依据","adjustments":["建议"]}}。`,
+    JSON.stringify({ pet: { name: pet.name, health_tags: pet.health_tags || [], allergens: pet.allergens || [] }, report })
+  );
+}
+
+async function lookupFreshCheckIngredientFacts({ ingredients, retry = false }) {
+  return freshCheckCompletion(
+    `你是犬类鲜食安全与食物成分核验助手。对每个输入项独立判断，并只返回 JSON。
+${retry ? '这是第一次未返回有效营养值后的唯一一次复核。请优先核对常见别名、具体部位与常见生熟状态；仍无法可靠确认时必须继续返回 null，禁止猜测。' : ''}
+规则：
+1. name 必须原样返回。
+2. is_food 表示它是否为真实可食用原料；石头、铁钉、塑料、玻璃、清洁剂等必须为 false。
+3. dog_safety 只能是 safe、unsafe、uncertain；犬类禁食或非食物必须为 unsafe。
+4. 对可食用原料给出常见可食部、生/熟状态下合理的 kcal_per_100g、protein_pct、fat_pct、carb_pct；无法可靠估计的字段返回 null，禁止编造精确值。
+5. confidence 只能是 high、medium、low，并用 basis 简述估算依据和默认生熟状态。
+6. category 只能是 protein、organ、carb、vegetable、fat、addition、unknown。
+7. JSON 格式：{"ingredients":[{"name":"鸡头","is_food":true,"dog_safety":"safe","category":"protein","kcal_per_100g":180,"protein_pct":16,"fat_pct":12,"carb_pct":0,"confidence":"medium","basis":"按生鲜鸡头可食部估算"}]}`,
+    JSON.stringify({ ingredients })
+  );
+}
+
+module.exports = { evaluatePetBCS, analyzeFreshMatch, classifyFreshMatchIngredients, recognizeFreshCheckRecipe, analyzeFreshCheck, lookupFreshCheckIngredientFacts };

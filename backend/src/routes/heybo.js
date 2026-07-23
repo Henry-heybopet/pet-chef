@@ -11,6 +11,7 @@ const { accountLogin, completePhoneSignup } = require('../services/phone_auth');
 const { getUserById, getDefaultHouseholdForUser, publicUser } = require('../services/user_repository');
 const petRepository = require('../services/pet_repository');
 const { buildFreshMatchAnalysis } = require('../services/fresh_match');
+const { recognizeFreshCheck, buildFreshCheckAnalysis } = require('../services/fresh_check');
 
 const router = express.Router();
 const avatarDir = path.resolve(__dirname, '../../public/uploads/avatars');
@@ -160,6 +161,24 @@ router.post('/fresh-match/analyze', authMiddleware, asyncHandler(async (req, res
   if (!pet) return res.status(404).json({ success: false, error: 'Pet not found' });
   if (pet.species && pet.species !== 'dog') return res.status(400).json({ success: false, error: 'Fresh Match 仅支持犬类宠物档案' });
   const result = await buildFreshMatchAnalysis({ pet, ingredients: req.body?.ingredients || {} });
+  res.json({ success: true, ...result });
+}));
+
+router.post('/fresh-check/recognize', authMiddleware, asyncHandler(async (req, res) => {
+  await requireUser(req);
+  const result = await recognizeFreshCheck({ text: req.body?.text });
+  res.json({ success: true, ...result });
+}));
+
+router.post('/fresh-check/analyze', authMiddleware, asyncHandler(async (req, res) => {
+  const user = await requireUser(req);
+  const pet = await petRepository.getPetForUser(user.id, req.body?.pet_id);
+  if (!pet) return res.status(404).json({ success: false, error: 'Pet not found' });
+  if (pet.species && pet.species !== 'dog') return res.status(400).json({ success: false, error: 'Fresh Check 仅支持犬类宠物档案' });
+  const ingredients = Array.isArray(req.body?.ingredients) ? req.body.ingredients : [];
+  if (!ingredients.length) return res.status(400).json({ success: false, error: '请至少填写一种食材及克重' });
+  const result = await buildFreshCheckAnalysis({ pet, ingredients, meal_intent: req.body?.meal_intent, b_pack_category: req.body?.b_pack_category });
+  if (!result.recipe.ingredients.length) return res.status(400).json({ success: false, error: '请检查食材名称和克重（每项需大于 0g）' });
   res.json({ success: true, ...result });
 }));
 

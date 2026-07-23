@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:fresh-check": "node --test test/fresh_check.test.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma db push",
     "db:seed": "node prisma/seed.js",

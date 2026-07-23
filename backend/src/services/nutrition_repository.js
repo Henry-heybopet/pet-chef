@@ -101,6 +101,28 @@ async function getRecipeNames() {
   return recipes.map(recipe => recipe.name);
 }
 
+async function listBPackOptions() {
+  const { recipes, source } = await listRecipes();
+  const grouped = new Map();
+  for (const recipe of recipes) {
+    if (!recipe.category || !recipe.b_pack || recipe.b_pack === '无') continue;
+    if (!grouped.has(recipe.category)) grouped.set(recipe.category, new Map());
+    grouped.get(recipe.category).set(recipe.b_pack, recipe.life_stage || null);
+  }
+  return {
+    source,
+    options: [...grouped.entries()].map(([category, variants]) => {
+      const entries = [...variants.entries()];
+      return {
+        category,
+        b_pack: entries[0]?.[0] || '',
+        life_stage: entries[0]?.[1] || null,
+        data_conflict: entries.length > 1,
+      };
+    }),
+  };
+}
+
 async function updateRecipe(id, patch = {}) {
   if (!(await isAvailable())) {
     const error = new Error('recipes table unavailable');
@@ -224,6 +246,7 @@ module.exports = {
   listAdminRecipes,
   getRecipeById,
   getRecipeNames,
+  listBPackOptions,
   createRecipe,
   updateRecipe,
   getIngredientMap,
