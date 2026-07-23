@@ -28,6 +28,19 @@ async function get(path) {
   return requestJson(path);
 }
 
+async function getWithTimeout(path, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await requestJson(path, { signal: controller.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('版本检查超时，请检查网络后重试');
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 function authHeaders(token) {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
@@ -75,6 +88,7 @@ async function createPayment(body, token, idempotencyKey) {
 
 
 export const api = {
+  getAndroidRelease: () => getWithTimeout('/api/app-releases/android'),
   heyboMockLogin: (body) => post('/api/auth/mock-login', body),
   phoneLogin: (body) => post('/api/auth/phone-login', body),
   phoneSignup: (body) => post('/api/auth/phone-signup', body),

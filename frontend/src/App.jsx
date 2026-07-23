@@ -6,6 +6,7 @@ import { LanguageProvider, useLanguage, LANGS } from './i18n/LanguageContext';
 import { useTranslation } from './i18n/translations';
 import { api } from './api/index';
 import { HeyboTuya } from './native/heyboTuya';
+import { AppUpdate, isNativeAndroid } from './native/appUpdate';
 
 import DogSetup from './components/DogSetup';
 import PetManagementScreen from './components/PetManagementScreen';
@@ -21,6 +22,38 @@ import PetProfileDetails from './components/PetProfileDetails';
 import { dogBreeds } from './data/breeds';
 
 const SESSION_MS = 15 * 24 * 60 * 60 * 1000;
+
+function AppUpdateGate({ state, onRetry, onUpgrade, onContinueOffline }) {
+  const checking = state.status === 'checking';
+  const blocked = state.status === 'blocked';
+  return (
+    <main className="app-update-gate">
+      <section className="app-update-card" role="alert">
+        <div className="app-update-icon">{blocked ? '⬆️' : '🔄'}</div>
+        <h1>{blocked ? '发现新版本' : '正在检查版本'}</h1>
+        {checking && <p>正在确认当前 App 是否需要升级，请稍候。</p>}
+        {state.status === 'error' && (
+          <>
+            <p>{state.message || '版本检查网络异常。你仍可继续使用无需联网的本地功能；联网功能可能暂时不可用。'}</p>
+            <button type="button" onClick={onRetry}>重新检查</button>
+            <button type="button" className="app-update-retry" onClick={onContinueOffline}>继续使用本地功能</button>
+          </>
+        )}
+        {blocked && (
+          <>
+            <p>当前版本 {state.installedName}，服务器要求升级到 {state.release.version_name} 后继续使用。</p>
+            {state.release.release_notes?.length > 0 && (
+              <ul>{state.release.release_notes.map(note => <li key={note}>{note}</li>)}</ul>
+            )}
+            {state.message && <p className="app-update-error">{state.message}</p>}
+            <button type="button" onClick={onUpgrade}>前往应用市场升级</button>
+            <button type="button" className="app-update-retry" onClick={onRetry}>已升级，重新检查</button>
+          </>
+        )}
+      </section>
+    </main>
+  );
+}
 
 // ——— Language Selector (top-right globe button) ———
 function LangSelector() {
@@ -401,7 +434,54 @@ function AppInner() {
   const [pendingAuthAction, setPendingAuthAction] = useState(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [breedOptions, setBreedOptions] = useState(dogBreeds);
+  const [updateGate, setUpdateGate] = useState(() => ({ status: isNativeAndroid ? 'checking' : 'ready' }));
   const swipeStartRef = useRef(null);
+
+  const checkAppVersion = async () => {
+    if (!isNativeAndroid) return;
+    setUpdateGate({ status: 'checking' });
+    try {
+      const [installed, release] = await Promise.all([
+        AppUpdate.getInfo(),
+        api.getAndroidRelease(),
+      ]);
+      const installedCode = Number(installed.versionCode);
+      const minimumCode = Number(release.minimum_supported_version_code);
+      if (!Number.isInteger(installedCode) || !Number.isInteger(minimumCode)) {
+        throw new Error('版本服务器返回的数据无效，请稍后重试');
+      }
+      if (installedCode < minimumCode) {
+        setUpdateGate({
+          status: 'blocked',
+          installedName: installed.versionName,
+          release,
+          message: '',
+        });
+        return;
+      }
+      setUpdateGate({ status: 'ready' });
+    } catch (error) {
+      const detail = error?.message || '无法连接版本服务器';
+      setUpdateGate({ status: 'error', message: `版本检查网络异常：${detail}。你仍可继续使用无需联网的本地功能；联网功能可能暂时不可用。` });
+    }
+  };
+
+  const openAppUpdate = async () => {
+    const url = updateGate.release?.update_url;
+    if (!url) {
+      setUpdateGate(current => ({ ...current, message: '应用市场升级地址尚未发布，请联系客服。' }));
+      return;
+    }
+    try {
+      await AppUpdate.openUpdate({ url });
+    } catch (error) {
+      setUpdateGate(current => ({ ...current, message: error?.message || '无法打开升级地址' }));
+    }
+  };
+
+  useEffect(() => {
+    checkAppVersion();
+  }, []);
 
   // Derived active tab based on current screen
   const activeTab = (() => {
@@ -874,6 +954,10 @@ function AppInner() {
       goBack();
     }
   };
+
+  if (updateGate.status !== 'ready') {
+    return <AppUpdateGate state={updateGate} onRetry={checkAppVersion} onUpgrade={openAppUpdate} onContinueOffline={() => setUpdateGate({ status: 'ready' })} />;
+  }
 
   return (
     <div id="app-container" className={hasCompletedOnboarding ? 'app-with-tabs' : ''} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>

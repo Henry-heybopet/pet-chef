@@ -3243,3 +3243,40 @@ select option {
   0%, 100% { opacity: 0.86; }
   50% { opacity: 1; }
 }
+
+.app-update-gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: #fff;
+  background: radial-gradient(circle at top, #103c48 0, #07111d 45%, #03070e 100%);
+}
+
+.app-update-card {
+  width: min(420px, 100%);
+  padding: 32px 26px;
+  border: 1px solid rgba(96, 255, 222, 0.32);
+  border-radius: 24px;
+  background: rgba(10, 19, 30, 0.96);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  text-align: center;
+}
+
+.app-update-icon { font-size: 48px; }
+.app-update-card h1 { margin: 14px 0 10px; font-size: 28px; }
+.app-update-card p { color: #b8c8cf; line-height: 1.7; }
+.app-update-card ul { margin: 18px 0; padding-left: 24px; color: #d7e3e7; text-align: left; line-height: 1.7; }
+.app-update-card button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 14px 18px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #65f2cf, #11d9f4);
+  color: #031018;
+  font-size: 16px;
+  font-weight: 800;
+}
+.app-update-card .app-update-retry { border: 1px solid rgba(96, 255, 222, 0.4); background: transparent; color: #87f6dc; }
+.app-update-card .app-update-error { color: #ff7777; }

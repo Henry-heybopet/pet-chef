@@ -25,6 +25,36 @@ function asyncHandler(fn) {
   });
 }
 
+function positiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+router.get('/app-releases/android', (req, res) => {
+  const latestVersionCode = positiveInteger(process.env.ANDROID_LATEST_VERSION_CODE, 2);
+  const minimumSupportedVersionCode = Math.min(
+    positiveInteger(process.env.ANDROID_MINIMUM_VERSION_CODE, 1),
+    latestVersionCode,
+  );
+  const releaseNotes = String(process.env.ANDROID_RELEASE_NOTES || '')
+    .split('|')
+    .map(note => note.trim())
+    .filter(Boolean);
+
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    success: true,
+    platform: 'android',
+    upgrade_capability_since_version_code: 2,
+    upgrade_capability_since_version_name: '2.0.0',
+    latest_version_code: latestVersionCode,
+    minimum_supported_version_code: minimumSupportedVersionCode,
+    version_name: process.env.ANDROID_LATEST_VERSION_NAME || '2.0.0',
+    update_url: process.env.ANDROID_UPDATE_URL || '',
+    release_notes: releaseNotes,
+  });
+});
+
 async function requireUser(req) {
   const userId = req.user ? req.user.id : null;
   if (!userId) throw new Error('Unauthorized');
