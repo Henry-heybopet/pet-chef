@@ -197,6 +197,18 @@ const TEXT = Object.freeze({
   LONG_TERM_STRUCTURE_ADJUSTMENT: L('按建议调整动物蛋白、内脏、碳水、果蔬和脂肪来源比例。', 'Adjust animal protein, organ, carbohydrate, produce, and fat-source ratios as advised.', 'Tierprotein, Innereien, Kohlenhydrate, Obst und Gemüse sowie Fettquellen anpassen.', 'Ajustez les proportions de protéines animales, abats, glucides, végétaux et lipides.', 'Ajuste las proporciones de proteína animal, vísceras, carbohidratos, vegetales y grasas.', 'Adeguare le proporzioni di proteine animali, organi, carboidrati, vegetali e grassi.', '動物性たんぱく、内臓、炭水化物、野菜果物、脂質源の比率を調整してください。', '동물성 단백질, 내장, 탄수화물, 채소·과일, 지방원 비율을 조정하세요.'),
   LONG_TERM_ENERGY_ADJUSTMENT: L('调整总量或能量密度，使每日热量进入建议范围。', 'Adjust the amount or energy density so daily calories enter the recommended range.', 'Menge oder Energiedichte anpassen, damit die Tagesenergie im Zielbereich liegt.', 'Ajustez la quantité ou la densité énergétique pour atteindre la plage quotidienne.', 'Ajuste la cantidad o densidad energética para entrar en el rango diario recomendado.', 'Modificare quantità o densità energetica per rientrare nell’intervallo giornaliero.', '総量またはエネルギー密度を調整し、1日のカロリーを推奨範囲にしてください。', '총량 또는 에너지 밀도를 조정해 일일 열량을 권장 범위에 맞추세요.'),
   LONG_TERM_SUITABILITY_ADJUSTMENT: L('特殊阶段需随体重和月龄复核，并由专业人员确认长期方案。', 'For special stages, review weight and age regularly and have the long-term plan professionally confirmed.', 'In besonderen Phasen Gewicht und Alter prüfen und den Langzeitplan fachlich bestätigen lassen.', 'Aux stades particuliers, revérifiez poids et âge et faites confirmer le plan à long terme.', 'En etapas especiales, revise peso y edad y confirme el plan a largo plazo con un profesional.', 'Nelle fasi speciali, verificare peso ed età e far confermare il piano a lungo termine.', '特別な段階では体重と月齢を見直し、長期プランを専門家に確認してください。', '특수 단계에는 체중과 월령을 재확인하고 장기 계획을 전문가에게 확인받으세요.'),
+  AI_NEED_PUPPY_PROTEIN: L('高蛋白促进生长', 'High-quality protein for growth', 'Hochwertiges Protein für das Wachstum', 'Protéines de qualité pour la croissance', 'Proteína de calidad para el crecimiento', 'Proteine di qualità per la crescita', '成長を支える良質なたんぱく質', '성장을 위한 양질의 단백질'),
+  AI_NEED_PUPPY_DHA: L('DHA脑部发育', 'DHA for brain development', 'DHA für die Gehirnentwicklung', 'DHA pour le développement cérébral', 'DHA para el desarrollo cerebral', 'DHA per lo sviluppo cerebrale', '脳の発達を支えるDHA', '두뇌 발달을 위한 DHA'),
+  AI_NEED_PUPPY_CALCIUM: L('适量钙质骨骼健康', 'Controlled calcium for bone health', 'Kontrolliertes Calcium für gesunde Knochen', 'Calcium contrôlé pour la santé osseuse', 'Calcio controlado para la salud ósea', 'Calcio controllato per la salute ossea', '骨の健康に適量のカルシウム', '뼈 건강을 위한 적정 칼슘'),
+  AI_NEED_ADULT_PROTEIN: L('均衡蛋白质', 'Balanced high-quality protein', 'Ausgewogenes hochwertiges Protein', 'Protéines de qualité équilibrées', 'Proteína de calidad equilibrada', 'Proteine di qualità bilanciate', 'バランスのよい良質なたんぱく質', '균형 잡힌 양질의 단백질'),
+  AI_NEED_ADULT_FAT: L('优质脂肪', 'Moderate healthy fat', 'Maßvolle gesunde Fette', 'Lipides sains en quantité modérée', 'Grasas saludables en cantidad moderada', 'Grassi sani in quantità moderata', '適量の良質な脂質', '적정량의 건강한 지방'),
+  AI_NEED_ADULT_FIBER: L('丰富蔬菜纤维', 'Vegetable fiber', 'Pflanzliche Ballaststoffe', 'Fibres végétales', 'Fibra vegetal', 'Fibre vegetali', '野菜由来の食物繊維', '채소 식이섬유'),
+  AI_NEED_SENIOR_DIGESTION: L('易消化低脂', 'Easy-to-digest, lower-fat food', 'Leicht verdauliches, fettärmeres Futter', 'Alimentation digeste et moins grasse', 'Alimento digestible y bajo en grasa', 'Alimento digeribile e meno grasso', '消化しやすい低脂肪食', '소화가 쉬운 저지방 식단'),
+  AI_NEED_SENIOR_JOINT: L('关节保护营养', 'Joint-support nutrition', 'Nährstoffe zur Gelenkunterstützung', 'Nutriments pour les articulations', 'Nutrición para las articulaciones', 'Nutrienti per le articolazioni', '関節を支える栄養', '관절 지원 영양'),
+  AI_NEED_SENIOR_HEART: L('抗氧化护心', 'Antioxidant heart support', 'Antioxidativer Herzschutz', 'Soutien cardiaque antioxydant', 'Apoyo cardíaco antioxidante', 'Supporto cardiaco antiossidante', '抗酸化による心臓サポート', '항산화 심장 지원'),
+  AI_NUTRITION_SUMMARY: L('当前每日鲜食建议约 {daily_grams}g，分 {meals_per_day} 餐，每餐约 {per_meal_grams}g。应结合体重、BCS和活动量持续调整。', 'The current fresh-food estimate is about {daily_grams} g per day, split into {meals_per_day} meals of about {per_meal_grams} g. Adjust it over time using weight, BCS, and activity.', 'Die aktuelle Frischfuttermenge beträgt etwa {daily_grams} g pro Tag, verteilt auf {meals_per_day} Mahlzeiten mit je etwa {per_meal_grams} g. An Gewicht, BCS und Aktivität anpassen.', 'La ration fraîche estimée est d’environ {daily_grams} g par jour, répartie en {meals_per_day} repas d’environ {per_meal_grams} g. Ajustez-la selon le poids, le BCS et l’activité.', 'La estimación es de unos {daily_grams} g diarios, divididos en {meals_per_day} comidas de unos {per_meal_grams} g. Ajústela según peso, BCS y actividad.', 'La stima è di circa {daily_grams} g al giorno, suddivisi in {meals_per_day} pasti da circa {per_meal_grams} g. Adeguarla in base a peso, BCS e attività.', '1日の鮮食目安は約{daily_grams}gで、{meals_per_day}回、1回約{per_meal_grams}gです。体重、BCS、活動量に応じて調整してください。', '일일 신선식 권장량은 약 {daily_grams}g이며 {meals_per_day}회, 1회 약 {per_meal_grams}g입니다. 체중, BCS, 활동량에 따라 조정하세요.'),
+  AI_UNDERWEIGHT_CAUTION: L('当前体重 {weight_kg}kg 明显低于参考均值 {average_weight_kg}kg，应逐步调整能量摄入并持续监测体重和BCS。', 'Current weight ({weight_kg} kg) is well below the reference average ({average_weight_kg} kg). Increase energy gradually and monitor weight and BCS.', 'Das aktuelle Gewicht ({weight_kg} kg) liegt deutlich unter dem Referenzwert ({average_weight_kg} kg). Energie langsam erhöhen und Gewicht sowie BCS beobachten.', 'Le poids actuel ({weight_kg} kg) est nettement inférieur à la moyenne de référence ({average_weight_kg} kg). Augmentez progressivement l’énergie et surveillez poids et BCS.', 'El peso actual ({weight_kg} kg) está muy por debajo del promedio de referencia ({average_weight_kg} kg). Aumente la energía gradualmente y controle peso y BCS.', 'Il peso attuale ({weight_kg} kg) è molto sotto la media di riferimento ({average_weight_kg} kg). Aumentare gradualmente l’energia e monitorare peso e BCS.', '現在体重（{weight_kg}kg）は参考平均（{average_weight_kg}kg）を大きく下回ります。エネルギーを徐々に増やし、体重とBCSを確認してください。', '현재 체중({weight_kg}kg)이 참고 평균({average_weight_kg}kg)보다 크게 낮습니다. 에너지를 점진적으로 늘리고 체중과 BCS를 확인하세요.'),
+  AI_GENERIC_BREED_INTRO: L('宠物档案已用于本次营养估算。', 'The pet profile was used for this nutrition estimate.', 'Das Tierprofil wurde für diese Nährstoffschätzung verwendet.', 'Le profil de l’animal a été utilisé pour cette estimation nutritionnelle.', 'El perfil de la mascota se utilizó para esta estimación nutricional.', 'Il profilo dell’animale è stato usato per questa stima nutrizionale.', 'ペット情報を今回の栄養推定に使用しました。', '반려동물 프로필을 이번 영양 추정에 사용했습니다.'),
 });
 
 const SUITABILITY_REASON_KEYS = Object.freeze({
@@ -525,11 +537,69 @@ async function localizeSemanticResultWithAi(result, requestedLocale, translate) 
   return localized;
 }
 
+function aiNutritionPresentationIsValid(analysis, requestedLocale) {
+  const locale = normalizeLocale(requestedLocale);
+  if (locale === 'zh' || locale === 'ja') return true;
+  const fields = [
+    analysis?.breed_intro,
+    analysis?.activity_desc,
+    analysis?.nutrition_analysis,
+    ...(analysis?.key_nutrition_needs || []),
+    ...(analysis?.cautions || []),
+    ...(analysis?.recommended_categories || []),
+  ];
+  return fields.filter(Boolean).every(value => !containsHan(value));
+}
+
+function buildAiNutritionFallback({ requestedLocale, age, weight, intake = {}, averageWeight = null }) {
+  const locale = normalizeLocale(requestedLocale);
+  const lifeStage = Number(age) < 1 ? '幼犬' : Number(age) >= 8 ? '老年犬' : '成年犬';
+  const lifeStageCode = Number(age) < 1 ? 'puppy' : Number(age) >= 8 ? 'senior' : 'adult';
+  const needCodes = lifeStage === '幼犬'
+    ? ['AI_NEED_PUPPY_PROTEIN', 'AI_NEED_PUPPY_DHA', 'AI_NEED_PUPPY_CALCIUM']
+    : lifeStage === '老年犬'
+      ? ['AI_NEED_SENIOR_DIGESTION', 'AI_NEED_SENIOR_JOINT', 'AI_NEED_SENIOR_HEART']
+      : ['AI_NEED_ADULT_PROTEIN', 'AI_NEED_ADULT_FAT', 'AI_NEED_ADULT_FIBER'];
+  const summaryFacts = {
+    daily_grams: intake.daily_grams ?? '-',
+    meals_per_day: intake.meals_per_day ?? 2,
+    per_meal_grams: intake.per_meal_grams ?? '-',
+  };
+  const cautionItems = Number(averageWeight) > 0 && Number(weight) < Number(averageWeight) * 0.7
+    ? [{ code: 'AI_UNDERWEIGHT_CAUTION', facts: { weight_kg: weight, average_weight_kg: averageWeight } }]
+    : [];
+  return {
+    locale,
+    translation_status: locale === 'zh' ? 'source' : 'translated',
+    breed_intro: textFor('AI_GENERIC_BREED_INTRO', locale).text,
+    life_stage: lifeStage,
+    life_stage_code: lifeStageCode,
+    activity_level: 'medium',
+    key_nutrition_need_codes: needCodes,
+    key_nutrition_needs: needCodes.map(code => textFor(code, locale).text),
+    nutrition_summary_code: 'AI_NUTRITION_SUMMARY',
+    nutrition_summary_facts: summaryFacts,
+    nutrition_analysis: interpolate(textFor('AI_NUTRITION_SUMMARY', locale).text, summaryFacts),
+    caution_items: cautionItems,
+    cautions: cautionItems.map(item => interpolate(textFor(item.code, locale).text, item.facts)),
+  };
+}
+
+function cachedAiNutritionAnalysis(cacheData, requestedLocale) {
+  const locale = normalizeLocale(requestedLocale);
+  return cacheData?.analyses_by_locale?.[locale]
+    || (cacheData?.analysis_locale === locale ? cacheData.analysis : null)
+    || null;
+}
+
 module.exports = {
   SUPPORTED_LOCALES,
   normalizeLocale,
   localizeFinding,
   localizeSemanticResult,
   localizeSemanticResultWithAi,
+  aiNutritionPresentationIsValid,
+  buildAiNutritionFallback,
+  cachedAiNutritionAnalysis,
   stripPresentation,
 };

@@ -777,6 +777,24 @@ function AppInner() {
     }
   };
 
+  useEffect(() => {
+    if (screen !== 'ai_analysis' || !aiProfile?.id || !authToken || aiProfile.analysis?.locale === lang) return undefined;
+    let active = true;
+    setIsAiLoading(true);
+    api.aiAnalysisByPet(aiProfile.id, lang, authToken)
+      .then(result => {
+        if (!active || !result?.success) return;
+        setAiProfile(current => current && current.id === aiProfile.id ? {
+          ...current,
+          analysis: result.analysis,
+          comparisons: result.comparisons,
+        } : current);
+      })
+      .catch(error => { if (active) console.warn('[AI Analysis] locale refresh failed', error?.message || 'unknown'); })
+      .finally(() => { if (active) setIsAiLoading(false); });
+    return () => { active = false; };
+  }, [aiProfile?.analysis?.locale, aiProfile?.id, authToken, lang, screen]);
+
   const handleSelectPet = async (pet) => {
     setActiveId(pet.id);
     setEntrySource('dog');

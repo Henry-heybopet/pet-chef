@@ -21,6 +21,7 @@ const { generateToken, verifyToken } = require('./services/auth');
 const petRepository = require('./services/pet_repository');
 const userRepository = require('./services/user_repository');
 const adminAccounts = require('./services/admin_accounts');
+const { normalizeLocale, aiNutritionPresentationIsValid, buildAiNutritionFallback, cachedAiNutritionAnalysis } = require('./services/localization');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -670,8 +671,9 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
     return res.status(404).json({ success: false, error: `Pet not found: ${resolved.missingPetId || ''}`.trim() });
   }
   const dogProfile = resolved.dogProfile;
+  const requestedLocale = normalizeLocale(req.body?.lang);
   const {
-    breedId, breedName, age = 3, weight = 15, customBreedName, lang,
+    breedId, breedName, age = 3, weight = 15, customBreedName,
     id, name, feedingGoal, goals = [], bcs, allergens = []
   } = dogProfile;
 
@@ -683,6 +685,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
   let comparisons = null;
   let cacheValid = false;
   let cacheNeedsWrite = false;
+  let cachedAnalyses = {};
 
   if (fs.existsSync(cacheFilePath)) {
     try {
@@ -697,11 +700,14 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       if (!isExpired && !isDirty && !isOldVersion) {
         comparisons = cacheData.comparisons || null;
         cacheValid = true;
-        if (cacheData.analysis && comparisons) {
-          console.log(`[AI Analysis Cache Hit File] Served valid cache for pet ${petCacheId}`);
+        cachedAnalyses = cacheData.analyses_by_locale || {};
+        const cachedAnalysis = cachedAiNutritionAnalysis(cacheData, requestedLocale);
+        if (cachedAnalysis && comparisons) {
+          console.log(`[AI Analysis Cache Hit File] Served valid ${requestedLocale} cache for pet ${petCacheId}`);
           return res.json({
             success: true,
-            analysis: { ...cacheData.analysis, ...intake },
+            locale: requestedLocale,
+            analysis: { ...cachedAnalysis, ...intake, locale: requestedLocale },
             comparisons,
             cache_hit: true
           });
@@ -726,33 +732,27 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       bcs,
       goals,
       allergens,
-      lang
+      requestedLocale
     );
   } catch (e) {
     console.error('AI analysis failed, using fallback:', e.message);
   }
 
-  if (!analysis) {
-    let lifeStage = '成年犬', nutritionNeeds = [];
-    if (age < 1) { lifeStage = '幼犬'; nutritionNeeds = ['高蛋白促进生长', 'DHA脑部发育', '适量钙质骨骼健康']; }
-    else if (age >= 8) { lifeStage = '老年犬'; nutritionNeeds = ['易消化低脂', '关节保护', '抗氧化护心']; }
-    else { nutritionNeeds = ['均衡蛋白质', '优质脂肪', '丰富蔬菜纤维']; }
-
-    if (breed?.nutrition_notes) nutritionNeeds.push(...breed.nutrition_notes.slice(0, 2));
-
-    const cautions = [];
-    if (breed && weight < breed.weight_avg * 0.7) {
-      nutritionNeeds.unshift('营养不良/体重偏瘦');
-      cautions.push(`⚠️ 您的宠物当前体重（${weight}kg）显著低于${breed.name}的平均体重（${breed.weight_avg}kg左右），属于明显偏瘦/营养不良状态，建议逐步增加喂食量，并配合全价高能营养包以促进体重恢复。`);
-    }
-
+  if (!analysis || !aiNutritionPresentationIsValid(analysis, requestedLocale)) {
+    if (analysis) console.warn('[AI Analysis] rejected response in wrong locale', { requested_locale: requestedLocale });
+    analysis = buildAiNutritionFallback({
+      requestedLocale,
+      age,
+      weight,
+      intake,
+      averageWeight: breed?.weight_avg,
+    });
+  } else {
     analysis = {
-      breed_intro: breed?.breed_desc || `${breedName || '您的爱犬'}是一种优秀的犬种。`,
-      life_stage: lifeStage,
-      activity_level: breed?.activity || 'medium',
-      key_nutrition_needs: nutritionNeeds,
-      cautions: cautions,
-      nutrition_analysis: `根据您的${breedName || '爱犬'}${age}岁、${weight}kg的信息，每日所需鲜食量约为${intake.daily_grams}克，建议每日分${intake.meals_per_day}次喂食，每次约${intake.per_meal_grams}克。`,
+      ...analysis,
+      locale: requestedLocale,
+      translation_status: requestedLocale === 'zh' ? 'source' : 'ai_translated',
+      life_stage_code: { 幼犬: 'puppy', 成年犬: 'adult', 老年犬: 'senior' }[analysis.life_stage] || analysis.life_stage_code || 'adult',
     };
   }
 
@@ -844,7 +844,9 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       pet_id: dogProfile.pet_id || dogProfile.id,
       pet_updated_at: normalizeCacheTimestamp(dogProfile.pet_updated_at),
       dogProfile: dogProfile,
+      analyses_by_locale: { ...cachedAnalyses, [requestedLocale]: mergedAnalysis },
       analysis: mergedAnalysis,
+      analysis_locale: requestedLocale,
       comparisons: comparisons
     }, null, 2), 'utf8');
     console.log(`[Cache Written File] Saved analysis cache for pet ${petCacheId}`);
@@ -852,6 +854,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
 
   res.json({
     success: true,
+    locale: requestedLocale,
     analysis: mergedAnalysis,
     comparisons: comparisons,
     cache_hit: false

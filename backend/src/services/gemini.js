@@ -7,7 +7,8 @@ const { breedsDb } = require('../data/breeds_db');
 const { recipesDb } = require('../data/recipes_db');
 
 async function callDeepSeekAPI(systemPrompt, userPrompt) {
-  const apiKey = process.env.DEEPSEEK_API_KEY || 'sk-85673c68584b4c06a9aa5d1fe5db5108';
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not configured');
   const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
   const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 

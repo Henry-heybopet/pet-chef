@@ -1,5 +1,7 @@
 {/* Pet Chef Ver B1.00 — 2026-06-22 */}
 import React from 'react';
+import { useLanguage } from '../i18n/LanguageContext';
+import { useTranslation } from '../i18n/translations';
 
 /**
  * BottomTabBar - Fixed bottom tab bar with glass morphism
@@ -7,18 +9,20 @@ import React from 'react';
  * Default tabs: 🏠 首页, 🍲 食谱, 🐶 宠物, 🤖 烹饪, 📊 数据
  */
 export default function BottomTabBar({ tabs, activeTab, onSelect }) {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
   const defaultTabs = [
-    { key: 'home', label: '首页', emoji: '🏠' },
-    { key: 'recipes', label: '食谱', emoji: '🍲' },
-    { key: 'pet', label: '宠物', emoji: '🐶' },
-    { key: 'cook', label: '烹饪', emoji: '🤖' },
-    { key: 'mall', label: '商城', emoji: '🛒' },
+    { key: 'home', label: t('navHome'), emoji: '🏠' },
+    { key: 'recipes', label: t('navRecipes'), emoji: '🍲' },
+    { key: 'pet', label: t('navPet'), emoji: '🐶' },
+    { key: 'cook', label: t('navCook'), emoji: '🤖' },
+    { key: 'mall', label: t('navMall'), emoji: '🛒' },
   ];
 
   const tabList = tabs || defaultTabs;
 
   return (
-    <nav style={styles.container} role="tablist" aria-label="主导航">
+    <nav style={styles.container} role="tablist" aria-label={t('navAria')}>
       {tabList.map((tab) => {
         const isActive = activeTab === tab.key;
         return (

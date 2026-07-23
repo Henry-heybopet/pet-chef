@@ -59,6 +59,9 @@ const NEED_TR = {
   '呼吸系统':['Respiratory system','Atmungssystem','Système respiratoire','Sistema respiratorio','Sistema respiratorio','呼吸器系','호흡기계'],
   '皮肤褶皱护理':['Skin fold care','Hautfaltenpflege','Soins des plis cutanés','Cuidado pliegues cutáneos','Cura delle pieghe cutanee','皮膚のシワケア','피부 주름 관리'],
   '均衡营养':['Balanced nutrition','Ausgewogene Ernährung','Nutrition équilibrée','Nutrición equilibrada','Nutrizione bilanciata','バランスの取れた栄養','균형 잡힌 영양'],
+  '高质量蛋白质':['High-quality protein','Hochwertiges Protein','Protéines de qualité','Proteína de calidad','Proteine di qualità','高品質なたんぱく質','고품질 단백질'],
+  '适量脂肪':['Moderate fat','Angemessener Fettanteil','Matières grasses modérées','Grasa moderada','Grassi moderati','適量の脂質','적정 지방'],
+  '关节保护营养':['Joint-support nutrients','Nährstoffe für die Gelenke','Nutriments pour les articulations','Nutrientes para las articulaciones','Nutrienti per le articolazioni','関節サポート栄養','관절 보호 영양'],
 };
 const LANGS = ['en','de','fr','es','it','ja','ko'];
 function tNeed(zhNeed, lang) {
@@ -84,10 +87,16 @@ function tFallbackAnalysis(text, breedName, age, weight, analysis, lang) {
     ja: `${bn}（${age}歳、${weight}kg）の情報に基づき、1日の推奨鮮食量は約${dg}gです。1日${mpd}回、1回約${pmg}gの給餌をお勧めします。`,
     ko: `${bn}(${age}세, ${weight}kg) 정보를 바탕으로 일일 권장 신선식 섭취량은 약 ${dg}g입니다. 하루 ${mpd}회, 1회 약 ${pmg}g 급여를 권장합니다.`,
   };
-  // Check if text is a Chinese fallback template (contains 根据 or 信息)
-  if (text && (text.includes('根据') || text.includes('信息'))) {
+  if (text && /[\u3400-\u9fff]/.test(text)) {
     return templates[lang] || text;
   }
+  return text;
+}
+
+function localizeCaution(text, lang, t) {
+  if (!text || !lang || lang === 'zh') return text;
+  if (text.includes('控制总热量') || text.includes('防止肥胖')) return t('cautionCalorieControl');
+  if (text.includes('低脂') && text.includes('肉')) return t('cautionLeanMeat');
   return text;
 }
 
@@ -107,7 +116,7 @@ function getBestScoredRecipeId(recipes, comparisons) {
   return best?.id || recipes[0]?.id || '';
 }
 
-function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack }) {
+function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack, t, lang }) {
   if (!recipe) return null;
 
   const perMealGrams = analysis?.per_meal_grams || 100;
@@ -119,7 +128,7 @@ function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack 
 
   return (
     <div className="animate-fade flex-col" style={{ flex: 1, minHeight: 0 }}>
-      <TopBar onBack={onBack} title="食谱详情" />
+      <TopBar onBack={onBack} title={t('recipeDetailTitle')} />
       <div
         style={{
           flex: 1,
@@ -150,7 +159,7 @@ function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack 
             />
           ) : (
             <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: 'var(--gray)', fontSize: 13 }}>
-              鲜食配方
+              {t('freshFoodFormula')}
             </div>
           )}
         </div>
@@ -158,38 +167,38 @@ function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack 
         <div style={{ padding: '18px 16px 4px' }}>
           <div style={{ marginBottom: 14 }}>
             <h2 style={{ color: 'var(--primary)', margin: '0 0 6px', fontSize: 24, lineHeight: 1.18, fontWeight: 900 }}>
-              {recipe.name}
+              {tData(recipe.name, lang)}
             </h2>
             {tags.length > 0 && (
               <div style={{ color: 'var(--gray)', fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>
-                {tags.join(' · ')}
+                {tags.map(tag => tTag(tag, lang)).join(' · ')}
               </div>
             )}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {hasScore && (
                 <span style={{ fontSize: 12, color: 'var(--primary)', background: 'rgba(0,230,255,0.12)', border: '1px solid rgba(0,230,255,0.28)', borderRadius: 999, padding: '5px 10px', fontWeight: 800 }}>
-                  {score}% 适配
+                  {t('matchPercent', { score })}
                 </span>
               )}
               {isRecommended && (
                 <span style={{ fontSize: 12, color: '#00FFA3', background: 'rgba(0,255,163,0.10)', border: '1px solid rgba(0,255,163,0.24)', borderRadius: 999, padding: '5px 10px', fontWeight: 800 }}>
-                  推荐
+                  {t('recommended')}
                 </span>
               )}
               <span style={{ fontSize: 12, color: '#fff', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 999, padding: '5px 10px', fontWeight: 700 }}>
-                A 鲜食基础包
+                {t('packABase')}
               </span>
             </div>
           </div>
 
           <section style={{ marginBottom: 18 }}>
-            <h3 style={{ color: '#fff', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>配方食材组成</h3>
+            <h3 style={{ color: '#fff', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>{t('recipeIngredients')}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
               {ingredients.map(([ing, pct]) => {
                 const grams = Math.round((Number(pct) / 100) * perMealGrams);
                 return (
                   <div key={ing} style={{ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.06)', padding: '10px 12px', borderRadius: 10, minWidth: 0 }}>
-                    <div style={{ color: '#fff', fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ing}</div>
+                    <div style={{ color: '#fff', fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tData(ing, lang)}</div>
                     <div style={{ color: 'var(--primary)', fontSize: 14, fontWeight: 900, marginTop: 4 }}>{pct}% ({grams}g)</div>
                   </div>
                 );
@@ -199,11 +208,11 @@ function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack 
 
           {benefits.length > 0 && (
             <section style={{ marginBottom: 18 }}>
-              <h3 style={{ color: '#fff', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>食材功效营养解析</h3>
+              <h3 style={{ color: '#fff', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>{t('ingredientBenefits')}</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {benefits.map(([name, ben]) => (
                   <div key={name} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '10px 12px' }}>
-                    <div style={{ color: 'var(--text)', fontSize: 13, fontWeight: 800, marginBottom: 4 }}>{name}</div>
+                    <div style={{ color: 'var(--text)', fontSize: 13, fontWeight: 800, marginBottom: 4 }}>{tData(name, lang)}</div>
                     <div style={{ color: 'var(--gray)', fontSize: 12, lineHeight: 1.55 }}>{ben}</div>
                   </div>
                 ))}
@@ -213,7 +222,7 @@ function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack 
 
           {comparison?.comparison_details && (
             <section style={{ marginBottom: 18 }}>
-              <h3 style={{ color: '#fff', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>AI 推荐原因</h3>
+              <h3 style={{ color: '#fff', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>{t('aiRecommendationReason')}</h3>
               <div style={{ color: 'var(--gray)', fontSize: 12, lineHeight: 1.65, background: 'rgba(0,230,255,0.06)', border: '1px solid rgba(0,230,255,0.15)', borderRadius: 12, padding: 12 }}>
                 {comparison.comparison_details}
               </div>
@@ -222,20 +231,20 @@ function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack 
 
           {analysis?.cautions?.length > 0 && (
             <section style={{ marginBottom: 18 }}>
-              <h3 style={{ color: '#FFB020', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>注意事项</h3>
+              <h3 style={{ color: '#FFB020', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>{t('cautions')}</h3>
               <div style={{ background: 'rgba(255,150,0,0.08)', borderLeft: '3px solid #FF9600', borderRadius: 10, padding: '10px 12px' }}>
                 {analysis.cautions.map((item, index) => (
-                  <div key={index} style={{ color: 'var(--gray)', fontSize: 12, lineHeight: 1.55 }}>· {item}</div>
+                  <div key={index} style={{ color: 'var(--gray)', fontSize: 12, lineHeight: 1.55 }}>· {localizeCaution(item, lang, t)}</div>
                 ))}
               </div>
             </section>
           )}
 
           <section style={{ marginBottom: 12 }}>
-            <h3 style={{ color: '#fff', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>搭配建议</h3>
+            <h3 style={{ color: '#fff', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>{t('pairingAdvice')}</h3>
             <div style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.65, padding: 12, background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(0,230,255,0.22)', borderRadius: 12 }}>
-              <div style={{ marginBottom: 6 }}><strong style={{ color: 'var(--secondary)' }}>推荐 B 包：</strong>{recipe.b_pack || '无'}</div>
-              <div><strong style={{ color: '#00FFA3' }}>推荐 C 包：</strong>{recipe.c_pack || '无'}</div>
+              <div style={{ marginBottom: 6 }}><strong style={{ color: 'var(--secondary)' }}>{t('recommendedBPack')}</strong>{recipe.b_pack ? tData(recipe.b_pack, lang) : t('noneValue')}</div>
+              <div><strong style={{ color: '#00FFA3' }}>{t('recommendedCPack')}</strong>{recipe.c_pack ? tData(recipe.c_pack, lang) : t('noneValue')}</div>
             </div>
           </section>
         </div>
@@ -254,7 +263,7 @@ function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack 
             }}
             onClick={onBack}
           >
-            返回推荐列表
+            {t('backToRecommendations')}
           </button>
         </div>
       </div>
@@ -263,7 +272,7 @@ function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack 
   );
 }
 
-function ComparisonSheet({ data, hoveredCard, setHoveredCard, onClose }) {
+function ComparisonSheet({ data, hoveredCard, setHoveredCard, onClose, t, lang }) {
   if (!data) return null;
 
   const scoreCard = (kind, title, name, score, color, onClick) => (
@@ -285,9 +294,9 @@ function ComparisonSheet({ data, hoveredCard, setHoveredCard, onClose }) {
       }}
     >
       <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 6 }}>{title}</div>
-      <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+      <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tData(name, lang)}</div>
       <div style={{ fontSize: 34, lineHeight: 1, fontWeight: 900, color }}>{score}%</div>
-      <div style={{ fontSize: 11, color, marginTop: 6 }}>适配得分</div>
+      <div style={{ fontSize: 11, color, marginTop: 6 }}>{t('matchScore')}</div>
     </button>
   );
 
@@ -329,29 +338,29 @@ function ComparisonSheet({ data, hoveredCard, setHoveredCard, onClose }) {
           <div style={{ width: 42, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.22)', margin: '0 auto 18px' }} />
           <div style={{ textAlign: 'center', marginBottom: 18 }}>
             <div style={{ fontSize: 34, marginBottom: 8 }}>📊</div>
-            <h3 style={{ color: 'var(--primary)', margin: 0, fontSize: 22, lineHeight: 1.2, fontWeight: 900 }}>AI 营养配方对比报告</h3>
+            <h3 style={{ color: 'var(--primary)', margin: 0, fontSize: 22, lineHeight: 1.2, fontWeight: 900 }}>{t('comparisonTitle')}</h3>
           </div>
 
           <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-            {scoreCard('current', '当前推荐（点击保持）', data.currentName, data.currentScore, '#4CAF50', onClose)}
-            {scoreCard('proposed', '计划更换（点击更换）', data.proposedName, data.proposedScore, 'var(--primary)', data.onConfirm)}
+            {scoreCard('current', t('currentRecommendation'), data.currentName, data.currentScore, '#4CAF50', onClose)}
+            {scoreCard('proposed', t('plannedReplacement'), data.proposedName, data.proposedScore, 'var(--primary)', data.onConfirm)}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 12 }}>
             <div style={{ padding: 12, background: 'rgba(255,255,255,0.035)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 800, marginBottom: 6 }}>营养特性对比</div>
+              <div style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 800, marginBottom: 6 }}>{t('nutritionComparison')}</div>
               <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{data.details}</div>
             </div>
             <div style={{ padding: 12, background: 'rgba(255,255,255,0.035)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontSize: 12, color: '#4CAF50', fontWeight: 800, marginBottom: 6 }}>评分差异解释</div>
+              <div style={{ fontSize: 12, color: '#4CAF50', fontWeight: 800, marginBottom: 6 }}>{t('scoreExplanation')}</div>
               <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{data.reason}</div>
             </div>
           </div>
         </div>
 
         <div style={{ flexShrink: 0, display: 'flex', gap: 10, padding: '12px 16px calc(12px + env(safe-area-inset-bottom))', borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(5,10,18,0.96)' }}>
-          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>保持推荐</button>
-          <button className="btn" style={{ flex: 1, background: 'var(--primary)', color: '#000', border: '1px solid var(--primary)', fontWeight: 900 }} onClick={data.onConfirm}>确认更换</button>
+          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>{t('keepRecommendation')}</button>
+          <button className="btn" style={{ flex: 1, background: 'var(--primary)', color: '#000', border: '1px solid var(--primary)', fontWeight: 900 }} onClick={data.onConfirm}>{t('confirmReplacement')}</button>
         </div>
       </div>
     </div>
@@ -362,8 +371,8 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
   const t = useTranslation(lang);
   const { analysis, breedName, age, weight } = profile;
 
-  const lifeStageLabel = { '幼犬': '🐾 Puppy', '成年犬': '🐕 Adult', '老年犬': '🦴 Senior' }[analysis?.life_stage] || '🐕 Adult';
-  const activityLabel = { low: lang === 'zh' ? '低活跃' : 'Low', medium: lang === 'zh' ? '中等活跃' : 'Medium', high: lang === 'zh' ? '高活跃' : 'High', very_high: lang === 'zh' ? '极高活跃' : 'Very High' }[analysis?.activity_level] || 'Medium';
+  const lifeStageLabel = { '幼犬': `🐾 ${t('puppyStage')}`, '成年犬': `🐕 ${t('adultStage')}`, '老年犬': `🦴 ${t('seniorStage')}` }[analysis?.life_stage] || `🐕 ${t('adultStage')}`;
+  const activityLabel = { low: t('activityLow'), medium: t('activityMedium'), high: t('activityHigh'), very_high: t('activityWorking') }[analysis?.activity_level] || t('activityMedium');
 
   // Translate breed_intro: if it looks like Chinese fallback, use tBreedDesc
   const breedIntro = (() => {
@@ -566,14 +575,14 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     const nextC = selectedCList;
 
     if (!nextAId) {
-      alert('请选择一个A鲜食基础包！');
+      alert(t('selectAFirst'));
       return;
     }
 
     const currentA = demoRecipes.find(r => r.id === selectedAId)?.name || '';
     const proposedA = demoRecipes.find(r => r.id === nextAId)?.name || '';
     if (!profile?.id) {
-      alert('请先保存宠物档案后再进行配方对比。');
+      alert(t('savePetBeforeCompare'));
       return;
     }
 
@@ -633,7 +642,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
       }
     } catch (e) {
       setIsComparing(false);
-      alert(e.message || '配方对比失败，请稍后重试。');
+      alert(e.message || t('compareFailed'));
     }
   };
 
@@ -676,7 +685,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     const matchedAllergen = checkRecipeAllergen(proposedRecipe);
     if (matchedAllergen) {
       setWarningData({
-        text: `注意！您选择的“${proposedRecipe.name}”含有“${matchedAllergen}”，与您的爱犬的过敏原高度匹配，建议不要选择！是否确定要更换？`,
+        text: t('allergenRecipeWarning', { recipe: tData(proposedRecipe.name, lang), allergen: tData(matchedAllergen, lang) }),
         pendingAction: () => continueSelectA(id)
       });
       return;
@@ -722,20 +731,20 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{r.name}</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{tData(r.name, lang)}</span>
             {cachedScore !== undefined && cachedScore !== null && (
-              <span style={{ fontSize: 11, color: matchedAllergen ? '#f87171' : 'var(--primary)', fontWeight: 800 }}>({cachedScore}% 适配)</span>
+              <span style={{ fontSize: 11, color: matchedAllergen ? '#f87171' : 'var(--primary)', fontWeight: 800 }}>({t('matchPercent', { score: cachedScore })})</span>
             )}
             {matchedAllergen ? (
-              <span style={{ fontSize: 9, background: 'rgba(239,68,68,0.15)', color: '#f87171', padding: '1px 5px', borderRadius: 4, border: '1px solid rgba(239,68,68,0.3)', fontWeight: 700 }}>⚠️ 含有过敏原: {matchedAllergen}</span>
+              <span style={{ fontSize: 9, background: 'rgba(239,68,68,0.15)', color: '#f87171', padding: '1px 5px', borderRadius: 4, border: '1px solid rgba(239,68,68,0.3)', fontWeight: 700 }}>{t('containsAllergen', { name: tData(matchedAllergen, lang) })}</span>
             ) : (
               defaultRecommendedA.map(x => x.id).includes(r.id) && (
-                <span style={{ fontSize: 9, background: 'rgba(0,230,255,0.15)', color: 'var(--primary)', padding: '1px 5px', borderRadius: 4 }}>推荐</span>
+                <span style={{ fontSize: 9, background: 'rgba(0,230,255,0.15)', color: 'var(--primary)', padding: '1px 5px', borderRadius: 4 }}>{t('recommended')}</span>
               )
             )}
           </div>
           <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
-            {Object.keys(r.ingredients || {}).slice(0, 4).join('/')}...
+            {Object.keys(r.ingredients || {}).slice(0, 4).map(name => tData(name, lang)).join('/')}...
           </div>
         </div>
         <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 11, height: 'fit-content' }} onClick={(e) => { e.stopPropagation(); setShowDetailRecipe(r); }}>
@@ -757,6 +766,8 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
         comparison={comparisonsCache[showDetailRecipe.name]?.a_comparison}
         isRecommended={Boolean(defaultRecommendedA.some(item => item.id === showDetailRecipe.id))}
         onBack={() => setShowDetailRecipe(null)}
+        t={t}
+        lang={lang}
       />
     );
   }
@@ -811,7 +822,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
               <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(255,150,0,0.08)', borderRadius: 8, borderLeft: '3px solid #FF9600' }}>
                 <div style={{ fontSize: 11, color: '#FF9600', marginBottom: 4 }}>{t('cautions')}</div>
                 {analysis.cautions.map((c, i) => (
-                  <div key={i} style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.5 }}>· {c}</div>
+                  <div key={i} style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.5 }}>· {localizeCaution(c, lang, t)}</div>
                 ))}
               </div>
             )}
@@ -821,7 +832,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20, position: 'relative' }}>
             {isComparing && (
               <div style={{ position: 'absolute', top: 20, right: 0, fontSize: 12, color: 'var(--primary)' }}>
-                🔄 AI 营养比对中...
+                {t('aiComparing')}
               </div>
             )}
             <h3 style={{ marginBottom: 16, fontSize: 15, fontWeight: 700, color: '#fff' }}>
@@ -832,7 +843,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--primary)' }}>{t('packA')}</span>
-                <span style={{ fontSize: 11, color: 'var(--gray)' }}>勾选加入配方计划，点击查看详情</span>
+                <span style={{ fontSize: 11, color: 'var(--gray)' }}>{t('addRecipeHint')}</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {recommendedARecipes.map(item => renderARecipeCard(item.recipe))}
@@ -844,7 +855,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
                       style={{ width: '100%', justifyContent: 'center', borderStyle: 'dashed', color: '#f87171' }}
                       onClick={() => setShowLowScoreRecipes(value => !value)}
                     >
-                      {showLowScoreRecipes ? '收起低分食谱' : `展开低分食谱（${lowScoreARecipes.length}个低于50%）`}
+                      {showLowScoreRecipes ? t('collapseLowScore') : t('expandLowScore', { n: lowScoreARecipes.length })}
                     </button>
                     {showLowScoreRecipes && lowScoreARecipes.map(item => renderARecipeCard(item.recipe))}
                   </div>
@@ -858,11 +869,11 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
               <div className="card glass" style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', justifyContent: 'space-between', border: '1px solid var(--secondary)' }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {selectedBName}
-                    <span style={{ fontSize: 9, background: 'rgba(255,0,163,0.15)', color: 'var(--secondary)', padding: '1px 5px', borderRadius: 4 }}>当前选择</span>
+                    {tData(selectedBName, lang)}
+                    <span style={{ fontSize: 9, background: 'rgba(255,0,163,0.15)', color: 'var(--secondary)', padding: '1px 5px', borderRadius: 4 }}>{t('currentSelection')}</span>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 6, lineHeight: 1.4, maxWidth: '80%' }}>
-                    {bPacks.find(b => b.name === selectedBName)?.desc}
+                    {tData(bPacks.find(b => b.name === selectedBName)?.desc, lang)}
                   </div>
                 </div>
                 <button className="btn" style={{ padding: '6px 12px', fontSize: 12, background: 'var(--secondary)', color: '#fff' }} onClick={() => setShowBSelector(true)}>
@@ -875,10 +886,10 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
             <div style={{ marginBottom: 28 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: '#00FFA3' }}>{t('packC')}</span>
-                <span style={{ fontSize: 11, color: 'var(--gray)' }}>可选（至多勾选1种以提供靶向支持）</span>
+                <span style={{ fontSize: 11, color: 'var(--gray)' }}>{t('optionalTargetSupport')}</span>
               </div>
               <div style={{ fontSize: 11, color: 'var(--gray)', lineHeight: 1.5, marginBottom: 10 }}>
-                根据自己狗的实际需要选择；含宠物过敏食材的功能包不可选。
+                {t('cPackGuidance')}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {cPacks.map(packDetail => {
@@ -907,10 +918,10 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
                       </div>
 
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: disabled ? '#ff7a7a' : '#fff' }}>{name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>{packDetail?.desc}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: disabled ? '#ff7a7a' : '#fff' }}>{tData(name, lang)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>{tData(packDetail?.desc, lang)}</div>
                         {disabled && (
-                          <div style={{ fontSize: 10, color: '#ff7a7a', marginTop: 4 }}>有过敏风险，请遵循医嘱后选择</div>
+                          <div style={{ fontSize: 10, color: '#ff7a7a', marginTop: 4 }}>{t('allergyRiskPack')}</div>
                         )}
                       </div>
                     </div>
@@ -930,7 +941,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
               };
               onSelectRecipe(finalRecipe);
             }}>
-              🚀 {t('makeNow')}（{activeRecipeObj?.name} 组合）
+              {t('makeCombination', { name: tData(activeRecipeObj?.name, lang) })}
             </button>
           </div>
         </div>
@@ -940,9 +951,9 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
       {showBSelector && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div className="card glass animate-fade" style={{ width: '100%', maxWidth: 440, maxHeight: '85vh', overflowY: 'auto', padding: 24, border: '1px solid var(--border)' }}>
-            <h3 style={{ color: 'var(--secondary)', margin: '0 0 16px 0', fontSize: 16, fontWeight: 700 }}>更换全价营养包 B</h3>
+            <h3 style={{ color: 'var(--secondary)', margin: '0 0 16px 0', fontSize: 16, fontWeight: 700 }}>{t('changeBPackTitle')}</h3>
             <p style={{ color: 'var(--gray)', fontSize: 12, lineHeight: 1.5, margin: '0 0 16px 0' }}>
-              幼犬和成犬的全价营养要求不同，建议根据宠物实际生长阶段和身体情况选择。
+              {t('changeBPackHelp')}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
               {bPacks.map(b => {
@@ -964,23 +975,23 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? 'var(--secondary)' : '#fff' }}>
-                        {b.name}
+                        {tData(b.name, lang)}
                       </span>
                       {isSelected && (
-                        <span style={{ fontSize: 9, background: 'rgba(255,0,163,0.15)', color: 'var(--secondary)', padding: '2px 6px', borderRadius: 4 }}>当前选择</span>
+                        <span style={{ fontSize: 9, background: 'rgba(255,0,163,0.15)', color: 'var(--secondary)', padding: '2px 6px', borderRadius: 4 }}>{t('currentSelection')}</span>
                       )}
                       {!isAllowed && (
-                        <span style={{ fontSize: 9, background: 'rgba(255,255,255,0.06)', color: 'var(--gray)', padding: '2px 6px', borderRadius: 4 }}>不适用</span>
+                        <span style={{ fontSize: 9, background: 'rgba(255,255,255,0.06)', color: 'var(--gray)', padding: '2px 6px', borderRadius: 4 }}>{t('notApplicable')}</span>
                       )}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 6, lineHeight: 1.4 }}>
-                      {b.desc}
+                      {tData(b.desc, lang)}
                     </div>
                   </div>
                 );
               })}
             </div>
-            <button className="btn btn-secondary" style={{ width: '100%' }} onClick={() => setShowBSelector(false)}>关闭</button>
+            <button className="btn btn-secondary" style={{ width: '100%' }} onClick={() => setShowBSelector(false)}>{t('closeBtn')}</button>
           </div>
         </div>
       )}
@@ -990,7 +1001,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <div className="card glass animate-fade" style={{ width: '100%', maxWidth: 400, padding: 24, border: '1px solid #FF9600', textAlign: 'center' }}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
-            <h3 style={{ color: '#FF9600', margin: '0 0 12px 0', fontSize: 16, fontWeight: 700 }}>配方调整安全提示</h3>
+            <h3 style={{ color: '#FF9600', margin: '0 0 12px 0', fontSize: 16, fontWeight: 700 }}>{t('recipeSafetyWarning')}</h3>
             <p style={{ color: 'var(--text)', fontSize: 12, lineHeight: 1.6, margin: '0 0 24px 0', textAlign: 'left' }}>
               {warningData.text}
             </p>
@@ -999,10 +1010,10 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
                 warningData.pendingAction();
                 setWarningData(null);
               }}>
-                确认调整
+                {t('confirmAdjustment')}
               </button>
               <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setWarningData(null)}>
-                取消
+                {t('cancelBtn')}
               </button>
             </div>
           </div>
@@ -1014,6 +1025,8 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
         hoveredCard={hoveredCard}
         setHoveredCard={setHoveredCard}
         onClose={() => setAComparisonData(null)}
+        t={t}
+        lang={lang}
       />
     </div>
   );

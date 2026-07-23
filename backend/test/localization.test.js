@@ -6,6 +6,9 @@ const {
   localizeFinding,
   localizeSemanticResult,
   localizeSemanticResultWithAi,
+  aiNutritionPresentationIsValid,
+  buildAiNutritionFallback,
+  cachedAiNutritionAnalysis,
 } = require('../src/services/localization');
 const { ingredientsDb } = require('../src/data/ingredients_db');
 const { _test: freshCheck } = require('../src/services/fresh_check');
@@ -222,4 +225,53 @@ test('unknown Chinese ingredient does not report a mixed-language template as tr
   }, 'de');
   assert.equal(output.presentation.translation_status, 'fallback');
   assert.equal(output.presentation.reason, '未知食材不可使用。');
+});
+
+test('legacy AI nutrition fallback renders all product locales from stable codes and facts', () => {
+  for (const locale of SUPPORTED_LOCALES) {
+    const output = buildAiNutritionFallback({
+      requestedLocale: locale,
+      age: 9,
+      weight: 20,
+      averageWeight: 33,
+      intake: { daily_grams: 400, meals_per_day: 2, per_meal_grams: 200 },
+    });
+    assert.equal(output.locale, locale);
+    assert.deepEqual(output.key_nutrition_need_codes, ['AI_NEED_SENIOR_DIGESTION', 'AI_NEED_SENIOR_JOINT', 'AI_NEED_SENIOR_HEART']);
+    assert.match(output.nutrition_analysis, /400/);
+    assert.match(output.nutrition_analysis, /200/);
+    assert.equal(output.caution_items[0].code, 'AI_UNDERWEIGHT_CAUTION');
+    if (!['zh', 'ja'].includes(locale)) {
+      const { life_stage, ...visible } = output;
+      assert.doesNotMatch(JSON.stringify(visible), /[\u3400-\u9fff]/u);
+    }
+  }
+});
+
+test('legacy AI nutrition rejects a Chinese presentation for an English request', () => {
+  assert.equal(aiNutritionPresentationIsValid({
+    breed_intro: '中文介绍',
+    key_nutrition_needs: ['高质量蛋白质'],
+    nutrition_analysis: '中文建议',
+    cautions: ['控制总热量'],
+  }, 'en'), false);
+  assert.equal(aiNutritionPresentationIsValid({
+    breed_intro: 'Labrador profile',
+    key_nutrition_needs: ['High-quality protein'],
+    nutrition_analysis: 'Adjust using weight and BCS.',
+    cautions: ['Control total calories.'],
+  }, 'en'), true);
+});
+
+test('legacy AI nutrition cache is isolated by locale while old APK cache stays compatible', () => {
+  const cache = {
+    analysis: { nutrition_analysis: '中文旧缓存' },
+    analysis_locale: 'zh',
+    analyses_by_locale: {
+      en: { nutrition_analysis: 'English cached analysis' },
+    },
+  };
+  assert.equal(cachedAiNutritionAnalysis(cache, 'en').nutrition_analysis, 'English cached analysis');
+  assert.equal(cachedAiNutritionAnalysis(cache, 'zh').nutrition_analysis, '中文旧缓存');
+  assert.equal(cachedAiNutritionAnalysis({ analysis: cache.analysis }, 'en'), null);
 });
