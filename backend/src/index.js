@@ -56,10 +56,17 @@ app.use(express.json({
   },
 }));
 
-// 全局限流：15分钟最多 500 次
+const isRealtimeStatusPath = (req) => {
+  if (req.method === 'GET' && /^\/api\/v1\/(devices|pets|recipes|operations\/cooking)(\/|$)/.test(req.path)) return true;
+  if (req.method === 'POST' && /^\/api\/v1\/devices\/[^/]+\/dp-sync(\/|$)/.test(req.path)) return true;
+  return false;
+};
+
+// 全局限流：15分钟最多 500 次。设备运行页的实时读取/DP 缓存同步不占用通用配额。
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 500,
+  skip: isRealtimeStatusPath,
   message: { success: false, error: 'Too many requests from this IP, please try again after 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
