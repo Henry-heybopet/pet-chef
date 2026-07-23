@@ -527,11 +527,11 @@ function AppInner() {
       setAuthToken(savedToken);
       setAuthUser({
         id: localStorage.getItem('userId') || '',
-        display_name: localStorage.getItem('username') || '当前用户',
+        display_name: localStorage.getItem('username') || t('currentUser'),
       });
       api.heyboMe(savedToken)
         .then(result => {
-          if (!result?.success) throw new Error(result?.error || '登录已过期');
+          if (!result?.success) throw new Error(result?.error || t('sessionExpired'));
           saveAuthSession(result);
         })
         .catch(() => clearAuthSession());
@@ -604,7 +604,7 @@ function AppInner() {
       return;
     }
     setPendingAuthAction(() => next);
-    setAuthPromptMessage('请先登录以激活 Heybo AI 功能');
+    setAuthPromptMessage(t('loginRequired'));
     setAuthPrompt(value => value + 1);
     setScreen('home');
   };
@@ -755,7 +755,7 @@ function AppInner() {
     if (avatar) {
       if (String(avatar).startsWith('data:')) {
         const uploaded = await api.uploadAvatar(avatar, authToken);
-        if (!uploaded?.success) throw new Error(uploaded?.error || '上传宠物头像失败');
+        if (!uploaded?.success) throw new Error(lang === 'zh' && uploaded?.error ? uploaded.error : t('uploadAvatarFailed'));
         payload.avatar_url = uploaded.avatar_url;
       } else {
         payload.avatar_url = avatar;
@@ -767,17 +767,17 @@ function AppInner() {
     if (!result?.success && editingPet?.id) {
       result = await api.createPet(payload, authToken);
     }
-    if (!result?.success) throw new Error(result?.error || '保存宠物档案失败');
+    if (!result?.success) throw new Error(lang === 'zh' && result?.error ? result.error : t('saveProfileFailed'));
     return toUiPet(result.pet);
   };
 
   const analyzePetProfile = async (pet) => {
-    if (!pet?.id) throw new Error('请先保存宠物档案后再进行 AI 分析');
+    if (!pet?.id) throw new Error(t('saveBeforeAi'));
     let loadingTimer = setTimeout(() => setIsAiLoading(true), 300);
     try {
       const byPetId = await api.aiAnalysisByPet(pet.id, lang, authToken);
       if (byPetId?.success) return byPetId;
-      throw new Error(byPetId?.error || 'AI 分析失败');
+      throw new Error(lang === 'zh' && byPetId?.error ? byPetId.error : t('aiAnalysisFailed'));
     } finally {
       clearTimeout(loadingTimer);
       setIsAiLoading(false);
@@ -819,7 +819,7 @@ function AppInner() {
       }
     } catch (e) {
       console.error('AI analysis request failed for pet:', e);
-      window.alert(e?.message || 'AI 分析失败');
+      window.alert(e?.message || t('aiAnalysisFailed'));
     }
     setScreen('pet_management');
   };
@@ -830,7 +830,7 @@ function AppInner() {
       savedPet = await savePetProfile(p);
     } catch (error) {
       console.error('Save pet profile failed:', error);
-      window.alert(error?.message || '保存宠物档案失败，请稍后重试');
+      window.alert(lang === 'zh' && error?.message ? error.message : t('saveProfileRetry'));
       return;
     }
     if (editingPet && editingPet.id) {
@@ -875,7 +875,7 @@ function AppInner() {
       }
     } catch (e) {
       console.error('AI shortcut failed:', e);
-      alert(e.message || 'AI 分析失败，请先确认宠物档案已保存。');
+      alert(lang === 'zh' && e?.message ? e.message : t('aiAnalysisProfileFailed'));
     }
     setScreen('pet_management');
   };
@@ -886,7 +886,7 @@ function AppInner() {
       savedPet = await savePetProfile(p);
     } catch (error) {
       console.error('Save pet profile failed:', error);
-      window.alert(error?.message || '保存宠物档案失败，请稍后重试');
+      window.alert(lang === 'zh' && error?.message ? error.message : t('saveProfileRetry'));
       return;
     }
     if (editingPet && editingPet.id) {
@@ -910,7 +910,7 @@ function AppInner() {
       }
     } catch (e) {
       console.error('AI analysis request failed on setup completion:', e);
-      window.alert(e?.message || 'AI 分析失败');
+      window.alert(lang === 'zh' && e?.message ? e.message : t('aiAnalysisFailed'));
     }
     setScreen('pet_management');
   };

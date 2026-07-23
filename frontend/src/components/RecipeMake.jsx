@@ -33,9 +33,9 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
     api.cookParams({ recipeId: recipe.id, breedId: profile.breedId, weight: profile.weight, age: profile.age, totalGrams: displayGrams }).then(d => {
       if (!alive) return;
       if (d.success) setCookData(d);
-      else setError(d.error || '烹饪参数计算失败');
+      else setError(lang === 'zh' && d.error ? d.error : t('cookingParamsFailed'));
     }).catch(err => {
-      if (alive) setError(err.message || '烹饪参数计算失败');
+      if (alive) setError(lang === 'zh' && err?.message ? err.message : t('cookingParamsFailed'));
     }).finally(() => {
       if (!alive) return;
       setLoading(false);
@@ -152,7 +152,7 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
         <button className="btn-secondary" style={{ flex: 1 }} onClick={onBack}>{t('back')}</button>
         <button className="btn-primary" disabled={paramsLoading} style={{ flex: 2, boxShadow: '0 0 24px rgba(0,230,255,0.35)', opacity: paramsLoading ? 0.6 : 1 }}
           onClick={() => onStartCooking({ recipe, profile, intake, cookParams, displayGrams, displayIngredients, packCount, packGrams: 200 })}>
-          {paramsLoading ? '参数计算中...' : t('startCook')}
+          {paramsLoading ? t('calculatingParams') : t('startCook')}
         </button>
       </div>
     </div>
