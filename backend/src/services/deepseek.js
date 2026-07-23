@@ -1,5 +1,15 @@
 const axios = require('axios');
 
+function protectPuppyTargetWeight(data, ageMonths, weight) {
+  const currentWeight = Number(weight);
+  const suggestedWeight = Number(data.standard_weight);
+  const hasSuggestedWeight = data.standard_weight !== null && data.standard_weight !== '';
+  if (Number(ageMonths) > 0 && Number(ageMonths) < 12 && hasSuggestedWeight && Number.isFinite(currentWeight) && Number.isFinite(suggestedWeight) && suggestedWeight < currentWeight) {
+    return { ...data, standard_weight: null, target_weight_requires_review: true, target_weight_conflict: '幼犬参考体重低于当前体重，不能据此设置减重目标；请结合BCS与生长曲线复核。' };
+  }
+  return data;
+}
+
 async function evaluatePetBCS({ breedName, ageMonths, weight }) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
@@ -12,18 +22,19 @@ async function evaluatePetBCS({ breedName, ageMonths, weight }) {
   // Create prompt
   const systemPrompt = `你是一个非常资深且专业的宠物执业兽医师与宠物营养学专家。请基于犬只（或猫咪）的品种、年龄（月龄或天数）以及当前的实际体重，推算出该宠物在此成长阶段对应的“标准体重范围下限 (standard_weight_range_min)”与“标准体重范围上限 (standard_weight_range_max)”。如果是未成年的幼犬，请根据其品种的成年平均重和该月龄的幼犬生长发育曲线进行科学测算；如果是成犬，则给出该品种的理想均重范围。
 
-请计算这两个上下限的平均值作为“标准参考体重 (standard_weight)”，并将此平均值作为首选推荐目标体重。
+请计算这两个上下限的平均值作为“标准参考体重 (standard_weight)”。幼犬仍处于生长阶段，标准参考体重不能直接等同于减重目标；如果估算值低于幼犬当前实际体重，standard_weight 必须返回 null，并将 target_weight_requires_review 返回 true，交由兽医结合 BCS 和生长曲线复核。
 
 然后，计算体况评分（Body Condition Score, BCS 1-9分制），并给出一个适合该评分的状态评估词（如：极度消瘦、偏瘦、稍瘦、偏苗条、理想体态、偏丰满、超重、肥胖、极度肥胖）和详细、温暖但又科学的诊断分析以及喂养改进建议。
 
-必须以 JSON 格式输出，且不要包含任何 markdown 块或其它无关字符，格式如下：
+必须以 JSON 格式输出，且不要包含任何 markdown 块或其它无关字符。返回以下字段，体重字段单位均为 kg 且使用数字类型；无法可靠估算时使用 null，不要套用示例数字：
 {
-  "standard_weight_range_min": 2.5,
-  "standard_weight_range_max": 4.0,
-  "standard_weight": 3.25,
-  "bcs_score": 5,
-  "bcs_label": "理想体态",
-  "bcs_description": "当前体况非常健康！对于55天的史宾格幼犬，其标准体重应在2.5-4.0公斤左右，现在的4.0公斤处于合理范围的上限。请继续保持规律的幼犬高消化率蛋白质喂食。"
+  "standard_weight_range_min": null,
+  "standard_weight_range_max": null,
+  "standard_weight": null,
+  "target_weight_requires_review": false,
+  "bcs_score": null,
+  "bcs_label": "",
+  "bcs_description": ""
 }`;
 
   const userPrompt = `宠物信息：
@@ -60,8 +71,7 @@ async function evaluatePetBCS({ breedName, ageMonths, weight }) {
     if (cleanContent.endsWith('```')) {
       cleanContent = cleanContent.slice(0, -3);
     }
-    const data = JSON.parse(cleanContent.trim());
-    return data;
+    return protectPuppyTargetWeight(JSON.parse(cleanContent.trim()), ageMonths, weight);
   } catch (error) {
     console.error('DeepSeek BCS evaluation error:', error.message);
     throw new Error(error.message);
@@ -248,4 +258,4 @@ ${retry ? '这是第一次未返回有效营养值后的唯一一次复核。请
   );
 }
 
-module.exports = { evaluatePetBCS, analyzeFreshMatch, classifyFreshMatchIngredients, recognizeFreshCheckRecipe, analyzeFreshCheck, lookupFreshCheckIngredientFacts };
+module.exports = { evaluatePetBCS, analyzeFreshMatch, classifyFreshMatchIngredients, recognizeFreshCheckRecipe, analyzeFreshCheck, lookupFreshCheckIngredientFacts, _test: { protectPuppyTargetWeight } };
