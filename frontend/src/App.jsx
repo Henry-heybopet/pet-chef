@@ -348,7 +348,7 @@ function AiWaitingModal() {
         <div className="ai-waiting-visual" aria-hidden="true">
           <img src="/heybo-ai-thinking.png" alt="" />
         </div>
-        <div className="ai-waiting-powered">Power by Heybo AI</div>
+        <div className="ai-waiting-powered">Powered by HeyboPet Agent</div>
       </div>
     </div>
   );
