@@ -9,6 +9,10 @@ const BLE_SCAN_MS = 60000;
 const COOKING_RUNTIME_KEY = 'petchef_cooking_runtime';
 const stirTimers = new Map();
 
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function isActiveCookingDps(dps) {
   return dps?.[107] === 'start' || dps?.[107] === 'pause' || dps?.[5] === 'cooking' || dps?.[5] === 'pause';
 }
@@ -1030,6 +1034,8 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     const speed = String(cooking.speed ?? 1);
     const preheatSeconds = preheatMinutes * 60;
     const runtimeDps = { 1: true, 3: 'diy', 5: 'cooking', 7: cookTime, 9: temperature, 102: power, 107: 'start', 108: '0' };
+    await HeyboTuya.resetCooking({ devId: selectedDevice.devId });
+    await delay(600);
     await HeyboTuya.publishDps({
       devId: selectedDevice.devId,
       dps: {
@@ -1038,6 +1044,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         7: cookTime,
         9: temperature,
         102: power,
+        108: '0',
         107: 'start',
       },
     });
