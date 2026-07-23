@@ -28,11 +28,11 @@ export function FreshCheckScreen({ profiles, authToken, onBack, onAddPet, onResu
     setBusy(true);
     try {
       const result = await api.freshCheckRecognize({ text, locale: lang }, authToken);
-      if (!result?.success) throw new Error(result?.error || t('freshCheckRecognitionFailed'));
+      if (!result?.success) throw new Error(lang === 'zh' && result?.error ? result.error : t('freshCheckRecognitionFailed'));
       if (result.ingredients?.length) setIngredients(result.ingredients.map(item => ({ name: item.name, grams: item.grams })));
-      else window.alert(result.warning || t('freshCheckNoIngredientsRecognized'));
-      if (result.warning) window.alert(result.warning);
-    } catch (error) { window.alert(error.message || t('freshCheckRecognitionFailed')); } finally { setBusy(false); }
+      else window.alert(lang === 'zh' && result.warning ? result.warning : t('freshCheckNoIngredientsRecognized'));
+      if (result.warning && lang === 'zh') window.alert(result.warning);
+    } catch (error) { window.alert(lang === 'zh' && error?.message ? error.message : t('freshCheckRecognitionFailed')); } finally { setBusy(false); }
   };
 
   const validate = async () => {
@@ -42,9 +42,9 @@ export function FreshCheckScreen({ profiles, authToken, onBack, onAddPet, onResu
     setBusy(true);
     try {
       const result = await api.freshCheckAnalyze({ pet_id: petId, ingredients: valid, meal_intent: 'long_term', locale: lang }, authToken);
-      if (!result?.success) throw new Error(result?.error || t('freshCheckAnalyzeFailed'));
+      if (!result?.success) throw new Error(lang === 'zh' && result?.error ? result.error : t('freshCheckAnalyzeFailed'));
       onResult(result, { petId, text, ingredients });
-    } catch (error) { window.alert(error.message || t('freshCheckAnalyzeFailed')); } finally { setBusy(false); }
+    } catch (error) { window.alert(lang === 'zh' && error?.message ? error.message : t('freshCheckAnalyzeFailed')); } finally { setBusy(false); }
   };
 
   return <div className="fresh-check-page animate-fade">
@@ -93,6 +93,8 @@ export function FreshCheckResultScreen({ result, authToken, onResultUpdate, onAd
     return () => { active = false; };
   }, [authToken, lang, onResultUpdate, result?.analysis_id, result?.locale]);
   if (!result) return null;
+  if (result.locale && result.locale !== lang) return <div className="fresh-check-page fresh-result-page animate-fade"><div className="fresh-empty"><p>{t('localizingContent')}</p></div></div>;
+  if (lang !== 'zh' && result.translation_status === 'fallback') return <div className="fresh-check-page fresh-result-page animate-fade"><div className="fresh-empty"><p>{t('translationUnavailable')}</p><button type="button" onClick={onBack}>{t('backHome')}</button></div></div>;
   const danger = (result.findings || []).filter(item => (item.risk_level || item.level) === 'danger');
   const adjustments = (result.findings || []).filter(item => ['warning', 'notice'].includes(item.risk_level || item.level));
   const need = result.daily_need || {};

@@ -286,64 +286,6 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
   );
 }
 
-// ——— Native Tuya SDK test panel ———
-function TuyaSdkPanel() {
-  const [status, setStatus] = useState(null);
-  const [message, setMessage] = useState('检测中...');
-  const [loading, setLoading] = useState(false);
-
-  const refreshStatus = async () => {
-    try {
-      const nextStatus = await HeyboTuya.status();
-      setStatus(nextStatus);
-      if (!nextStatus.nativeAvailable) {
-        setMessage('Web 预览模式，Tuya SDK 仅在手机 App 壳内可用');
-      } else if (!nextStatus.configured) {
-        setMessage('已接入原生 SDK，等待填写本地 AppSecret');
-      } else if (nextStatus.initialized) {
-        setMessage('Tuya SDK 已初始化');
-      } else {
-        setMessage('已配置密钥，可以初始化 SDK');
-      }
-    } catch (error) {
-      setMessage(error?.message || 'Tuya SDK 状态检测失败');
-    }
-  };
-
-  useEffect(() => {
-    refreshStatus();
-  }, []);
-
-  const handleInit = async () => {
-    setLoading(true);
-    try {
-      await HeyboTuya.init();
-      await refreshStatus();
-    } catch (error) {
-      setMessage(error?.message || 'Tuya SDK 初始化失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="tuya-sdk-panel">
-      <div>
-        <div className="tuya-sdk-title">Tuya SDK</div>
-        <div className="tuya-sdk-status">{message}</div>
-        {status?.appKey && <div className="tuya-sdk-key">AppKey: {status.appKey}</div>}
-      </div>
-      <button
-        className="tuya-sdk-button"
-        onClick={handleInit}
-        disabled={loading || !status?.nativeAvailable || status?.initialized}
-      >
-        {status?.initialized ? '已启动' : loading ? '启动中' : '初始化'}
-      </button>
-    </div>
-  );
-}
-
 function AiWaitingModal() {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
@@ -455,7 +397,7 @@ function AppInner() {
       const installedCode = Number(installed.versionCode);
       const minimumCode = Number(release.minimum_supported_version_code);
       if (!Number.isInteger(installedCode) || !Number.isInteger(minimumCode)) {
-        throw new Error('版本服务器返回的数据无效，请稍后重试');
+        throw new Error(t('invalidVersionResponse'));
       }
       if (installedCode < minimumCode) {
         setUpdateGate({
@@ -468,21 +410,20 @@ function AppInner() {
       }
       setUpdateGate({ status: 'ready' });
     } catch (error) {
-      const detail = error?.message || '无法连接版本服务器';
-      setUpdateGate({ status: 'error', message: `版本检查网络异常：${detail}。你仍可继续使用无需联网的本地功能；联网功能可能暂时不可用。` });
+      setUpdateGate({ status: 'error', message: lang === 'zh' && error?.message ? error.message : t('versionNetworkError') });
     }
   };
 
   const openAppUpdate = async () => {
     const url = updateGate.release?.update_url;
     if (!url) {
-      setUpdateGate(current => ({ ...current, message: '应用市场升级地址尚未发布，请联系客服。' }));
+      setUpdateGate(current => ({ ...current, message: t('appStoreUnavailable') }));
       return;
     }
     try {
       await AppUpdate.openUpdate({ url });
     } catch (error) {
-      setUpdateGate(current => ({ ...current, message: error?.message || '无法打开升级地址' }));
+      setUpdateGate(current => ({ ...current, message: lang === 'zh' && error?.message ? error.message : t('openAppStoreFailed') }));
     }
   };
 
