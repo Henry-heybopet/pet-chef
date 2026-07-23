@@ -23,6 +23,20 @@ test('350g低肉高碳水配方会被确定性结构规则识别', () => {
   assert.ok(value(report, 'structure') <= 40);
 });
 
+test('每条提示都提供稳定语义字段，展示语言不得成为业务判断依据', () => {
+  const report = analyze([{ name: '葡萄', grams: 20 }, { name: '鸡胸肉', grams: 50 }, { name: '南瓜', grams: 200 }]);
+  report.findings.forEach(item => {
+    assert.ok(item.risk_code);
+    assert.equal(item.risk_code, item.code);
+    assert.equal(item.risk_level, item.level);
+    assert.ok(item.adjustment_code);
+    assert.equal(typeof item.facts, 'object');
+  });
+  const grape = report.findings.find(item => item.risk_code === 'FORBIDDEN');
+  assert.equal(grape.ingredient_id, 'grape');
+  assert.equal(grape.facts.ingredient_name, '葡萄');
+});
+
 test('1g肉不能通过出现一个肉类名称刷高结构分', () => {
   const weak = analyze([{ name: '鸡胸肉', grams: 1 }, { name: '胡萝卜', grams: 100 }, { name: '南瓜', grams: 200 }]);
   const sample = analyze([{ name: '鸡胸肉', grams: 50 }, { name: '胡萝卜', grams: 100 }, { name: '南瓜', grams: 200 }]);

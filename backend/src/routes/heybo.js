@@ -12,6 +12,9 @@ const { getUserById, getDefaultHouseholdForUser, publicUser } = require('../serv
 const petRepository = require('../services/pet_repository');
 const { buildFreshMatchAnalysis } = require('../services/fresh_match');
 const { recognizeFreshCheck, buildFreshCheckAnalysis } = require('../services/fresh_check');
+const { translatePresentationFields } = require('../services/deepseek');
+const { normalizeLocale, localizeSemanticResultWithAi } = require('../services/localization');
+const { storeAnalysis, getAnalysis, getRendered, storeRendered } = require('../services/localization_cache');
 
 const router = express.Router();
 const avatarDir = path.resolve(__dirname, '../../public/uploads/avatars');
@@ -191,13 +194,18 @@ router.post('/fresh-match/analyze', authMiddleware, asyncHandler(async (req, res
   if (!pet) return res.status(404).json({ success: false, error: 'Pet not found' });
   if (pet.species && pet.species !== 'dog') return res.status(400).json({ success: false, error: 'Fresh Match 仅支持犬类宠物档案' });
   const result = await buildFreshMatchAnalysis({ pet, ingredients: req.body?.ingredients || {} });
-  res.json({ success: true, ...result });
+  const analysis_id = storeAnalysis({ userId: user.id, kind: 'fresh-match', result });
+  const locale = normalizeLocale(req.body?.locale || req.body?.lang);
+  const localized = await localizeSemanticResultWithAi(result, locale, translatePresentationFields);
+  storeRendered({ analysisId: analysis_id, userId: user.id, kind: 'fresh-match', locale, localized });
+  res.json({ success: true, analysis_id, ...localized });
 }));
 
 router.post('/fresh-check/recognize', authMiddleware, asyncHandler(async (req, res) => {
   await requireUser(req);
   const result = await recognizeFreshCheck({ text: req.body?.text });
-  res.json({ success: true, ...result });
+  const locale = normalizeLocale(req.body?.locale || req.body?.lang);
+  res.json({ success: true, locale, translation_status: locale === 'zh' ? 'source' : 'not_applicable', ...result });
 }));
 
 router.post('/fresh-check/analyze', authMiddleware, asyncHandler(async (req, res) => {
@@ -209,7 +217,25 @@ router.post('/fresh-check/analyze', authMiddleware, asyncHandler(async (req, res
   if (!ingredients.length) return res.status(400).json({ success: false, error: '请至少填写一种食材及克重' });
   const result = await buildFreshCheckAnalysis({ pet, ingredients, meal_intent: req.body?.meal_intent, b_pack_category: req.body?.b_pack_category });
   if (!result.recipe.ingredients.length) return res.status(400).json({ success: false, error: '请检查食材名称和克重（每项需大于 0g）' });
-  res.json({ success: true, ...result });
+  const analysis_id = storeAnalysis({ userId: user.id, kind: 'fresh-check', result });
+  const locale = normalizeLocale(req.body?.locale || req.body?.lang);
+  const localized = await localizeSemanticResultWithAi(result, locale, translatePresentationFields);
+  storeRendered({ analysisId: analysis_id, userId: user.id, kind: 'fresh-check', locale, localized });
+  res.json({ success: true, analysis_id, ...localized });
+}));
+
+router.post('/localization/render', authMiddleware, asyncHandler(async (req, res) => {
+  const user = await requireUser(req);
+  const kind = req.body?.kind;
+  if (!['fresh-check', 'fresh-match'].includes(kind)) return res.status(400).json({ success: false, error: 'Invalid localization kind' });
+  const locale = normalizeLocale(req.body?.locale || req.body?.lang);
+  const cached = getRendered({ analysisId: req.body?.analysis_id, userId: user.id, kind, locale });
+  if (cached) return res.json({ success: true, analysis_id: req.body.analysis_id, ...cached });
+  const result = getAnalysis({ analysisId: req.body?.analysis_id, userId: user.id, kind });
+  if (!result) return res.status(404).json({ success: false, error: 'Analysis expired or not found; run the analysis again' });
+  const localized = await localizeSemanticResultWithAi(result, locale, translatePresentationFields);
+  storeRendered({ analysisId: req.body.analysis_id, userId: user.id, kind, locale, localized });
+  res.json({ success: true, analysis_id: req.body.analysis_id, ...localized });
 }));
 
 router.post('/pets', authMiddleware, asyncHandler(async (req, res) => {

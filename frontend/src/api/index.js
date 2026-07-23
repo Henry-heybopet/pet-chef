@@ -130,6 +130,7 @@ export const api = {
   freshMatchAnalyze: (body, token) => authedPost('/api/fresh-match/analyze', body, token),
   freshCheckRecognize: (body, token) => authedPost('/api/fresh-check/recognize', body, token),
   freshCheckAnalyze: (body, token) => authedPost('/api/fresh-check/analyze', body, token),
+  localizeAnalysis: (body, token) => authedPost('/api/localization/render', body, token),
   aiRecipe: async (body) => {
     return post('/api/ai-recipe', body);
   },

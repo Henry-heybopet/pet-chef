@@ -220,6 +220,16 @@ async function freshCheckCompletion(system, user) {
   return JSON.parse(String(response.data.choices?.[0]?.message?.content || '{}').replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
 }
 
+async function translatePresentationFields({ locale, items }) {
+  const languageNames = { en: 'English', de: 'German', fr: 'French', es: 'Spanish', it: 'Italian', ja: 'Japanese', ko: 'Korean' };
+  const targetLanguage = languageNames[locale];
+  if (!targetLanguage || !Array.isArray(items) || !items.length) return { items: [] };
+  return freshCheckCompletion(
+    `You localize non-critical Pet Chef presentation text into ${targetLanguage}. Translate only title, reason, and adjustment. Keep item_id and risk_code byte-for-byte unchanged. Never add diagnoses, ingredients, numbers, warnings, or recommendations. Return JSON only: {"items":[{"item_id":"...","risk_code":"...","title":"...","reason":"...","adjustment":"..."}]}.`,
+    JSON.stringify({ items })
+  );
+}
+
 async function recognizeFreshCheckRecipe({ text }) {
   const content = `识别以下宠物鲜食食谱的食材和克重，仅返回 JSON：{"ingredients":[{"name":"鸡胸肉","grams":200}]}。文本：${text || ''}`;
   const apiKey = process.env.DEEPSEEK_API_KEY;
@@ -258,4 +268,4 @@ ${retry ? '这是第一次未返回有效营养值后的唯一一次复核。请
   );
 }
 
-module.exports = { evaluatePetBCS, analyzeFreshMatch, classifyFreshMatchIngredients, recognizeFreshCheckRecipe, analyzeFreshCheck, lookupFreshCheckIngredientFacts, _test: { protectPuppyTargetWeight } };
+module.exports = { evaluatePetBCS, analyzeFreshMatch, classifyFreshMatchIngredients, recognizeFreshCheckRecipe, analyzeFreshCheck, lookupFreshCheckIngredientFacts, translatePresentationFields, _test: { protectPuppyTargetWeight } };

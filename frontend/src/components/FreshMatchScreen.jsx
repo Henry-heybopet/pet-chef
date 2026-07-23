@@ -1,10 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/index';
+import { useLanguage } from '../i18n/LanguageContext';
+import { useTranslation } from '../i18n/translations';
 
 const blankIngredient = () => ({ name: '', grams: '' });
 const numeric = value => Number(value) || 0;
 
 export function FreshMatchScreen({ profiles, authToken, onBack, onAddPet, onResult, initialDraft }) {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
   const pets = useMemo(() => (profiles || []).filter(pet => !pet.species || pet.species === 'dog'), [profiles]);
   const [petId, setPetId] = useState(initialDraft?.petId || pets[0]?.id || '');
   const [text, setText] = useState(initialDraft?.text || '');
@@ -17,7 +21,7 @@ export function FreshMatchScreen({ profiles, authToken, onBack, onAddPet, onResu
     if (!text.trim()) return window.alert('请粘贴文本食谱');
     setBusy(true);
     try {
-      const result = await api.freshCheckRecognize({ text }, authToken);
+      const result = await api.freshCheckRecognize({ text, locale: lang }, authToken);
       if (!result?.success) throw new Error(result?.error || '智能识别失败');
       if (result.ingredients?.length) setIngredients(result.ingredients.map(item => ({ name: item.name, grams: item.grams })));
       else window.alert(result.warning || '未识别到明确的食材和克重，请手动填写。');
@@ -31,7 +35,7 @@ export function FreshMatchScreen({ profiles, authToken, onBack, onAddPet, onResu
     if (!valid.length) return window.alert('请至少填写一种食材和克重');
     setBusy(true);
     try {
-      const result = await api.freshCheckAnalyze({ pet_id: petId, ingredients: valid, meal_intent: 'long_term' }, authToken);
+      const result = await api.freshCheckAnalyze({ pet_id: petId, ingredients: valid, meal_intent: 'long_term', locale: lang }, authToken);
       if (!result?.success) throw new Error(result?.error || '鲜食验证失败');
       onResult(result, { petId, text, ingredients });
     } catch (error) { window.alert(error.message || '鲜食验证失败'); } finally { setBusy(false); }
@@ -39,18 +43,18 @@ export function FreshMatchScreen({ profiles, authToken, onBack, onAddPet, onResu
 
   return <div className="fresh-match-page fresh-check-page animate-fade">
     <button className="fresh-back" type="button" onClick={onBack}>←</button>
-    <header className="fresh-hero"><h1>Fresh Check 鲜食验证</h1><div className="fresh-kicker">AI Nutrition Powered by HeyboPet Agent</div></header>
+    <header className="fresh-hero"><h1>{t('freshCheckTitle')}</h1><div className="fresh-kicker">AI Nutrition Powered by HeyboPet Agent</div></header>
     <section className="fresh-section">
-      <h2>选择宠物</h2>
-      {pets.length ? <select className="fresh-check-select" value={petId} onChange={event => setPetId(event.target.value)}>{pets.map(pet => <option key={pet.id} value={pet.id}>{pet.name}</option>)}</select> : <div className="fresh-empty"><p>请先创建宠物档案，再使用 Fresh Check 鲜食验证。</p><button type="button" onClick={onAddPet}>去创建宠物档案</button></div>}
+      <h2>{t('selectPet')}</h2>
+      {pets.length ? <select className="fresh-check-select" value={petId} onChange={event => setPetId(event.target.value)}>{pets.map(pet => <option key={pet.id} value={pet.id}>{pet.name}</option>)}</select> : <div className="fresh-empty"><p>{t('createPetFirst')}</p><button type="button" onClick={onAddPet}>{t('createPet')}</button></div>}
     </section>
     <section className="fresh-section fresh-check-recognition">
-      <h2>食谱输入</h2><label>智能识别编辑区<textarea value={text} onChange={event => setText(event.target.value)} placeholder="例如：鸡胸肉 200克；南瓜 80克；鱼油 2克" /></label>
-      <div className="fresh-check-upload"><span>粘贴文本后可自动转成待验证食谱</span><button type="button" className="fresh-recognize" onClick={recognize} disabled={busy}>✨ 智能识别</button></div>
+      <h2>{t('recipeInput')}</h2><label>{t('smartEdit')}<textarea value={text} onChange={event => setText(event.target.value)} placeholder={t('recipeExample')} /></label>
+      <div className="fresh-check-upload"><span>{t('pasteRecipe')}</span><button type="button" className="fresh-recognize" onClick={recognize} disabled={busy}>{t('recognize')}</button></div>
     </section>
-    <section className="fresh-section fresh-check-table"><div className="fresh-check-table-title"><h2>待验证食谱</h2><button type="button" onClick={() => setIngredients(items => [...items, blankIngredient()])}>+ 新增食材</button></div><div className="fresh-check-row fresh-check-head"><span aria-hidden="true" /><span>食材列表</span><span>克重</span></div>{ingredients.map((item, index) => <div className="fresh-check-row" key={index}><button className="fresh-check-delete" type="button" aria-label={`删除食材 ${item.name || index + 1}`} onClick={() => setIngredients(items => items.filter((_, itemIndex) => itemIndex !== index))}>删除</button><input value={item.name} onChange={event => update(index, 'name', event.target.value)} placeholder="食材名称" /><label><input type="number" min="0" value={item.grams} onChange={event => update(index, 'grams', event.target.value)} placeholder="0" />克</label></div>)}<div className="fresh-check-total"><span>食材总重量</span><strong>{total} 克</strong></div></section>
-    <section className="fresh-check-benefits"><span>🛡️ 食材风险识别</span><span>⚖️ 营养均衡分析</span><span>✦ 个性化调整建议</span></section>
-    <button className="fresh-submit" type="button" disabled={busy || !pets.length} onClick={validate}>{busy ? '处理中...' : '验证食材'}</button>
+    <section className="fresh-section fresh-check-table"><div className="fresh-check-table-title"><h2>{t('pendingRecipe')}</h2><button type="button" onClick={() => setIngredients(items => [...items, blankIngredient()])}>{t('addIngredient')}</button></div><div className="fresh-check-row fresh-check-head"><span aria-hidden="true" /><span>{t('freshIngredientList')}</span><span>{t('grams')}</span></div>{ingredients.map((item, index) => <div className="fresh-check-row" key={index}><button className="fresh-check-delete" type="button" aria-label={`${t('delete')} ${item.name || index + 1}`} onClick={() => setIngredients(items => items.filter((_, itemIndex) => itemIndex !== index))}>{t('delete')}</button><input value={item.name} onChange={event => update(index, 'name', event.target.value)} placeholder={t('ingredientName')} /><label><input type="number" min="0" value={item.grams} onChange={event => update(index, 'grams', event.target.value)} placeholder="0" />g</label></div>)}<div className="fresh-check-total"><span>{t('totalWeight')}</span><strong>{total} g</strong></div></section>
+    <section className="fresh-check-benefits"><span>{t('riskRecognition')}</span><span>{t('nutritionBalance')}</span><span>{t('personalizedAdjustments')}</span></section>
+    <button className="fresh-submit" type="button" disabled={busy || !pets.length} onClick={validate}>{busy ? t('processing') : t('validateIngredients')}</button>
   </div>;
 }
 
@@ -61,17 +65,30 @@ function Radar({ scores = [] }) {
 }
 
 export function FreshMatchResultScreen({ result, authToken, onResultUpdate, onAdjust, onBack }) {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
   const bPack = result?.b_pack || {};
   const recommended = (bPack.options || []).find(option => option.recommended && option.enabled);
   const [showBPack, setShowBPack] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(bPack.selected?.category || recommended?.category || '');
   const [applying, setApplying] = useState(false);
+  const [localizing, setLocalizing] = useState(false);
   useEffect(() => {
     setSelectedCategory(bPack.selected?.category || recommended?.category || '');
   }, [bPack.selected?.category, recommended?.category]);
+  useEffect(() => {
+    if (!result?.analysis_id || result.locale === lang) return undefined;
+    let active = true;
+    setLocalizing(true);
+    api.localizeAnalysis({ analysis_id: result.analysis_id, kind: 'fresh-check', locale: lang }, authToken)
+      .then(next => { if (active && next?.success) onResultUpdate(next); })
+      .catch(error => { if (active) console.warn('[Fresh Check] localization refresh failed', error?.message || 'unknown'); })
+      .finally(() => { if (active) setLocalizing(false); });
+    return () => { active = false; };
+  }, [authToken, lang, onResultUpdate, result?.analysis_id, result?.locale]);
   if (!result) return null;
-  const danger = (result.findings || []).filter(item => item.level === 'danger');
-  const adjustments = (result.findings || []).filter(item => item.level === 'warning' || item.level === 'notice');
+  const danger = (result.findings || []).filter(item => (item.risk_level || item.level) === 'danger');
+  const adjustments = (result.findings || []).filter(item => ['warning', 'notice'].includes(item.risk_level || item.level));
   const need = result.daily_need || {};
   const intake = need.intake_feasibility || {};
   const longTerm = result.long_term_detail || {};
@@ -81,19 +98,19 @@ export function FreshMatchResultScreen({ result, authToken, onResultUpdate, onAd
     if (!selectedCategory) return;
     setApplying(true);
     try {
-      const next = await api.freshCheckAnalyze({ pet_id: result.pet.id, ingredients: result.recipe.ingredients, meal_intent: result.recipe.meal_intent, b_pack_category: selectedCategory }, authToken);
+      const next = await api.freshCheckAnalyze({ pet_id: result.pet.id, ingredients: result.recipe.ingredients, meal_intent: result.recipe.meal_intent, b_pack_category: selectedCategory, locale: lang }, authToken);
       if (!next?.success) throw new Error(next?.error || '全价营养包应用失败');
       onResultUpdate(next);
       setShowBPack(false);
     } catch (error) { window.alert(error.message || '全价营养包应用失败'); } finally { setApplying(false); }
   };
-  const FindingList = ({ items }) => items.map((item, index) => <article className={`fresh-check-finding risk-${item.level === 'notice' ? 'warning' : item.level}`} key={`${item.title}-${index}`}><strong>{item.title}</strong><p><b>为什么：</b>{item.reason}</p><p><b>怎么调整：</b>{item.adjustment}</p></article>);
+  const FindingList = ({ items }) => items.map((item, index) => { const level = item.risk_level || item.level; return <article className={`fresh-check-finding risk-${level === 'notice' ? 'warning' : level}`} key={`${item.risk_code || item.code || 'finding'}-${index}`}><strong>{item.title}</strong><p><b>{t('why')}</b>{item.reason}</p><p><b>{t('howAdjust')}</b>{item.adjustment}</p></article>; });
   const PackOption = ({ option }) => <label className={option.enabled ? '' : 'is-disabled'}><input type="radio" name="fresh-b-pack" value={option.category} checked={selectedCategory === option.category} disabled={!option.enabled} onChange={() => setSelectedCategory(option.category)} /><span><strong>{option.name}{option.recommended && <em>推荐</em>}</strong><small>{option.category} · {option.reason}</small>{option.enabled && <small className="fresh-b-pack-dose">每100克食材配10克；烹饪完成后拌入</small>}</span></label>;
 
   return <div className="fresh-match-page fresh-result-page animate-fade">
-    <header className="fresh-hero"><h1>鲜食验证结果</h1><div className="fresh-kicker">{result.pet?.name} · {result.recipe?.total_weight_g || 0} 克</div></header>
+    <header className="fresh-hero"><h1>{t('freshCheckResult')}</h1><div className="fresh-kicker">{result.pet?.name} · {result.recipe?.total_weight_g || 0} g{localizing ? ' · …' : ''}</div></header>
     <Radar scores={result.scores} />
-    {adjustments.length > 0 && <section className="fresh-result-card"><h2>需要调整与确认</h2><FindingList items={adjustments} /></section>}
+    {adjustments.length > 0 && <section className="fresh-result-card"><h2>{t('needsAdjustment')}</h2><FindingList items={adjustments} /></section>}
     {bPack.needed && <section className="fresh-b-pack">
       <button type="button" className={`fresh-b-pack-trigger ${bPack.selected ? 'is-selected' : ''}`} onClick={() => setShowBPack(value => !value)}>{bPack.selected ? `✓ 已选择（烹饪后拌入）：${bPack.selected.name}` : '＋ 添加王牌全价营养包'}</button>
       {bPack.selected && bPack.application && <p className="fresh-b-pack-note">本次建议在烹饪完成后拌入 {bPack.application.dose_grams} 克，只用于维生素和矿物质配平；不计入食材总重、宏量营养、能量或烹饪参数。</p>}
@@ -106,9 +123,9 @@ export function FreshMatchResultScreen({ result, authToken, onResultUpdate, onAd
       </div>}
     </section>}
     <section className="fresh-result-card fresh-check-needs">
-      <h2>每日营养需求估算</h2>
-      <div><strong>{need.min_kcal || '-'}-{need.max_kcal || '-'} kcal</strong><span>每日建议能量</span></div>
-      <div><strong>{need.meals_per_day || '-'} 餐</strong><span>建议分餐</span></div>
+      <h2>{t('dailyNutritionEstimate')}</h2>
+      <div><strong>{need.min_kcal || '-'}-{need.max_kcal || '-'} kcal</strong><span>{t('dailyEnergy')}</span></div>
+      <div><strong>{need.meals_per_day || '-'} 餐</strong><span>{t('suggestedMeals')}</span></div>
       <p>{result.pet?.breed || '未知犬种'} · {need.age_months || '-'}月龄 · 当前 {need.current_weight_kg || '-'}kg · 目标 {need.target_weight_kg || '-'}kg</p>
       {need.target_weight_note && <p className="fresh-inline-warning">⚠ {need.target_weight_note}</p>}
       <p>当前食谱估算：{need.recipe_kcal ?? '暂无法完整计算'} kcal。{need.note}</p>
@@ -124,12 +141,12 @@ export function FreshMatchResultScreen({ result, authToken, onResultUpdate, onAd
       {intake.note && <small className="fresh-intake-note">{intake.note}</small>}
       {need.digestion_note && <p>{need.digestion_note}</p>}
     </section>
-    {result.suitability_detail?.components?.length > 0 && <section className="fresh-result-card fresh-suitability-card"><h2>宠物适配性明细 <strong>{result.suitability_detail.value}分</strong></h2><p>{result.suitability_detail.explanation}</p><div className="fresh-suitability-grid">{result.suitability_detail.components.map(item => <article key={item.key}><header><b>{item.label}</b><strong>{item.earned}/{item.max}</strong></header><p>{item.reason}</p>{item.earned < item.max && <small>如何改善：{item.adjustment}</small>}</article>)}</div><small>该分数为HeyboPet产品级适配模型；体重、目标体重和活动量同时参与能量需求计算。存在疾病记录时，建议听从专业医师建议。</small></section>}
-    {result.macro_nutrition && <section className="fresh-result-card fresh-macro-card"><h2>宏量营养与食材结构</h2><div className="fresh-macro-grid"><span>动物蛋白<strong>{result.macro_nutrition.ingredient_weight_ratios.animal_protein_pct}%</strong></span><span>内脏食材<strong>{result.macro_nutrition.ingredient_weight_ratios.organ_pct}%</strong></span><span>碳水食材<strong>{result.macro_nutrition.ingredient_weight_ratios.carb_pct}%</strong></span><span>果蔬<strong>{result.macro_nutrition.ingredient_weight_ratios.vegetable_pct}%</strong></span><span>含脂食材<strong>{result.macro_nutrition.ingredient_weight_ratios.fat_containing_ingredient_pct}%</strong></span><span>额外油脂<strong>{result.macro_nutrition.ingredient_weight_ratios.fat_source_pct}%</strong></span></div><p>估算营养素：蛋白质 {result.macro_nutrition.estimated_grams.protein_g}g · 脂肪 {result.macro_nutrition.estimated_grams.fat_g}g · 碳水 {result.macro_nutrition.estimated_grams.carb_g}g</p><p>每1000kcal：蛋白质 {result.macro_nutrition.per_1000_kcal.protein_g ?? '-'}g（阶段最低 {result.macro_nutrition.standards.protein_min_g_per_1000kcal}g）· 脂肪 {result.macro_nutrition.per_1000_kcal.fat_g ?? '-'}g（阶段最低 {result.macro_nutrition.standards.fat_min_g_per_1000kcal}g）</p><small>“含脂食材”包括羊肉等本身含脂肪的原料；“额外油脂”仅统计鱼油、亚麻籽油等。内脏食材是长期主食结构检查项，因此0%也会保留显示。</small><small>食材数据覆盖 {result.macro_nutrition.coverage.weight_pct}% · {result.macro_nutrition.standards.source}；以上为数据库估算，不替代专业营养配方。</small></section>}
-    {longTerm.explanation && <section className="fresh-result-card fresh-long-term"><h2>长期适宜性说明</h2><p>{longTerm.explanation}</p>{(longTerm.adjustments || []).map(item => <p key={item}>如何改善：{item}</p>)}{longTerm.professional_confirmation_required && <small>存在幼龄、特殊生理阶段或健康记录时，本结果仅作结构与营养筛查；长期执行前建议听从专业医师建议，并由执业兽医或宠物营养专业人员确认。</small>}</section>}
-    <section className={`fresh-result-card fresh-check-verdict ${danger.length ? 'has-danger' : ''}`}><h2>验证结论</h2><p>{result.verdict}</p>{result.ai_summary && <p><b>AI调整建议：</b>{result.ai_summary}</p>}</section>
-    {danger.length > 0 && <section className="fresh-result-card fresh-danger-card"><h2>⚠ 必须立即处理</h2><FindingList items={danger} /></section>}
-    {result.cooking_plan && <section className="fresh-result-card"><h2>鲜食机可执行烹饪方案</h2><p>{result.cooking_plan.total_weight_g}g · {result.cooking_plan.temperature_c}℃ · 约 {result.cooking_plan.cook_minutes} 分钟</p><p>{result.cooking_plan.note}</p></section>}
-    <div className="fresh-check-result-actions"><button className="fresh-submit is-secondary" type="button" onClick={onAdjust}>调整食谱</button><button className="fresh-submit" type="button" onClick={onBack}>返回主页</button></div>
+    {result.suitability_detail?.components?.length > 0 && <section className="fresh-result-card fresh-suitability-card"><h2>{t('petSuitability')} <strong>{result.suitability_detail.value}分</strong></h2><p>{result.suitability_detail.explanation}</p><div className="fresh-suitability-grid">{result.suitability_detail.components.map(item => <article key={item.key}><header><b>{item.label}</b><strong>{item.earned}/{item.max}</strong></header><p>{item.reason}</p>{item.earned < item.max && <small>如何改善：{item.adjustment}</small>}</article>)}</div><small>该分数为HeyboPet产品级适配模型；体重、目标体重和活动量同时参与能量需求计算。存在疾病记录时，建议听从专业医师建议。</small></section>}
+    {result.macro_nutrition && <section className="fresh-result-card fresh-macro-card"><h2>{t('macroNutrition')}</h2><div className="fresh-macro-grid"><span>动物蛋白<strong>{result.macro_nutrition.ingredient_weight_ratios.animal_protein_pct}%</strong></span><span>内脏食材<strong>{result.macro_nutrition.ingredient_weight_ratios.organ_pct}%</strong></span><span>碳水食材<strong>{result.macro_nutrition.ingredient_weight_ratios.carb_pct}%</strong></span><span>果蔬<strong>{result.macro_nutrition.ingredient_weight_ratios.vegetable_pct}%</strong></span><span>含脂食材<strong>{result.macro_nutrition.ingredient_weight_ratios.fat_containing_ingredient_pct}%</strong></span><span>额外油脂<strong>{result.macro_nutrition.ingredient_weight_ratios.fat_source_pct}%</strong></span></div><p>估算营养素：蛋白质 {result.macro_nutrition.estimated_grams.protein_g}g · 脂肪 {result.macro_nutrition.estimated_grams.fat_g}g · 碳水 {result.macro_nutrition.estimated_grams.carb_g}g</p><p>每1000kcal：蛋白质 {result.macro_nutrition.per_1000_kcal.protein_g ?? '-'}g（阶段最低 {result.macro_nutrition.standards.protein_min_g_per_1000kcal}g）· 脂肪 {result.macro_nutrition.per_1000_kcal.fat_g ?? '-'}g（阶段最低 {result.macro_nutrition.standards.fat_min_g_per_1000kcal}g）</p><small>“含脂食材”包括羊肉等本身含脂肪的原料；“额外油脂”仅统计鱼油、亚麻籽油等。内脏食材是长期主食结构检查项，因此0%也会保留显示。</small><small>食材数据覆盖 {result.macro_nutrition.coverage.weight_pct}% · {result.macro_nutrition.standards.source}；以上为数据库估算，不替代专业营养配方。</small></section>}
+    {longTerm.explanation && <section className="fresh-result-card fresh-long-term"><h2>{t('longTermSuitability')}</h2><p>{longTerm.explanation}</p>{(longTerm.adjustments || []).map(item => <p key={item}>如何改善：{item}</p>)}{longTerm.professional_confirmation_required && <small>存在幼龄、特殊生理阶段或健康记录时，本结果仅作结构与营养筛查；长期执行前建议听从专业医师建议，并由执业兽医或宠物营养专业人员确认。</small>}</section>}
+    <section className={`fresh-result-card fresh-check-verdict ${danger.length ? 'has-danger' : ''}`}><h2>{t('verificationConclusion')}</h2><p>{result.verdict}</p>{result.ai_summary && <p><b>{t('aiAdjustment')}</b>{result.ai_summary}</p>}</section>
+    {danger.length > 0 && <section className="fresh-result-card fresh-danger-card"><h2>{t('mustHandleNow')}</h2><FindingList items={danger} /></section>}
+    {result.cooking_plan && <section className="fresh-result-card"><h2>{t('executableCookingPlan')}</h2><p>{result.cooking_plan.total_weight_g}g · {result.cooking_plan.temperature_c}℃ · 约 {result.cooking_plan.cook_minutes} 分钟</p><p>{result.cooking_plan.note}</p></section>}
+    <div className="fresh-check-result-actions"><button className="fresh-submit is-secondary" type="button" onClick={onAdjust}>{t('adjustRecipe')}</button><button className="fresh-submit" type="button" onClick={onBack}>{t('backHome')}</button></div>
   </div>;
 }
