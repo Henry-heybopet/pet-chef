@@ -7,6 +7,8 @@ const {
   localizeSemanticResult,
   localizeSemanticResultWithAi,
 } = require('../src/services/localization');
+const { ingredientsDb } = require('../src/data/ingredients_db');
+const { _test: freshCheck } = require('../src/services/fresh_check');
 
 const safetyFinding = {
   risk_code: 'FORBIDDEN',
@@ -127,57 +129,84 @@ test('missing templates visibly fall back to canonical Chinese without hiding a 
   assert.equal(mixed.semantic.findings[1].title, undefined);
 });
 
-test('AI fallback translates only non-safety presentation fields and preserves semantic data', async () => {
-  const nutrition = {
-    risk_code: 'DAILY_ENERGY_LOW', risk_level: 'warning', level: 'warning', domain: 'energy', ingredient_id: null,
-    facts: { total_kcal: 300, min_kcal: 420 }, title: '每日能量偏低', reason: '当前只有300 kcal。', adjustment: '补足能量。',
-  };
-  const dangerWithoutTemplate = {
-    risk_code: 'NEW_SAFETY_DANGER', risk_level: 'danger', level: 'danger', domain: 'safety', ingredient_id: 'unknown',
-    facts: {}, title: '未知危险', reason: '必须保留中文。', adjustment: '立即停止。',
-  };
+test('AI translates only whitelisted summary fields and never receives findings', async () => {
+  const finding = { ...safetyFinding };
   let received;
-  const output = await localizeSemanticResultWithAi({ findings: [nutrition, dangerWithoutTemplate], scores: [{ key: 'safety', value: 0 }] }, 'en', async input => {
+  const source = {
+    findings: [finding],
+    scores: [{ key: 'safety', label_code: 'SCORE_SAFETY_LABEL', label: '食材安全性', value: 0 }],
+    ai_summary: '每日建议300 kcal。',
+    ai_macro_assessment: { protein_status: 'low', fat_status: 'adequate', carb_structure_status: 'reasonable', reasoning: '蛋白质低于420 mg。', adjustments: ['增加10 g蛋白质。'] },
+  };
+  const output = await localizeSemanticResultWithAi(source, 'en', async input => {
     received = input;
-    return { items: input.items.map(item => ({ ...item, title: 'Low daily energy', reason: `The recipe provides only ${item.reason.match(/__REASON_VALUE_\d+__/)[0]}.`, adjustment: 'Increase energy and check again.' })) };
+    return { items: input.items.map(item => ({ ...item, reason: `Translated ${item.reason}` })) };
   });
 
-  assert.equal(received.items.length, 1);
-  assert.equal(received.items[0].risk_code, 'DAILY_ENERGY_LOW');
-  assert.equal(output.findings[0].translation_status, 'ai_translated');
-  assert.equal(output.findings[0].risk_code, nutrition.risk_code);
-  assert.deepEqual(output.findings[0].facts, nutrition.facts);
-  assert.equal(output.findings[1].translation_status, 'fallback');
-  assert.equal(output.findings[1].reason, dangerWithoutTemplate.reason);
-  assert.equal(output.semantic.findings[0].title, undefined);
-  assert.equal(output.semantic.findings[1].reason, undefined);
-  assert.deepEqual(output.semantic.scores, [{ key: 'safety', value: 0 }]);
+  assert.deepEqual(received.items.map(item => item.item_id), ['ai_summary', 'ai_macro_reasoning', 'ai_macro_adjustment:0']);
+  assert.ok(received.items.every(item => item.risk_code === 'AI_PRESENTATION_TEXT'));
+  assert.ok(received.items.every(item => !String(item.reason).includes('葡萄')));
+  assert.equal(output.findings[0].risk_code, 'FORBIDDEN');
+  assert.equal(output.findings[0].translation_status, 'translated');
+  assert.match(output.ai_summary, /300 kcal/);
+  assert.match(output.ai_macro_assessment.reasoning, /420 mg/);
+  assert.match(output.ai_macro_assessment.adjustments[0], /10 g/);
+  assert.equal(output.ai_macro_assessment.protein_status, 'low');
+  assert.equal(output.ai_macro_assessment.fat_status, 'adequate');
+  assert.equal(output.ai_macro_assessment.carb_structure_status, 'reasonable');
+  assert.deepEqual(output.semantic.scores, [{ key: 'safety', label_code: 'SCORE_SAFETY_LABEL', value: 0 }]);
 });
 
-test('AI fallback rejects text that drops protected numeric facts', async () => {
-  const nutrition = {
-    risk_code: 'DAILY_ENERGY_LOW', risk_level: 'warning', domain: 'energy',
-    facts: { total_kcal: 300, min_kcal: 420 }, title: '每日能量偏低', reason: '当前只有300 kcal。', adjustment: '提高到420 kcal。',
-  };
-  const output = await localizeSemanticResultWithAi({ findings: [nutrition] }, 'en', async input => ({
-    items: input.items.map(item => ({ ...item, title: 'Low energy', reason: 'Too little energy.', adjustment: 'Increase it.' })),
+test('AI summary translation rejects dropped numeric placeholders and visibly falls back', async () => {
+  const source = { findings: [], ai_summary: '当前只有300 kcal，最低需要420 kcal。' };
+  const output = await localizeSemanticResultWithAi(source, 'en', async input => ({
+    items: input.items.map(item => ({ ...item, reason: 'Too little energy.' })),
   }));
-  assert.equal(output.findings[0].translation_status, 'fallback');
-  assert.equal(output.findings[0].reason, nutrition.reason);
-  assert.equal(output.findings[0].adjustment, nutrition.adjustment);
+  assert.equal(output.ai_summary, source.ai_summary);
+  assert.equal(output.presentation.ai_summary.translation_status, 'fallback');
+  assert.equal(output.translation_status, 'fallback');
+  assert.equal(output.fallback_locale, 'zh');
 });
 
-test('AI fallback rejects reordered numeric placeholders', async () => {
-  const nutrition = {
-    risk_code: 'DAILY_ENERGY_LOW', risk_level: 'warning', domain: 'energy', facts: { total_kcal: 300, min_kcal: 420 },
-    title: '每日能量偏低', reason: '当前300 kcal，最低需要420 kcal。', adjustment: '按建议补足。',
-  };
-  const output = await localizeSemanticResultWithAi({ findings: [nutrition] }, 'en', async input => {
+test('AI summary translation rejects reordered numeric placeholders', async () => {
+  const source = { findings: [], ai_summary: '当前300 kcal，最低需要420 kcal。' };
+  const output = await localizeSemanticResultWithAi(source, 'en', async input => {
     const [first, second] = input.items[0].reason.match(/__REASON_VALUE_\d+__/g);
-    return { items: [{ ...input.items[0], title: 'Low energy', reason: `Current ${second}; minimum ${first}.`, adjustment: 'Increase it.' }] };
+    return { items: [{ ...input.items[0], reason: `Current ${second}; minimum ${first}.` }] };
   });
-  assert.equal(output.findings[0].translation_status, 'fallback');
-  assert.equal(output.findings[0].reason, nutrition.reason);
+  assert.equal(output.ai_summary, source.ai_summary);
+  assert.equal(output.presentation.ai_summary.translation_status, 'fallback');
+});
+
+test('all eight locales preserve deep semantic data while localizing structured Fresh Check sections', () => {
+  const report = freshCheck.localCheck({
+    pet: { id: 'dog-1', species: 'dog', age_months: 24, current_weight_kg: 10, activity_level: 'medium', feeding_goal: 'maintenance' },
+    ingredients: [{ name: '葡萄', grams: 20 }, { name: '鸡胸肉', grams: 80 }],
+    mealIntent: 'long_term', ingredientMap: ingredientsDb,
+  });
+  report.b_pack = {
+    source: 'test', needed: true,
+    selected: null,
+    application: { dose_grams: 10, basis_code: 'B_PACK_DOSE_10_PERCENT_POST_COOK', basis: '每100克食材配10克全价营养包', timing: 'post_cook' },
+    options: [{ category_code: 'ADULT_GENERAL', category: '成犬通用', name: '成犬通用包', description: '中文说明', enabled: true, reason_code: 'B_PACK_ADULT_ELIGIBLE', reason: '适用。' }],
+  };
+  const zh = localizeSemanticResult(report, 'zh').semantic;
+  for (const locale of SUPPORTED_LOCALES) {
+    const output = localizeSemanticResult(report, locale);
+    assert.deepEqual(output.semantic, zh);
+    assert.deepEqual(output.scores.map(item => [item.key, item.value]), report.scores.map(item => [item.key, item.value]));
+    assert.equal(output.findings.find(item => item.risk_code === 'FORBIDDEN').risk_level, 'danger');
+    assert.ok(output.presentation.daily_need);
+    assert.ok(output.presentation.suitability_detail);
+    assert.ok(output.presentation.long_term_detail);
+    assert.ok(output.presentation.b_pack);
+    if (locale !== 'zh') {
+      const { energy_estimates, unknown_ingredients, ...visibleDailyNeed } = output.daily_need;
+      const visible = JSON.stringify({ daily_need: visibleDailyNeed, suitability_detail: output.suitability_detail, long_term_detail: output.long_term_detail, scores: output.scores, b_pack: output.b_pack, findings: output.findings.map(({ facts, ...item }) => item) });
+      if (locale !== 'ja') assert.doesNotMatch(visible, /[\u3400-\u9fff]/u);
+      assert.doesNotMatch(visible, /当前能量|食谱结构平衡性|每日营养需求估算不是兽医处方|数据库中该分类/);
+    }
+  }
 });
 
 test('Fresh Match compatibility message is localized and preserved', () => {

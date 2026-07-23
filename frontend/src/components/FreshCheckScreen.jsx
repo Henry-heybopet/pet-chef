@@ -1,10 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/index';
 import { useLanguage } from '../i18n/LanguageContext';
+import { tData } from '../i18n/dataTranslations';
 import { useTranslation } from '../i18n/translations';
 
 const blankIngredient = () => ({ name: '', grams: '' });
 const numeric = value => Number(value) || 0;
+const SCORE_LABEL_KEYS = { safety: 'freshScoreSafety', suitability: 'freshScoreSuitability', structure: 'freshScoreStructure', nutrition: 'freshScoreNutrition', long_term: 'freshScoreLongTerm', energy: 'freshScoreEnergy' };
+const SUITABILITY_LABEL_KEYS = { life_stage: 'suitabilityLifeStage', body_size: 'suitabilityBodySize', weight_energy: 'suitabilityWeightEnergy', activity_neuter: 'suitabilityActivityNeuter', physiology: 'suitabilityPhysiology', health: 'suitabilityHealth', allergy: 'suitabilityAllergy' };
+const ACTIVITY_LABEL_KEYS = { low: 'activityLow', medium: 'activityMedium', high: 'activityHigh', working: 'activityWorking', very_high: 'activityVeryHigh' };
+const GOAL_LABEL_KEYS = { maintenance: 'goalMaintenance', weight_loss: 'goalWeightLoss', muscle_gain: 'goalMuscleGain', post_surgery_recovery: 'goalPostSurgery', coat_care: 'goalCoatCare', gastrointestinal_care: 'goalGastrointestinal' };
+const translatedCode = (t, keys, code) => keys[code] ? t(keys[code]) : (code || '-');
 
 export function FreshCheckScreen({ profiles, authToken, onBack, onAddPet, onResult, initialDraft }) {
   const { lang } = useLanguage();
@@ -18,27 +24,27 @@ export function FreshCheckScreen({ profiles, authToken, onBack, onAddPet, onResu
   const update = (index, key, value) => setIngredients(items => items.map((item, i) => i === index ? { ...item, [key]: value } : item));
 
   const recognize = async () => {
-    if (!text.trim()) return window.alert('请粘贴文本食谱');
+    if (!text.trim()) return window.alert(t('freshCheckPasteRequired'));
     setBusy(true);
     try {
       const result = await api.freshCheckRecognize({ text, locale: lang }, authToken);
-      if (!result?.success) throw new Error(result?.error || '智能识别失败');
+      if (!result?.success) throw new Error(result?.error || t('freshCheckRecognitionFailed'));
       if (result.ingredients?.length) setIngredients(result.ingredients.map(item => ({ name: item.name, grams: item.grams })));
-      else window.alert(result.warning || '未识别到明确的食材和克重，请手动填写。');
+      else window.alert(result.warning || t('freshCheckNoIngredientsRecognized'));
       if (result.warning) window.alert(result.warning);
-    } catch (error) { window.alert(error.message || '智能识别失败'); } finally { setBusy(false); }
+    } catch (error) { window.alert(error.message || t('freshCheckRecognitionFailed')); } finally { setBusy(false); }
   };
 
   const validate = async () => {
-    if (!petId) return window.alert('请先选择宠物');
+    if (!petId) return window.alert(t('freshCheckSelectPetRequired'));
     const valid = ingredients.filter(item => item.name.trim() && numeric(item.grams) > 0).map(item => ({ name: item.name.trim(), grams: numeric(item.grams) }));
-    if (!valid.length) return window.alert('请至少填写一种食材和克重');
+    if (!valid.length) return window.alert(t('freshCheckIngredientRequired'));
     setBusy(true);
     try {
       const result = await api.freshCheckAnalyze({ pet_id: petId, ingredients: valid, meal_intent: 'long_term', locale: lang }, authToken);
-      if (!result?.success) throw new Error(result?.error || '鲜食验证失败');
+      if (!result?.success) throw new Error(result?.error || t('freshCheckAnalyzeFailed'));
       onResult(result, { petId, text, ingredients });
-    } catch (error) { window.alert(error.message || '鲜食验证失败'); } finally { setBusy(false); }
+    } catch (error) { window.alert(error.message || t('freshCheckAnalyzeFailed')); } finally { setBusy(false); }
   };
 
   return <div className="fresh-check-page animate-fade">
@@ -58,10 +64,10 @@ export function FreshCheckScreen({ profiles, authToken, onBack, onAddPet, onResu
   </div>;
 }
 
-function Radar({ scores = [] }) {
+function Radar({ scores = [], t }) {
   const points = scores.map((item, index) => { const angle = -Math.PI / 2 + index * Math.PI / 3; const radius = 72 * (item.value / 100); return `${100 + radius * Math.cos(angle)},${92 + radius * Math.sin(angle)}`; }).join(' ');
   const rings = [0.25, 0.5, 0.75, 1].map(scale => [0, 1, 2, 3, 4, 5].map(index => { const angle = -Math.PI / 2 + index * Math.PI / 3; return `${100 + 72 * scale * Math.cos(angle)},${92 + 72 * scale * Math.sin(angle)}`; }).join(' '));
-  return <div className="fresh-radar"><svg viewBox="0 0 200 184" role="img" aria-label="六维鲜食验证评分">{rings.map((ring, index) => <polygon key={index} points={ring} className={`fresh-radar-grid ${index === rings.length - 1 ? 'is-outer' : 'is-inner'}`} />)}{[0, 1, 2, 3, 4, 5].map(index => { const angle = -Math.PI / 2 + index * Math.PI / 3; return <line key={index} x1="100" y1="92" x2={100 + 72 * Math.cos(angle)} y2={92 + 72 * Math.sin(angle)} className="fresh-radar-axis" />; })}<polygon points={points} className="fresh-radar-area" />{scores.map((item, index) => { const angle = -Math.PI / 2 + index * Math.PI / 3; return <text key={item.key} x={100 + 88 * Math.cos(angle)} y={96 + 88 * Math.sin(angle)} textAnchor="middle">{item.label}<tspan x={100 + 88 * Math.cos(angle)} dy="13">{item.value}</tspan></text>; })}</svg></div>;
+  return <div className="fresh-radar"><svg viewBox="0 0 200 184" role="img" aria-label={t('freshCheckRadarLabel')}>{rings.map((ring, index) => <polygon key={index} points={ring} className={`fresh-radar-grid ${index === rings.length - 1 ? 'is-outer' : 'is-inner'}`} />)}{[0, 1, 2, 3, 4, 5].map(index => { const angle = -Math.PI / 2 + index * Math.PI / 3; return <line key={index} x1="100" y1="92" x2={100 + 72 * Math.cos(angle)} y2={92 + 72 * Math.sin(angle)} className="fresh-radar-axis" />; })}<polygon points={points} className="fresh-radar-area" />{scores.map((item, index) => { const angle = -Math.PI / 2 + index * Math.PI / 3; const labelKey = SCORE_LABEL_KEYS[item.key]; return <text key={item.key} x={100 + 88 * Math.cos(angle)} y={96 + 88 * Math.sin(angle)} textAnchor="middle">{labelKey ? t(labelKey) : item.label}<tspan x={100 + 88 * Math.cos(angle)} dy="13">{item.value}</tspan></text>; })}</svg></div>;
 }
 
 export function FreshCheckResultScreen({ result, authToken, onResultUpdate, onAdjust, onBack }) {
@@ -70,12 +76,12 @@ export function FreshCheckResultScreen({ result, authToken, onResultUpdate, onAd
   const bPack = result?.b_pack || {};
   const recommended = (bPack.options || []).find(option => option.recommended && option.enabled);
   const [showBPack, setShowBPack] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState(bPack.selected?.category || recommended?.category || '');
+  const [selectedCategory, setSelectedCategory] = useState(bPack.selected?.category_code || recommended?.category_code || '');
   const [applying, setApplying] = useState(false);
   const [localizing, setLocalizing] = useState(false);
   useEffect(() => {
-    setSelectedCategory(bPack.selected?.category || recommended?.category || '');
-  }, [bPack.selected?.category, recommended?.category]);
+    setSelectedCategory(bPack.selected?.category_code || recommended?.category_code || '');
+  }, [bPack.selected?.category_code, recommended?.category_code]);
   useEffect(() => {
     if (!result?.analysis_id || result.locale === lang) return undefined;
     let active = true;
@@ -92,6 +98,9 @@ export function FreshCheckResultScreen({ result, authToken, onResultUpdate, onAd
   const need = result.daily_need || {};
   const intake = need.intake_feasibility || {};
   const longTerm = result.long_term_detail || {};
+  const breed = result.pet?.breed ? tData(result.pet.breed, lang) : t('unknownBreed');
+  const activity = translatedCode(t, ACTIVITY_LABEL_KEYS, need.activity_level);
+  const feedingGoal = translatedCode(t, GOAL_LABEL_KEYS, need.feeding_goal);
   const enabledPacks = (bPack.options || []).filter(option => option.enabled);
   const disabledPacks = (bPack.options || []).filter(option => !option.enabled);
   const applyBPack = async () => {
@@ -99,54 +108,54 @@ export function FreshCheckResultScreen({ result, authToken, onResultUpdate, onAd
     setApplying(true);
     try {
       const next = await api.freshCheckAnalyze({ pet_id: result.pet.id, ingredients: result.recipe.ingredients, meal_intent: result.recipe.meal_intent, b_pack_category: selectedCategory, locale: lang }, authToken);
-      if (!next?.success) throw new Error(next?.error || '全价营养包应用失败');
+      if (!next?.success) throw new Error(next?.error || t('freshCheckBPackApplyFailed'));
       onResultUpdate(next);
       setShowBPack(false);
-    } catch (error) { window.alert(error.message || '全价营养包应用失败'); } finally { setApplying(false); }
+    } catch (error) { window.alert(error.message || t('freshCheckBPackApplyFailed')); } finally { setApplying(false); }
   };
   const FindingList = ({ items }) => items.map((item, index) => { const level = item.risk_level || item.level; return <article className={`fresh-check-finding risk-${level === 'notice' ? 'warning' : level}`} key={`${item.risk_code || item.code || 'finding'}-${index}`}><strong>{item.title}</strong><p><b>{t('why')}</b>{item.reason}</p><p><b>{t('howAdjust')}</b>{item.adjustment}</p></article>; });
-  const PackOption = ({ option }) => <label className={option.enabled ? '' : 'is-disabled'}><input type="radio" name="fresh-b-pack" value={option.category} checked={selectedCategory === option.category} disabled={!option.enabled} onChange={() => setSelectedCategory(option.category)} /><span><strong>{option.name}{option.recommended && <em>推荐</em>}</strong><small>{option.category} · {option.reason}</small>{option.enabled && <small className="fresh-b-pack-dose">每100克食材配10克；烹饪完成后拌入</small>}</span></label>;
+  const PackOption = ({ option }) => <label className={option.enabled ? '' : 'is-disabled'}><input type="radio" name="fresh-b-pack" value={option.category_code} checked={selectedCategory === option.category_code} disabled={!option.enabled} onChange={() => setSelectedCategory(option.category_code)} /><span><strong>{option.name}{option.recommended && <em>{t('recommended')}</em>}</strong><small>{option.category} · {option.reason}</small>{option.enabled && <small className="fresh-b-pack-dose">{t('bPackDoseRule')}</small>}</span></label>;
 
   return <div className="fresh-check-page fresh-result-page animate-fade">
     <header className="fresh-hero"><h1>{t('freshCheckResult')}</h1><div className="fresh-kicker">{result.pet?.name} · {result.recipe?.total_weight_g || 0} g{localizing ? ' · …' : ''}</div></header>
-    <Radar scores={result.scores} />
+    <Radar scores={result.scores} t={t} />
     {adjustments.length > 0 && <section className="fresh-result-card"><h2>{t('needsAdjustment')}</h2><FindingList items={adjustments} /></section>}
     {bPack.needed && <section className="fresh-b-pack">
-      <button type="button" className={`fresh-b-pack-trigger ${bPack.selected ? 'is-selected' : ''}`} onClick={() => setShowBPack(value => !value)}>{bPack.selected ? `✓ 已选择（烹饪后拌入）：${bPack.selected.name}` : '＋ 添加王牌全价营养包'}</button>
-      {bPack.selected && bPack.application && <p className="fresh-b-pack-note">本次建议在烹饪完成后拌入 {bPack.application.dose_grams} 克，只用于维生素和矿物质配平；不计入食材总重、宏量营养、能量或烹饪参数。</p>}
+      <button type="button" className={`fresh-b-pack-trigger ${bPack.selected ? 'is-selected' : ''}`} onClick={() => setShowBPack(value => !value)}>{bPack.selected ? t('bPackSelected', { name: bPack.selected.name }) : t('addBPack')}</button>
+      {bPack.selected && bPack.application && <p className="fresh-b-pack-note">{t('bPackApplicationNote', { dose: bPack.application.dose_grams })}</p>}
       {showBPack && <div className="fresh-b-pack-options">
-        <h2>选择B全价营养包</h2>
-        <p>已根据宠物档案禁用不适配选项。营养包只补充维生素和矿物质，须在烹饪完成后拌入，不参与食材比例、能量和烹饪计算。</p>
-        {enabledPacks.map(option => <PackOption option={option} key={option.category} />)}
-        {disabledPacks.length > 0 && <details className="fresh-b-pack-disabled"><summary>查看不适配营养包（{disabledPacks.length}）</summary>{disabledPacks.map(option => <PackOption option={option} key={option.category} />)}</details>}
-        <button type="button" className="fresh-submit" disabled={!selectedCategory || applying} onClick={applyBPack}>{applying ? '应用中...' : '确认使用此营养包'}</button>
+        <h2>{t('selectBPack')}</h2>
+        <p>{t('bPackUsageDescription')}</p>
+        {enabledPacks.map(option => <PackOption option={option} key={option.category_code} />)}
+        {disabledPacks.length > 0 && <details className="fresh-b-pack-disabled"><summary>{t('incompatibleBPackCount', { n: disabledPacks.length })}</summary>{disabledPacks.map(option => <PackOption option={option} key={option.category_code} />)}</details>}
+        <button type="button" className="fresh-submit" disabled={!selectedCategory || applying} onClick={applyBPack}>{applying ? t('applying') : t('confirmBPack')}</button>
       </div>}
     </section>}
     <section className="fresh-result-card fresh-check-needs">
       <h2>{t('dailyNutritionEstimate')}</h2>
       <div><strong>{need.min_kcal || '-'}-{need.max_kcal || '-'} kcal</strong><span>{t('dailyEnergy')}</span></div>
-      <div><strong>{need.meals_per_day || '-'} 餐</strong><span>{t('suggestedMeals')}</span></div>
-      <p>{result.pet?.breed || '未知犬种'} · {need.age_months || '-'}月龄 · 当前 {need.current_weight_kg || '-'}kg · 目标 {need.target_weight_kg || '-'}kg</p>
+      <div><strong>{t('mealCount', { n: need.meals_per_day || '-' })}</strong><span>{t('suggestedMeals')}</span></div>
+      <p>{t('petNutritionSummary', { breed, months: need.age_months || '-', current: need.current_weight_kg || '-', target: need.target_weight_kg || '-' })}</p>
       {need.target_weight_note && <p className="fresh-inline-warning">⚠ {need.target_weight_note}</p>}
-      <p>当前食谱估算：{need.recipe_kcal ?? '暂无法完整计算'} kcal。{need.note}</p>
-      <p>活动水平：{need.activity_level || '-'}（计算采用×{need.activity_factor || 1}{need.recorded_activity_factor !== need.activity_factor ? `，档案活动系数×${need.recorded_activity_factor}未重复叠加` : ''}）；绝育调整：×{need.neuter_factor || 1}；喂养目标：{need.feeding_goal || '-'}（×{need.goal_factor || 1}）。</p>
+      <p>{t('recipeKcalEstimate', { value: need.recipe_kcal ?? t('valueUnavailable') })}{need.note ? ` ${need.note}` : ''}</p>
+      <p>{t('activityGoalSummary', { activity, activityFactor: need.activity_factor || 1, neuterFactor: need.neuter_factor || 1, goal: feedingGoal, goalFactor: need.goal_factor || 1 })}{need.recorded_activity_factor !== need.activity_factor ? ` ${t('recordedActivityNotDuplicated', { factor: need.recorded_activity_factor })}` : ''}</p>
       {need.activity_note && <p>{need.activity_note}</p>}
       {intake.daily_food_weight_pct_body_weight != null && <div className="fresh-intake-grid">
-        <span><strong>{intake.daily_food_weight_pct_body_weight}%</strong><small>每日食材占体重</small></span>
-        <span><strong>{intake.grams_per_meal}g</strong><small>每餐食材重量</small></span>
-        <span><strong>{intake.kcal_per_gram ?? '-'} kcal/g</strong><small>食谱能量密度</small></span>
-        {Number.isFinite(intake.estimated_water_pct) && <span><strong>{intake.estimated_water_pct}%</strong><small>估算含水率</small></span>}
+        <span><strong>{intake.daily_food_weight_pct_body_weight}%</strong><small>{t('dailyFoodBodyWeightPct')}</small></span>
+        <span><strong>{intake.grams_per_meal}g</strong><small>{t('perMealFoodWeight')}</small></span>
+        <span><strong>{intake.kcal_per_gram ?? '-'} kcal/g</strong><small>{t('recipeEnergyDensity')}</small></span>
+        {Number.isFinite(intake.estimated_water_pct) && <span><strong>{intake.estimated_water_pct}%</strong><small>{t('estimatedWaterPct')}</small></span>}
       </div>}
-      {intake.excessive_volume && <p className="fresh-intake-alert">⚠ 当前每日总量比建议食量约 {intake.reference_max_daily_grams}g 超出 {intake.exceeds_reference_by_pct}%；{intake.volume_advice}</p>}
+      {intake.excessive_volume && <p className="fresh-intake-alert">⚠ {t('excessiveDailyVolume', { grams: intake.reference_max_daily_grams, pct: intake.exceeds_reference_by_pct })} {intake.volume_advice}</p>}
       {intake.note && <small className="fresh-intake-note">{intake.note}</small>}
       {need.digestion_note && <p>{need.digestion_note}</p>}
     </section>
-    {result.suitability_detail?.components?.length > 0 && <section className="fresh-result-card fresh-suitability-card"><h2>{t('petSuitability')} <strong>{result.suitability_detail.value}分</strong></h2><p>{result.suitability_detail.explanation}</p><div className="fresh-suitability-grid">{result.suitability_detail.components.map(item => <article key={item.key}><header><b>{item.label}</b><strong>{item.earned}/{item.max}</strong></header><p>{item.reason}</p>{item.earned < item.max && <small>如何改善：{item.adjustment}</small>}</article>)}</div><small>该分数为HeyboPet产品级适配模型；体重、目标体重和活动量同时参与能量需求计算。存在疾病记录时，建议听从专业医师建议。</small></section>}
-    {result.macro_nutrition && <section className="fresh-result-card fresh-macro-card"><h2>{t('macroNutrition')}</h2><div className="fresh-macro-grid"><span>动物蛋白<strong>{result.macro_nutrition.ingredient_weight_ratios.animal_protein_pct}%</strong></span><span>内脏食材<strong>{result.macro_nutrition.ingredient_weight_ratios.organ_pct}%</strong></span><span>碳水食材<strong>{result.macro_nutrition.ingredient_weight_ratios.carb_pct}%</strong></span><span>果蔬<strong>{result.macro_nutrition.ingredient_weight_ratios.vegetable_pct}%</strong></span><span>含脂食材<strong>{result.macro_nutrition.ingredient_weight_ratios.fat_containing_ingredient_pct}%</strong></span><span>额外油脂<strong>{result.macro_nutrition.ingredient_weight_ratios.fat_source_pct}%</strong></span></div><p>估算营养素：蛋白质 {result.macro_nutrition.estimated_grams.protein_g}g · 脂肪 {result.macro_nutrition.estimated_grams.fat_g}g · 碳水 {result.macro_nutrition.estimated_grams.carb_g}g</p><p>每1000kcal：蛋白质 {result.macro_nutrition.per_1000_kcal.protein_g ?? '-'}g（阶段最低 {result.macro_nutrition.standards.protein_min_g_per_1000kcal}g）· 脂肪 {result.macro_nutrition.per_1000_kcal.fat_g ?? '-'}g（阶段最低 {result.macro_nutrition.standards.fat_min_g_per_1000kcal}g）</p><small>“含脂食材”包括羊肉等本身含脂肪的原料；“额外油脂”仅统计鱼油、亚麻籽油等。内脏食材是长期主食结构检查项，因此0%也会保留显示。</small><small>食材数据覆盖 {result.macro_nutrition.coverage.weight_pct}% · {result.macro_nutrition.standards.source}；以上为数据库估算，不替代专业营养配方。</small></section>}
-    {longTerm.explanation && <section className="fresh-result-card fresh-long-term"><h2>{t('longTermSuitability')}</h2><p>{longTerm.explanation}</p>{(longTerm.adjustments || []).map(item => <p key={item}>如何改善：{item}</p>)}{longTerm.professional_confirmation_required && <small>存在幼龄、特殊生理阶段或健康记录时，本结果仅作结构与营养筛查；长期执行前建议听从专业医师建议，并由执业兽医或宠物营养专业人员确认。</small>}</section>}
+    {result.suitability_detail?.components?.length > 0 && <section className="fresh-result-card fresh-suitability-card"><h2>{t('petSuitability')} <strong>{t('scorePoints', { n: result.suitability_detail.value })}</strong></h2><p>{result.suitability_detail.explanation}</p><div className="fresh-suitability-grid">{result.suitability_detail.components.map(item => <article key={item.key}><header><b>{SUITABILITY_LABEL_KEYS[item.key] ? t(SUITABILITY_LABEL_KEYS[item.key]) : item.label}</b><strong>{item.earned}/{item.max}</strong></header><p>{item.reason}</p>{item.earned < item.max && <small>{t('howImprove')}{item.adjustment}</small>}</article>)}</div><small>{t('suitabilityDisclaimer')}</small></section>}
+    {result.macro_nutrition && <section className="fresh-result-card fresh-macro-card"><h2>{t('macroNutrition')}</h2><div className="fresh-macro-grid"><span>{t('macroAnimalProtein')}<strong>{result.macro_nutrition.ingredient_weight_ratios.animal_protein_pct}%</strong></span><span>{t('macroOrgan')}<strong>{result.macro_nutrition.ingredient_weight_ratios.organ_pct}%</strong></span><span>{t('macroCarb')}<strong>{result.macro_nutrition.ingredient_weight_ratios.carb_pct}%</strong></span><span>{t('macroVegetable')}<strong>{result.macro_nutrition.ingredient_weight_ratios.vegetable_pct}%</strong></span><span>{t('macroFatIngredient')}<strong>{result.macro_nutrition.ingredient_weight_ratios.fat_containing_ingredient_pct}%</strong></span><span>{t('macroAddedFat')}<strong>{result.macro_nutrition.ingredient_weight_ratios.fat_source_pct}%</strong></span></div><p>{t('estimatedNutrients', { protein: result.macro_nutrition.estimated_grams.protein_g, fat: result.macro_nutrition.estimated_grams.fat_g, carb: result.macro_nutrition.estimated_grams.carb_g })}</p><p>{t('per1000Kcal', { protein: result.macro_nutrition.per_1000_kcal.protein_g ?? '-', proteinMin: result.macro_nutrition.standards.protein_min_g_per_1000kcal, fat: result.macro_nutrition.per_1000_kcal.fat_g ?? '-', fatMin: result.macro_nutrition.standards.fat_min_g_per_1000kcal })}</p><small>{t('macroStructureExplanation')}</small><small>{t('dataCoverageDisclaimer', { pct: result.macro_nutrition.coverage.weight_pct, source: result.macro_nutrition.standards.source })}</small></section>}
+    {longTerm.explanation && <section className="fresh-result-card fresh-long-term"><h2>{t('longTermSuitability')}</h2><p>{longTerm.explanation}</p>{(longTerm.adjustments || []).map(item => <p key={item}>{t('howImprove')}{item}</p>)}{longTerm.professional_confirmation_required && <small>{t('professionalConfirmationDisclaimer')}</small>}</section>}
     <section className={`fresh-result-card fresh-check-verdict ${danger.length ? 'has-danger' : ''}`}><h2>{t('verificationConclusion')}</h2><p>{result.verdict}</p>{result.ai_summary && <p><b>{t('aiAdjustment')}</b>{result.ai_summary}</p>}</section>
     {danger.length > 0 && <section className="fresh-result-card fresh-danger-card"><h2>{t('mustHandleNow')}</h2><FindingList items={danger} /></section>}
-    {result.cooking_plan && <section className="fresh-result-card"><h2>{t('executableCookingPlan')}</h2><p>{result.cooking_plan.total_weight_g}g · {result.cooking_plan.temperature_c}℃ · 约 {result.cooking_plan.cook_minutes} 分钟</p><p>{result.cooking_plan.note}</p></section>}
+    {result.cooking_plan && <section className="fresh-result-card"><h2>{t('executableCookingPlan')}</h2><p>{t('cookingPlanMetrics', { grams: result.cooking_plan.total_weight_g, temperature: result.cooking_plan.temperature_c, minutes: result.cooking_plan.cook_minutes })}</p><p>{result.cooking_plan.note}</p></section>}
     <div className="fresh-check-result-actions"><button className="fresh-submit is-secondary" type="button" onClick={onAdjust}>{t('adjustRecipe')}</button><button className="fresh-submit" type="button" onClick={onBack}>{t('backHome')}</button></div>
   </div>;
 }

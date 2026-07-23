@@ -12,6 +12,11 @@ const VEGETABLE = ['菜', '萝卜', '西兰花', '菠菜', '蓝莓', '苹果', '
 const FAT = ['鱼油', '橄榄油', '亚麻籽油'];
 const CALCIUM = ['钙', '蛋壳粉', '骨粉', '营养包'];
 const B_PACK_CATEGORIES = ['幼犬通用', '控钙幼犬（大型幼犬）', '成犬通用', '老年犬通用', '美毛护肤', '低敏单一蛋白', '护肝'];
+const B_PACK_CATEGORY_CODES = {
+  幼犬通用: 'PUPPY_GENERAL', '控钙幼犬（大型幼犬）': 'LARGE_PUPPY_CONTROLLED_CALCIUM',
+  成犬通用: 'ADULT_GENERAL', 老年犬通用: 'SENIOR_GENERAL', 美毛护肤: 'COAT_CARE',
+  低敏单一蛋白: 'HYPOALLERGENIC_SINGLE_PROTEIN', 护肝: 'LIVER_SUPPORT',
+};
 const INGREDIENT_IDS = {
   '木糖醇': 'xylitol', '巧克力': 'chocolate', '可可': 'cocoa', '咖啡': 'coffee', '咖啡因': 'caffeine',
   '酒精': 'alcohol', '葡萄': 'grape', '葡萄干': 'raisin', '洋葱': 'onion', '大蒜': 'garlic',
@@ -57,12 +62,20 @@ function bPackApplication(totalWeight) {
   return {
     dose_grams: Number((totalWeight * 0.1).toFixed(1)),
     basis: '每100克食材配10克全价营养包',
+    basis_code: 'B_PACK_DOSE_10_PERCENT_POST_COOK',
+    facts: { grams_per_100g: 10, total_weight_g: totalWeight },
     timing: 'post_cook',
     excluded_from_recipe_weight: true,
     excluded_from_macros: true,
     excluded_from_energy: true,
     excluded_from_cooking: true,
   };
+}
+
+function selectBPackOption(options, requestedCategory) {
+  const requested = clean(requestedCategory);
+  if (!requested) return null;
+  return options.find(option => option.category_code === requested || option.category === requested) || null;
 }
 
 function normalizeIngredients(items = []) {
@@ -134,27 +147,29 @@ function bPackEligibility(pet, category) {
   const hasLiverNeed = includesAny(healthText, ['liver', '肝脏', '护肝']);
   const hasCoatNeed = includesAny(healthText, ['coat', '皮毛', '皮肤', '美毛', 'dermatological']) || pet.feeding_goal === 'coat_care';
 
-  if (pet.species && pet.species !== 'dog') return { enabled: false, recommended: false, reason: '当前B全价营养包仅适用于犬类。' };
-  if (['pregnancy', 'lactation'].includes(pet.special_period)) return { enabled: false, recommended: false, reason: '妊娠或哺乳期需要专用方案，当前7个营养包均不可选。' };
+  const facts = { stage_code: stage, body_size_code: petBodySize(pet), category_code: B_PACK_CATEGORY_CODES[category] || 'UNKNOWN' };
+  const eligibility = (enabled, reason, reason_code) => ({ enabled, recommended: false, reason, reason_code, facts });
+  if (pet.species && pet.species !== 'dog') return eligibility(false, '当前B全价营养包仅适用于犬类。', 'B_PACK_DOG_ONLY');
+  if (['pregnancy', 'lactation'].includes(pet.special_period)) return eligibility(false, '妊娠或哺乳期需要专用方案，当前7个营养包均不可选。', 'B_PACK_PREGNANCY_LACTATION_UNAVAILABLE');
 
   if (stage === 'puppy') {
     const allowed = largePuppy ? '控钙幼犬（大型幼犬）' : '幼犬通用';
     return category === allowed
-      ? { enabled: true, recommended: false, reason: largePuppy ? '符合大型/巨型幼犬成长阶段。' : '符合当前幼犬成长阶段。' }
-      : { enabled: false, recommended: false, reason: category.includes('幼犬') ? '该营养包不符合当前幼犬体型。' : '幼犬不能使用成犬、老年犬或成犬功能型营养包。' };
+      ? eligibility(true, largePuppy ? '符合大型/巨型幼犬成长阶段。' : '符合当前幼犬成长阶段。', largePuppy ? 'B_PACK_LARGE_PUPPY_ELIGIBLE' : 'B_PACK_PUPPY_ELIGIBLE')
+      : eligibility(false, category.includes('幼犬') ? '该营养包不符合当前幼犬体型。' : '幼犬不能使用成犬、老年犬或成犬功能型营养包。', category.includes('幼犬') ? 'B_PACK_PUPPY_SIZE_MISMATCH' : 'B_PACK_PUPPY_STAGE_MISMATCH');
   }
 
   if (stage === 'senior') {
     return category === '老年犬通用'
-      ? { enabled: true, recommended: false, reason: '符合当前老年犬生命阶段。' }
-      : { enabled: false, recommended: false, reason: '当前为老年犬，仅可选择老年犬专用全价营养包。' };
+      ? eligibility(true, '符合当前老年犬生命阶段。', 'B_PACK_SENIOR_ELIGIBLE')
+      : eligibility(false, '当前为老年犬，仅可选择老年犬专用全价营养包。', 'B_PACK_SENIOR_ONLY');
   }
 
-  if (category === '成犬通用') return { enabled: true, recommended: false, reason: '适用于成年犬日常维持。' };
-  if (category === '美毛护肤') return { enabled: hasCoatNeed, recommended: false, reason: hasCoatNeed ? '符合美毛或皮肤护理需求。' : '宠物档案没有美毛或皮肤护理需求。' };
-  if (category === '低敏单一蛋白') return { enabled: hasAllergyNeed, recommended: false, reason: hasAllergyNeed ? '符合过敏或低敏记录。' : '宠物档案没有过敏或低敏记录。' };
-  if (category === '护肝') return { enabled: hasLiverNeed, recommended: false, reason: hasLiverNeed ? '符合肝脏健康记录。' : '宠物档案没有肝脏健康记录。' };
-  return { enabled: false, recommended: false, reason: '该营养包不符合当前成年犬生命阶段。' };
+  if (category === '成犬通用') return eligibility(true, '适用于成年犬日常维持。', 'B_PACK_ADULT_ELIGIBLE');
+  if (category === '美毛护肤') return eligibility(hasCoatNeed, hasCoatNeed ? '符合美毛或皮肤护理需求。' : '宠物档案没有美毛或皮肤护理需求。', hasCoatNeed ? 'B_PACK_COAT_ELIGIBLE' : 'B_PACK_COAT_NOT_ELIGIBLE');
+  if (category === '低敏单一蛋白') return eligibility(hasAllergyNeed, hasAllergyNeed ? '符合过敏或低敏记录。' : '宠物档案没有过敏或低敏记录。', hasAllergyNeed ? 'B_PACK_ALLERGY_ELIGIBLE' : 'B_PACK_ALLERGY_NOT_ELIGIBLE');
+  if (category === '护肝') return eligibility(hasLiverNeed, hasLiverNeed ? '符合肝脏健康记录。' : '宠物档案没有肝脏健康记录。', hasLiverNeed ? 'B_PACK_LIVER_ELIGIBLE' : 'B_PACK_LIVER_NOT_ELIGIBLE');
+  return eligibility(false, '该营养包不符合当前成年犬生命阶段。', 'B_PACK_ADULT_STAGE_MISMATCH');
 }
 
 async function getFreshCheckBPackOptions(pet) {
@@ -165,6 +180,7 @@ async function getFreshCheckBPackOptions(pet) {
     const dataConflict = option.data_conflict;
     return [option.category, {
       category: option.category,
+      category_code: B_PACK_CATEGORY_CODES[option.category] || 'UNKNOWN',
       name: clean(option.b_pack).split('：')[0],
       description: clean(option.b_pack),
       coverage: bPackCoverage(option.b_pack),
@@ -172,6 +188,8 @@ async function getFreshCheckBPackOptions(pet) {
       enabled: dataConflict ? false : eligibility.enabled,
       recommended: !dataConflict && eligibility.enabled && option.category === recommendation,
       reason: dataConflict ? '数据库中该分类存在多个不同营养包，请管理员先确认。' : eligibility.reason,
+      reason_code: dataConflict ? 'B_PACK_DATA_CONFLICT' : eligibility.reason_code,
+      facts: eligibility.facts,
     }];
   }));
   return { source, options: B_PACK_CATEGORIES.map(category => byCategory.get(category)).filter(Boolean) };
@@ -296,7 +314,11 @@ function profileNotice(pet, items) {
 }
 
 function petSuitability({ pet, findings, macros, energyScore, selectedBPack }) {
-  const component = (key, label, max, earned, reason, adjustment = '') => ({ key, label, max, earned: Number(Math.max(0, Math.min(max, earned)).toFixed(1)), reason, adjustment });
+  const component = (key, label, max, earned, reason, adjustment, reason_code, facts = {}) => ({
+    key, label, max, earned: Number(Math.max(0, Math.min(max, earned)).toFixed(1)), reason, adjustment,
+    label_code: `SUITABILITY_${key.toUpperCase()}_LABEL`, reason_code,
+    adjustment_code: `SUITABILITY_${key.toUpperCase()}_ADJUSTMENT`, facts,
+  });
   const ratio = (value, minimum) => value === null || !minimum ? 0.5 : Math.max(0, Math.min(1, value / minimum));
   const stage = petLifeStage(pet);
   const size = petBodySize(pet);
@@ -355,17 +377,17 @@ function petSuitability({ pet, findings, macros, energyScore, selectedBPack }) {
   const hasFoodRecords = (pet.allergens || []).length || (pet.food_restrictions || []).length || (pet.allergy_symptoms || []).length;
   const allergyEarned = foodConflict ? 0 : macros.coverage.status === 'uncertain' && hasFoodRecords ? 10 : 15;
   const components = [
-    component('life_stage', '年龄与生命阶段', 20, stageEarned, `按${macros.standards.stage}阶段核对蛋白质与脂肪最低值。`, '调整蛋白质和脂肪密度，使其达到当前年龄阶段要求。'),
-    component('body_size', '体型与成长约束', 10, sizeEarned, sizeReason, '大型或巨型幼犬需要确认控钙成长方案。'),
-    component('weight_energy', '体重、目标与能量', 15, weightEarned, targetWeightConflict ? `当前食谱能量与食量可执行性得分${energyScore}分；幼犬目标${targetWeight}kg低于当前${weight}kg，档案冲突。` : `当前食谱能量与食量可执行性得分${energyScore}分；当前${weight || '未填'}kg，目标${targetWeight || '未填'}kg。`, targetWeightConflict ? '暂停使用该目标体重推导减重；复核BCS、生长曲线，并降低不可执行的每日食物体积。' : '调整食谱总量或能量密度，并补全当前及目标体重。'),
-    component('activity_neuter', '活动、绝育与喂养目标', 10, activityEarned, `活动水平${pet.activity_level || '未填'}、${pet.neutered ? '已绝育' : '未绝育'}、目标${pet.feeding_goal || '未填'}。`, '补全活动水平、绝育状态和喂养目标。'),
-    component('physiology', '孕哺与恢复状态', 10, physiologyEarned, physiologyReason, '孕哺或恢复期应使用对应的专用长期方案。'),
-    component('health', '基础疾病约束', 20, healthEarned, healthReason, '存在基础疾病时，请补充专业营养指标并按疾病约束调整；建议听从专业医师建议。'),
-    component('allergy', '过敏与不耐受', 15, allergyEarned, foodConflict ? '当前食谱命中过敏或食物限制记录。' : '未发现当前食材与已登记过敏或不耐受记录冲突。', '删除冲突食材并选择安全替代来源。'),
+    component('life_stage', '年龄与生命阶段', 20, stageEarned, `按${macros.standards.stage}阶段核对蛋白质与脂肪最低值。`, '调整蛋白质和脂肪密度，使其达到当前年龄阶段要求。', 'LIFE_STAGE_MACRO_CHECK', { stage_standard: macros.standards.stage }),
+    component('body_size', '体型与成长约束', 10, sizeEarned, sizeReason, '大型或巨型幼犬需要确认控钙成长方案。', !size ? 'BODY_SIZE_UNKNOWN' : stage === 'puppy' && ['large', 'giant'].includes(size) ? (selectedBPack?.category === '控钙幼犬（大型幼犬）' ? 'LARGE_PUPPY_PACK_APPLIED' : 'LARGE_PUPPY_PACK_UNCONFIRMED') : 'BODY_SIZE_CHECKED', { body_size_code: size }),
+    component('weight_energy', '体重、目标与能量', 15, weightEarned, targetWeightConflict ? `当前食谱能量与食量可执行性得分${energyScore}分；幼犬目标${targetWeight}kg低于当前${weight}kg，档案冲突。` : `当前食谱能量与食量可执行性得分${energyScore}分；当前${weight || '未填'}kg，目标${targetWeight || '未填'}kg。`, targetWeightConflict ? '暂停使用该目标体重推导减重；复核BCS、生长曲线，并降低不可执行的每日食物体积。' : '调整食谱总量或能量密度，并补全当前及目标体重。', targetWeightConflict ? 'WEIGHT_ENERGY_PUPPY_TARGET_CONFLICT' : 'WEIGHT_ENERGY_PROFILE', { energy_score: energyScore, current_weight_kg: weight || null, target_weight_kg: targetWeight || null }),
+    component('activity_neuter', '活动、绝育与喂养目标', 10, activityEarned, `活动水平${pet.activity_level || '未填'}、${pet.neutered ? '已绝育' : '未绝育'}、目标${pet.feeding_goal || '未填'}。`, '补全活动水平、绝育状态和喂养目标。', 'ACTIVITY_NEUTER_GOAL_PROFILE', { activity_level: pet.activity_level || null, neutered: Boolean(pet.neutered), feeding_goal: pet.feeding_goal || null }),
+    component('physiology', '孕哺与恢复状态', 10, physiologyEarned, physiologyReason, '孕哺或恢复期应使用对应的专用长期方案。', ['pregnancy', 'lactation'].includes(pet.special_period) ? 'PHYSIOLOGY_PREGNANCY_LACTATION' : ['post_op_rest', 'illness_recovery'].includes(pet.special_period) ? (pet.feeding_goal === 'post_surgery_recovery' ? 'PHYSIOLOGY_RECOVERY_ALIGNED' : 'PHYSIOLOGY_RECOVERY_NOT_ALIGNED') : 'PHYSIOLOGY_NORMAL', { special_period: pet.special_period || null, neutered: Boolean(pet.neutered) }),
+    component('health', '基础疾病约束', 20, healthEarned, healthReason, '存在基础疾病时，请补充专业营养指标并按疾病约束调整；建议听从专业医师建议。', health.length ? 'HEALTH_CONSTRAINTS_REVIEWED' : 'HEALTH_NONE', { health_record_count: health.length }),
+    component('allergy', '过敏与不耐受', 15, allergyEarned, foodConflict ? '当前食谱命中过敏或食物限制记录。' : '未发现当前食材与已登记过敏或不耐受记录冲突。', '删除冲突食材并选择安全替代来源。', foodConflict ? 'ALLERGY_CONFLICT' : 'ALLERGY_NONE', { food_conflict: foodConflict }),
   ];
   const value = pet.species && pet.species !== 'dog' ? 0 : score(components.reduce((sum, item) => sum + item.earned, 0));
-  const deductions = components.filter(item => item.earned < item.max).map(item => ({ points: Number((item.max - item.earned).toFixed(1)), reason: item.reason }));
-  return { value, model: 'profile_weighted_v1', components, deductions, explanation: deductions.length ? `共${components.length}项检查，主要扣分来自${components.filter(item => item.earned < item.max).map(item => item.label).join('、')}。` : '七项宠物档案适配检查均未发现扣分。' };
+  const deductions = components.filter(item => item.earned < item.max).map(item => ({ component_key: item.key, points: Number((item.max - item.earned).toFixed(1)), reason: item.reason }));
+  return { value, model: 'profile_weighted_v1', components, deductions, explanation_code: deductions.length ? 'SUITABILITY_DEDUCTIONS_PRESENT' : 'SUITABILITY_DEDUCTIONS_NONE', explanation_facts: { component_count: components.length, deduction_keys: deductions.map(item => item.component_key) }, explanation: deductions.length ? `共${components.length}项检查，主要扣分来自${components.filter(item => item.earned < item.max).map(item => item.label).join('、')}。` : '七项宠物档案适配检查均未发现扣分。' };
 }
 
 const KCAL_PER_100G = [
@@ -486,6 +508,7 @@ function dailyEnergyNeed(pet) {
   const dailyKcal = Math.round(rer * lifeFactor * activity * goal * targetAdjustment * neuterFactor);
   return {
     stage_label: puppy ? '幼犬' : pet.life_stage === 'senior' ? '老年犬' : '成犬',
+    stage_code: puppy ? 'puppy' : pet.life_stage === 'senior' ? 'senior' : 'adult',
     rer_kcal: rer,
     daily_kcal: dailyKcal,
     min_kcal: Math.round(dailyKcal * 0.85),
@@ -498,6 +521,7 @@ function dailyEnergyNeed(pet) {
     activity_factor: activity,
     recorded_activity_factor: recordedActivity,
     activity_note: puppy && ageMonths > 0 && ageMonths < 4 ? '4个月以下幼犬先按 3×RER 估算，不再叠加普通活动系数；活动量仅用于观察后续体重、BCS和生长曲线变化。' : null,
+    activity_note_code: puppy && ageMonths > 0 && ageMonths < 4 ? 'EARLY_PUPPY_RER_ACTIVITY_NOT_MULTIPLIED' : null,
     neutered: Boolean(pet.neutered),
     neuter_factor: neuterFactor,
     feeding_goal: pet.feeding_goal || 'maintenance',
@@ -505,7 +529,10 @@ function dailyEnergyNeed(pet) {
     target_adjustment: targetAdjustment,
     target_weight_conflict: targetWeightConflict,
     target_weight_note: targetWeightConflict ? '幼犬目标体重低于当前体重，档案存在冲突；本次不使用该目标体重推导减重结论。' : null,
+    target_weight_note_code: targetWeightConflict ? 'PUPPY_TARGET_WEIGHT_CONFLICT' : null,
     digestion_note: pet.feeding_goal === 'gastrointestinal_care' ? '已按肠胃护理目标保守下调 10%，并建议少量多餐。' : null,
+    digestion_note_code: pet.feeding_goal === 'gastrointestinal_care' ? 'GI_GOAL_CONSERVATIVE_ADJUSTMENT' : null,
+    note_code: puppy ? 'DAILY_ENERGY_ESTIMATE_PUPPY' : 'DAILY_ENERGY_ESTIMATE_GENERAL',
     note: puppy ? '幼犬能量公式仅作为初始估算；应结合体重、BCS和生长曲线持续调整，个体实际需求可能与估算相差约30%。' : '能量公式仅作为初始估算；应结合体重和BCS持续调整，个体实际需求可能与估算相差约30%。',
   };
 }
@@ -531,6 +558,7 @@ function intakeFeasibility({ pet, totalWeight, energy, need, waterPct }) {
     : `当前能量密度 ${kcalPerGram ? Number(kcalPerGram.toFixed(2)) : '-'} kcal/g 已达到参考食量所需的约 ${requiredDensityRounded ?? '-'} kcal/g，无需继续提高；请在保持营养比例的前提下将每日总量控制在约 ${maxDailyGrams === null ? '-' : Math.round(maxDailyGrams)}g。`;
   return {
     stage_label: stage === 'puppy' ? '幼犬' : stage === 'senior' ? '老年犬' : '成犬',
+    stage_code: stage,
     daily_food_weight_g: totalWeight,
     daily_food_weight_pct_body_weight: dailyRatioPct === null ? null : Number(dailyRatioPct.toFixed(1)),
     grams_per_meal: Number((totalWeight / meals).toFixed(1)),
@@ -545,12 +573,15 @@ function intakeFeasibility({ pet, totalWeight, energy, need, waterPct }) {
     minimum_density_for_reference_volume: requiredDensityRounded,
     needs_higher_density: needsHigherDensity,
     volume_advice: volumeAdvice,
+    volume_advice_code: needsHigherDensity ? 'INCREASE_ENERGY_DENSITY_AND_LIMIT_VOLUME' : 'KEEP_DENSITY_AND_LIMIT_VOLUME',
+    volume_advice_facts: { minimum_density_for_reference_volume: requiredDensityRounded, kcal_per_gram: kcalPerGram ? Number(kcalPerGram.toFixed(2)) : null, reference_max_daily_grams: maxDailyGrams === null ? null : Math.round(maxDailyGrams) },
     excessive_volume: excessPct !== null && excessPct > 20,
     severe_excessive_volume: dailyRatioPct !== null && dailyRatioPct > hardRatioPct,
     low_energy_density: kcalPerGram > 0 && kcalPerGram < 1.3,
     high_water: Number.isFinite(waterPct) && waterPct >= 75,
     score: volumeScore,
     note: '每日营养需求估算不是兽医处方，应结合粪便、食欲、体重、BCS和生长曲线复核。',
+    note_code: 'DAILY_NEED_NOT_VETERINARY_PRESCRIPTION',
   };
 }
 
@@ -560,7 +591,11 @@ function energyFinding({ energy, need, categories, feasibility }) {
   const suggestedGrams = Math.round(need.daily_kcal / energy.kcal_per_gram);
   if (feasibility?.excessive_volume) {
     const causes = [feasibility.low_energy_density && '能量密度偏低', feasibility.high_water && '含水率较高'].filter(Boolean).join('且');
-    return finding('warning', '每日食量过大，当前方案难以执行', `当前食谱 ${feasibility.daily_food_weight_g}g，占体重 ${feasibility.daily_food_weight_pct_body_weight}%（每餐约 ${feasibility.grams_per_meal}g），比本产品${feasibility.stage_label}建议食量约 ${feasibility.reference_max_daily_grams}g 超出 ${feasibility.exceeds_reference_by_pct}%${causes ? `；${causes}` : ''}。超过建议量20%以上才触发本提示；即使总热量接近目标，也不能视为能量需求已合理满足。`, feasibility.volume_advice, 'EXCESSIVE_DAILY_FOOD_VOLUME', 'energy', { ...feasibility, causes });
+    return finding('warning', '每日食量过大，当前方案难以执行', `当前食谱 ${feasibility.daily_food_weight_g}g，占体重 ${feasibility.daily_food_weight_pct_body_weight}%（每餐约 ${feasibility.grams_per_meal}g），比本产品${feasibility.stage_label}建议食量约 ${feasibility.reference_max_daily_grams}g 超出 ${feasibility.exceeds_reference_by_pct}%${causes ? `；${causes}` : ''}。超过建议量20%以上才触发本提示；即使总热量接近目标，也不能视为能量需求已合理满足。`, feasibility.volume_advice, 'EXCESSIVE_DAILY_FOOD_VOLUME', 'energy', {
+      daily_food_weight_g: feasibility.daily_food_weight_g, daily_food_weight_pct_body_weight: feasibility.daily_food_weight_pct_body_weight,
+      grams_per_meal: feasibility.grams_per_meal, stage_code: feasibility.stage_code, reference_max_daily_grams: feasibility.reference_max_daily_grams,
+      exceeds_reference_by_pct: feasibility.exceeds_reference_by_pct, low_energy_density: feasibility.low_energy_density, high_water: feasibility.high_water,
+    });
   }
   if (energy.total_kcal > need.max_kcal) return finding('warning', '每日能量偏高', `当前食谱约 ${energy.total_kcal} kcal，超过该宠物建议每日 ${need.min_kcal}-${need.max_kcal} kcal；按当前配方密度，建议总量约 ${suggestedGrams}g。`, `减少约 ${Math.round((energy.total_kcal - need.daily_kcal) / energy.kcal_per_gram)}g；优先等比例缩减主蛋白和碳水，不要仅删除钙源或必需脂肪酸。`, 'DAILY_ENERGY_HIGH', 'energy', { total_kcal: energy.total_kcal, min_kcal: need.min_kcal, max_kcal: need.max_kcal, suggested_grams: suggestedGrams });
   if (energy.total_kcal < need.min_kcal) {
@@ -614,7 +649,7 @@ function localCheck({ pet, ingredients, mealIntent = 'long_term', selectedBPack 
   if (selectedBPack) {
     const coverage = selectedBPack.coverage || bPackCoverage(selectedBPack.description);
     const covered = [['vitamins', '维生素'], ['minerals', '矿物质'], ['calcium', '钙源']].filter(([key]) => coverage[key]).map(([, label]) => label);
-    findings.push(finding('safe', '已选择全价营养包补充维生素和矿物质', `${selectedBPack.name} 按数据库说明覆盖：${covered.join('、') || '暂无可确认项目'}；按每100克食材配10克、烹饪完成后拌入，不计入食材总重、宏量营养、能量、食材比例或烹饪参数。`, '请严格按标注剂量在烹饪完成后拌入，并继续处理仍存在的结构、能量和必需脂肪酸问题。', 'B_PACK_APPLIED', 'nutrition'));
+    findings.push(finding('safe', '已选择全价营养包补充维生素和矿物质', `${selectedBPack.name} 按数据库说明覆盖：${covered.join('、') || '暂无可确认项目'}；按每100克食材配10克、烹饪完成后拌入，不计入食材总重、宏量营养、能量、食材比例或烹饪参数。`, '请严格按标注剂量在烹饪完成后拌入，并继续处理仍存在的结构、能量和必需脂肪酸问题。', 'B_PACK_APPLIED', 'nutrition', { category_code: selectedBPack.category_code || B_PACK_CATEGORY_CODES[selectedBPack.category] || 'UNKNOWN', coverage_codes: covered.length ? Object.keys(coverage).filter(key => coverage[key]) : [], grams_per_100g: 10 }));
   }
   if (!categories.carb.length) findings.push(finding('notice', '碳水/淀粉来源待确认', '未识别到碳水来源；低碳食谱不一定适合长期主食。', '结合宠物活动量和专业建议确认能量来源。', 'CARB_SOURCE_MISSING', 'nutrition'));
   findings.push(energyFinding({ energy, need: daily_need, categories, feasibility: intake_feasibility }));
@@ -643,10 +678,10 @@ function localCheck({ pet, ingredients, mealIntent = 'long_term', selectedBPack 
   let longTerm = Math.min(completeness, structure, energyScore, suitability);
   if (macro_nutrition.coverage.status === 'uncertain') longTerm = Math.min(longTerm, 60);
   const longTermFactors = [
-    { key: 'nutrition', label: '营养完整性', value: completeness, adjustment: '补齐当前阶段所需的宏量和微量营养。' },
-    { key: 'structure', label: '食谱结构平衡性', value: structure, adjustment: '按页面建议调整动物蛋白、内脏、碳水、果蔬和脂肪来源比例。' },
-    { key: 'energy', label: '能量需求满足度', value: energyScore, adjustment: '调整食谱总量或能量密度，使每日热量进入建议范围。' },
-    { key: 'suitability', label: '宠物适配性', value: suitability, adjustment: '幼犬或特殊阶段需随体重和月龄复核，并由专业人员确认长期方案。' },
+    { key: 'nutrition', label_code: 'SCORE_NUTRITION_LABEL', adjustment_code: 'LONG_TERM_NUTRITION_ADJUSTMENT', label: '营养完整性', value: completeness, adjustment: '补齐当前阶段所需的宏量和微量营养。' },
+    { key: 'structure', label_code: 'SCORE_STRUCTURE_LABEL', adjustment_code: 'LONG_TERM_STRUCTURE_ADJUSTMENT', label: '食谱结构平衡性', value: structure, adjustment: '按页面建议调整动物蛋白、内脏、碳水、果蔬和脂肪来源比例。' },
+    { key: 'energy', label_code: 'SCORE_ENERGY_LABEL', adjustment_code: 'LONG_TERM_ENERGY_ADJUSTMENT', label: '能量需求满足度', value: energyScore, adjustment: '调整食谱总量或能量密度，使每日热量进入建议范围。' },
+    { key: 'suitability', label_code: 'SCORE_SUITABILITY_LABEL', adjustment_code: 'LONG_TERM_SUITABILITY_ADJUSTMENT', label: '宠物适配性', value: suitability, adjustment: '幼犬或特殊阶段需随体重和月龄复核，并由专业人员确认长期方案。' },
   ];
   const limitingFactors = longTermFactors.filter(item => item.value === Math.min(...longTermFactors.map(factor => factor.value)));
   const isBlocked = danger > 0;
@@ -660,23 +695,26 @@ function localCheck({ pet, ingredients, mealIntent = 'long_term', selectedBPack 
     suitability_detail: suitabilityDetail,
     long_term_detail: {
       score: longTerm,
-      limiting_factors: limitingFactors.map(item => ({ key: item.key, label: item.label, value: item.value })),
+      limiting_factors: limitingFactors.map(item => ({ key: item.key, label_code: item.label_code, adjustment_code: item.adjustment_code, label: item.label, value: item.value })),
+      explanation_code: 'LONG_TERM_LIMITING_FACTORS',
+      explanation_facts: { factors: limitingFactors.map(item => ({ key: item.key, value: item.value })) },
       explanation: `当前长期适宜性主要受${limitingFactors.map(item => `${item.label}${item.value}分`).join('、')}限制。`,
+      adjustment_codes: [...new Set(limitingFactors.map(item => item.adjustment_code))],
       adjustments: [...new Set(limitingFactors.map(item => item.adjustment))],
       professional_confirmation_required: profileNotice(pet, ingredients).length > 0,
     },
     scores: [
-      { key: 'safety', label: '食材安全性', value: safety },
-      { key: 'suitability', label: '宠物适配性', value: suitability },
-      { key: 'structure', label: '食谱结构平衡性', value: structure },
-      { key: 'nutrition', label: '营养完整性', value: completeness },
-      { key: 'long_term', label: '长期适宜性', value: longTerm },
-      { key: 'energy', label: '能量需求满足度', value: energyScore },
+      { key: 'safety', label_code: 'SCORE_SAFETY_LABEL', label: '食材安全性', value: safety },
+      { key: 'suitability', label_code: 'SCORE_SUITABILITY_LABEL', label: '宠物适配性', value: suitability },
+      { key: 'structure', label_code: 'SCORE_STRUCTURE_LABEL', label: '食谱结构平衡性', value: structure },
+      { key: 'nutrition', label_code: 'SCORE_NUTRITION_LABEL', label: '营养完整性', value: completeness },
+      { key: 'long_term', label_code: 'SCORE_LONG_TERM_LABEL', label: '长期适宜性', value: longTerm },
+      { key: 'energy', label_code: 'SCORE_ENERGY_LABEL', label: '能量需求满足度', value: energyScore },
     ],
     findings,
     verdict_code: verdictCode,
     verdict: isBlocked ? '需先处理红色安全风险后再继续。' : warning ? '存在需要调整的项目，请按建议修改后重新验证。' : '未发现明显安全冲突；长期喂养前仍需专业人员确认营养完整性。',
-    cooking_plan: !isBlocked && warning === 0 && total <= 1000 ? { total_weight_g: total, temperature_c: 85, cook_minutes: Math.max(8, Math.round(total / 25)), note: '这是待人工确认的鲜食机烹饪参数，尚未下发设备。' } : null,
+    cooking_plan: !isBlocked && warning === 0 && total <= 1000 ? { total_weight_g: total, temperature_c: 85, cook_minutes: Math.max(8, Math.round(total / 25)), note_code: 'COOKING_PLAN_AWAITING_CONFIRMATION_NOT_SENT', note: '这是待人工确认的鲜食机烹饪参数，尚未下发设备。' } : null,
   };
 }
 
@@ -713,7 +751,7 @@ async function buildFreshCheckAnalysis({ pet, ingredients, meal_intent, b_pack_c
     }
   }
   const requestedCategory = clean(b_pack_category);
-  const selectedBPack = requestedCategory ? bPacks.options.find(option => option.category === requestedCategory) : null;
+  const selectedBPack = selectBPackOption(bPacks.options, requestedCategory);
   if (requestedCategory && (!selectedBPack || !selectedBPack.enabled)) {
     const error = new Error(selectedBPack?.reason || '所选全价营养包不存在或不适合当前宠物档案');
     error.status = 400;
@@ -737,4 +775,4 @@ async function buildFreshCheckAnalysis({ pet, ingredients, meal_intent, b_pack_c
   return local;
 }
 
-module.exports = { recognizeFreshCheck, buildFreshCheckAnalysis, getFreshCheckBPackOptions, _test: { calculateMacroNutrition, structureAssessment, dailyEnergyNeed, intakeFeasibility, localCheck, normalizeIngredientFacts, lookupIngredientFactsWithRetry, hasNutritionValues, bPackApplication } };
+module.exports = { recognizeFreshCheck, buildFreshCheckAnalysis, getFreshCheckBPackOptions, _test: { calculateMacroNutrition, structureAssessment, dailyEnergyNeed, intakeFeasibility, localCheck, normalizeIngredientFacts, lookupIngredientFactsWithRetry, hasNutritionValues, bPackApplication, selectBPackOption } };

@@ -224,9 +224,11 @@ async function translatePresentationFields({ locale, items }) {
   const languageNames = { en: 'English', de: 'German', fr: 'French', es: 'Spanish', it: 'Italian', ja: 'Japanese', ko: 'Korean' };
   const targetLanguage = languageNames[locale];
   if (!targetLanguage || !Array.isArray(items) || !items.length) return { items: [] };
+  const allowed = items.filter(item => item?.risk_code === 'AI_PRESENTATION_TEXT' && /^(ai_summary|ai_macro_reasoning|ai_macro_adjustment:\d+)$/.test(item.item_id));
+  if (allowed.length !== items.length) throw new Error('Only whitelisted AI presentation fields may be translated');
   return freshCheckCompletion(
-    `You localize non-critical Pet Chef presentation text into ${targetLanguage}. Translate only title, reason, and adjustment. Keep item_id and risk_code byte-for-byte unchanged. Never add diagnoses, ingredients, numbers, warnings, or recommendations. Return JSON only: {"items":[{"item_id":"...","risk_code":"...","title":"...","reason":"...","adjustment":"..."}]}.`,
-    JSON.stringify({ items })
+    `You localize non-critical Pet Chef AI presentation text into ${targetLanguage}. Only item_id values ai_summary, ai_macro_reasoning, and ai_macro_adjustment:<index> are allowed. Translate only the reason field. Keep item_id, risk_code, title, adjustment, placeholders, numbers, units, codes, and enum values byte-for-byte unchanged. Never add diagnoses, ingredients, numbers, warnings, recommendations, or safety conclusions. Return JSON only: {"items":[{"item_id":"...","risk_code":"AI_PRESENTATION_TEXT","title":"...","reason":"...","adjustment":"..."}]}.`,
+    JSON.stringify({ items: allowed })
   );
 }
 

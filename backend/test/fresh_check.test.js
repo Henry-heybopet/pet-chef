@@ -63,11 +63,37 @@ test('B包只补微量营养，不改变宏量结构或把长期适宜性设为1
 test('B包按食材总重10%计算且明确排除烹饪与营养计算', () => {
   const application = _test.bPackApplication(580);
   assert.equal(application.dose_grams, 58);
+  assert.equal(application.basis_code, 'B_PACK_DOSE_10_PERCENT_POST_COOK');
+  assert.deepEqual(application.facts, { grams_per_100g: 10, total_weight_g: 580 });
   assert.equal(application.timing, 'post_cook');
   assert.equal(application.excluded_from_recipe_weight, true);
   assert.equal(application.excluded_from_macros, true);
   assert.equal(application.excluded_from_energy, true);
   assert.equal(application.excluded_from_cooking, true);
+});
+
+test('B包同时接受稳定category code和旧APK中文分类', () => {
+  const options = [{ category: '成犬通用', category_code: 'ADULT_GENERAL', enabled: true }];
+  assert.equal(_test.selectBPackOption(options, 'ADULT_GENERAL'), options[0]);
+  assert.equal(_test.selectBPackOption(options, '成犬通用'), options[0]);
+  assert.equal(_test.selectBPackOption(options, 'UNKNOWN'), null);
+});
+
+test('动态展示区提供稳定code和facts且不改变评分数值', () => {
+  const report = analyze([{ name: '鸡胸肉', grams: 220 }, { name: '鸡肝', grams: 15 }, { name: '米饭', grams: 55 }, { name: '胡萝卜', grams: 40 }, { name: '西兰花', grams: 20 }, { name: '鱼油', grams: 5 }]);
+  assert.equal(report.daily_need.stage_code, 'adult');
+  assert.ok(report.daily_need.note_code);
+  assert.ok(report.daily_need.intake_feasibility.volume_advice_code);
+  report.suitability_detail.components.forEach(item => {
+    assert.ok(item.label_code);
+    assert.ok(item.reason_code);
+    assert.ok(item.adjustment_code);
+    assert.equal(typeof item.facts, 'object');
+  });
+  assert.ok(report.long_term_detail.explanation_code);
+  assert.equal(report.long_term_detail.adjustment_codes.length, report.long_term_detail.adjustments.length);
+  report.scores.forEach(item => assert.ok(item.label_code));
+  if (report.cooking_plan) assert.equal(report.cooking_plan.note_code, 'COOKING_PLAN_AWAITING_CONFIRMATION_NOT_SENT');
 });
 
 test('合理结构配方不会触发四个比例问题', () => {
