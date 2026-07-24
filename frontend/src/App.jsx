@@ -1,5 +1,5 @@
 {/* Pet Chef Ver B1.00 — 2026-06-22 */}
-// App.jsx — Heybo Lux Feeding OS v2.0 with i18n
+// App.jsx — HeyboPet Feeding OS v2.0 with i18n
 import React, { useEffect, useRef, useState } from 'react';
 import { useDogProfile } from './hooks/useDogProfile';
 import { LanguageProvider, useLanguage, LANGS } from './i18n/LanguageContext';
@@ -313,8 +313,7 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken,
       <LangSelector />
       <div className="home-hero">
         <div className="home-logo-wrap">
-          <img src="/logo.png" onError={e => { e.target.src = '/logo.jpg'; e.target.onerror = null; }}
-            alt="Heybo Lux" className="home-logo" />
+          <img src="/logo.png" alt="HeyboPet" className="home-logo" />
         </div>
         <div className={`home-slogan ${lang === 'zh' || lang === 'ja' || lang === 'ko' ? 'home-slogan-cjk' : ''}`}>
           <span style={{ alignSelf: 'flex-start' }}>{t('slogan1')}</span>

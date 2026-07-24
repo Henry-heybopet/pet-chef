@@ -274,15 +274,14 @@ body {
 }
 
 .home-logo-wrap {
-  margin: -6% 0 -7%;
+  margin: 64px 0 18px;
 }
 
 .home-logo {
-  width: 86%;
-  max-width: 360px;
+  width: 78%;
+  max-width: 340px;
   display: block;
   margin: 0 auto;
-  transform: scale(1.08);
 }
 
 .home-slogan {
@@ -2140,13 +2139,12 @@ body {
   }
 
   .home-logo-wrap {
-    margin: -10% 0 -12%;
+    margin: 72px 0 14px;
   }
 
   .home-logo {
-    width: 74%;
-    max-width: 300px;
-    transform: scale(1);
+    width: 70%;
+    max-width: 280px;
   }
 
   .home-slogan {
@@ -2242,11 +2240,11 @@ body {
 
 @media (max-height: 820px) {
   .home-logo-wrap {
-    margin: -13% 0 -14%;
+    margin: 52px 0 10px;
   }
 
   .home-logo {
-    width: 68%;
+    width: 64%;
   }
 
   .home-slogan-cjk {

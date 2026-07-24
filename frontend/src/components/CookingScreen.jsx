@@ -66,7 +66,7 @@ export default function CookingScreen({ onBack, cookingData, lang }) {
   return (
     <div className="animate-fade flex-col" style={{ flex: 1 }}>
       <div style={{ padding: '12px 24px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
-        <img src="/logo.png" onError={e => { e.target.src = '/logo.jpg'; e.target.onerror = null; }} alt="Heybo Lux" style={{ width: '60%', maxWidth: 220, display: 'block', margin: '0 auto' }} />
+        <img src="/logo.png" alt="HeyboPet" style={{ width: '60%', maxWidth: 220, display: 'block', margin: '0 auto' }} />
         <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 4 }}>
           {tData(profile.breedName, lang)} · 「{tData(recipe.name, lang)}」· {displayGrams}g
         </div>
