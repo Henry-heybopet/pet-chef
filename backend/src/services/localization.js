@@ -292,6 +292,17 @@ function presentationFor(finding, locale) {
   const hasUnlocalizedFact = locale !== 'zh' && Object.entries(facts)
     .some(([key, value]) => templateText.includes(`{${key}}`) && key !== 'ingredient_name' && typeof value === 'string' && containsHan(value));
 
+  if (locale === 'zh' && !template) {
+    return {
+      risk_code: riskCode,
+      title: finding.title || '',
+      reason: finding.reason || finding.message || '',
+      adjustment: finding.adjustment || '',
+      translation_status: 'source',
+      fallback_locale: null,
+    };
+  }
+
   if ((!template && !KNOWN_FINDING_CODES.has(riskCode)) || hasUnlocalizedIngredient || hasUnlocalizedFact) {
     return {
       risk_code: riskCode,

@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ingredientsDb } = require('../src/data/ingredients_db');
 const { _test } = require('../src/services/fresh_check');
+const { _test: nutritionRepository } = require('../src/services/nutrition_repository');
 
 const adult = { id: 'dog-1', name: '姐姐', species: 'dog', age_months: 24, current_weight_kg: 10, activity_level: 'medium', feeding_goal: 'maintenance' };
 const analyze = (ingredients, selectedBPack = null, pet = adult) => _test.localCheck({ pet, ingredients, mealIntent: 'long_term', selectedBPack, ingredientMap: ingredientsDb });
@@ -100,6 +101,58 @@ test('合理结构配方不会触发四个比例问题', () => {
   const report = analyze([{ name: '鸡胸肉', grams: 220 }, { name: '鸡肝', grams: 15 }, { name: '米饭', grams: 55 }, { name: '胡萝卜', grams: 40 }, { name: '西兰花', grams: 20 }, { name: '鱼油', grams: 5 }]);
   ['LOW_ANIMAL_PROTEIN', 'HIGH_CARB', 'HIGH_VEGETABLE', 'LOW_FAT_SOURCE'].forEach(code => assert.ok(!codes(report).has(code), code));
   assert.ok(value(report, 'structure') >= 80);
+});
+
+test('530g牛肉牛肝配方识别动物蛋白、内脏和三文鱼油', () => {
+  const recipe = [
+    { name: '牛肉', grams: 250 },
+    { name: '土豆', grams: 150 },
+    { name: '葫芦', grams: 20 },
+    { name: '西兰花', grams: 40 },
+    { name: '三文鱼油', grams: 20 },
+    { name: '牛肝', grams: 50 },
+  ];
+  const report = analyze(recipe);
+  assert.deepEqual(report.macro_nutrition.ingredient_weight_ratios, {
+    animal_protein_pct: 56.6,
+    organ_pct: 9.4,
+    carb_pct: 28.3,
+    vegetable_pct: 11.3,
+    fat_containing_ingredient_pct: 60.4,
+    fat_source_pct: 3.8,
+  });
+  assert.deepEqual(report.macro_nutrition.estimated_grams, {
+    protein_g: 75,
+    fat_g: 52,
+    carb_g: 28.9,
+    water_g: 369.4,
+  });
+  assert.equal(report.macro_nutrition.coverage.weight_pct, 100);
+  assert.equal(report.macro_nutrition.details.find(item => item.name === '三文鱼油').matched_name, '三文鱼油');
+});
+
+test('不完整PostgreSQL食材行不会覆盖静态基础营养数据', () => {
+  const merged = nutritionRepository.mergeIngredientRows(ingredientsDb, [
+    { id: '牛肉', name: '牛肉', category: 'protein', protein_pct: null, fat_pct: null, calories_per_100g: null },
+    { id: '自定义食材', name: '自定义食材', category: 'veg', calories_per_100g: '25.5' },
+  ]);
+  assert.equal(merged['牛肉'].protein_pct, 26);
+  assert.equal(merged['牛肉'].fat_pct, 12);
+  assert.equal(merged['牛肉'].calories_per_100g, 213);
+  assert.equal(merged['自定义食材'].calories_per_100g, '25.5');
+});
+
+test('名称分类不依赖营养覆盖，但缺失营养仍明确标记为不完整', () => {
+  const report = _test.localCheck({
+    pet: adult,
+    ingredients: [{ name: '牛肉', grams: 250 }, { name: '牛肝', grams: 50 }],
+    mealIntent: 'long_term',
+    ingredientMap: {},
+  });
+  assert.equal(report.macro_nutrition.ingredient_weight_ratios.animal_protein_pct, 100);
+  assert.equal(report.macro_nutrition.ingredient_weight_ratios.organ_pct, 16.7);
+  assert.equal(report.macro_nutrition.coverage.weight_pct, 0);
+  assert.ok(codes(report).has('MACRO_DATA_INCOMPLETE'));
 });
 
 test('幼犬采用更高的FEDIAF蛋白质和脂肪阶段最低值', () => {

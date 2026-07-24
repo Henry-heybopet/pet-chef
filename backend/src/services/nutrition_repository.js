@@ -225,12 +225,27 @@ function buildRecipeIndexByName(recipes) {
   return Object.fromEntries((recipes || []).map(recipe => [recipe.name, recipe]));
 }
 
+function mergeIngredientRows(seedIngredients, rows) {
+  const merged = Object.fromEntries(
+    Object.entries(seedIngredients || {}).map(([name, record]) => [name, { ...record }])
+  );
+  for (const row of rows || []) {
+    const name = String(row?.name || '').trim();
+    if (!name) continue;
+    const definedFields = Object.fromEntries(
+      Object.entries(row).filter(([, value]) => value !== null && value !== undefined && value !== '')
+    );
+    merged[name] = { ...(merged[name] || {}), ...definedFields };
+  }
+  return merged;
+}
+
 async function getIngredientMap() {
   try {
     if (await isAvailable()) {
       const result = await query('SELECT * FROM ingredient_library', []);
       return {
-        ingredients: Object.fromEntries(result.rows.map(row => [row.name, row])),
+        ingredients: mergeIngredientRows(ingredientsDb, result.rows),
         source: 'pg',
       };
     }
@@ -251,4 +266,5 @@ module.exports = {
   updateRecipe,
   getIngredientMap,
   buildRecipeIndexByName,
+  _test: { mergeIngredientRows },
 };

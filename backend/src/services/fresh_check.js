@@ -247,19 +247,20 @@ function calculateMacroNutrition({ pet, ingredients, ingredientMap = {}, ingredi
     const carbPct = nullableNumber(record.carb_pct, 0, 100);
     const rawWaterPct = nullableNumber(record.water_pct, 0, 100);
     const waterFraction = rawWaterPct === null ? null : (rawWaterPct <= 1 ? rawWaterPct : rawWaterPct / 100);
-    const unsafe = isDeterministicDanger(item.name) || ai?.is_food === false || ai?.dog_safety === 'unsafe' || ai?.dog_safety === 'uncertain' || ai?.nutrition_unresolved;
-    const known = !unsafe && kcalPer100 !== null && [proteinPct, fatPct, carbPct].some(value => value !== null);
+    const unsafe = isDeterministicDanger(item.name) || ai?.is_food === false || ai?.dog_safety === 'unsafe' || ai?.dog_safety === 'uncertain';
+    const categoryKnown = !unsafe && category !== 'other';
+    const known = !unsafe && !ai?.nutrition_unresolved && kcalPer100 !== null && [proteinPct, fatPct, carbPct].some(value => value !== null);
     const nutrient = {
       protein_g: known && proteinPct !== null ? item.grams * proteinPct / 100 : 0,
       fat_g: known && fatPct !== null ? item.grams * fatPct / 100 : 0,
       carb_g: known && carbPct !== null ? item.grams * carbPct / 100 : 0,
       kcal: known ? item.grams * kcalPer100 / 100 : 0,
     };
-    if (known && ['protein', 'organ'].includes(category)) totals.animal_protein_g += item.grams;
-    if (known && category === 'organ') totals.organ_g += item.grams;
-    if (known && category === 'carb') totals.carb_ingredient_g += item.grams;
-    if (known && category === 'vegetable') totals.vegetable_g += item.grams;
-    if (known && category === 'fat') totals.fat_source_g += item.grams;
+    if (categoryKnown && ['protein', 'organ'].includes(category)) totals.animal_protein_g += item.grams;
+    if (categoryKnown && category === 'organ') totals.organ_g += item.grams;
+    if (categoryKnown && category === 'carb') totals.carb_ingredient_g += item.grams;
+    if (categoryKnown && category === 'vegetable') totals.vegetable_g += item.grams;
+    if (categoryKnown && category === 'fat') totals.fat_source_g += item.grams;
     if (known && fatPct > 0) totals.fat_containing_g += item.grams;
     totals.protein_g += nutrient.protein_g; totals.fat_g += nutrient.fat_g; totals.carb_g += nutrient.carb_g; totals.kcal += nutrient.kcal;
     if (known && waterFraction !== null) { totals.water_g += item.grams * waterFraction; totals.water_covered_g += item.grams; }

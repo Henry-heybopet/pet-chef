@@ -132,6 +132,32 @@ test('missing templates visibly fall back to canonical Chinese without hiding a 
   assert.equal(mixed.semantic.findings[1].title, undefined);
 });
 
+test('Chinese Fresh Check findings preserve specific source conclusions instead of generic placeholders', () => {
+  const findings = [
+    {
+      risk_code: 'LOW_ANIMAL_PROTEIN',
+      level: 'warning',
+      domain: 'structure',
+      facts: { actual_pct: 0, minimum_pct: 35 },
+      title: '动物蛋白比例过低',
+      reason: '动物蛋白食材占配方0%，低于长期鲜食结构参考下限。',
+      adjustment: '提高适配的动物蛋白食材占比。',
+    },
+    {
+      risk_code: 'DAILY_ENERGY_LOW',
+      level: 'warning',
+      domain: 'energy',
+      facts: { total_kcal: 200, min_kcal: 400 },
+      title: '每日能量偏低',
+      reason: '当前食谱约200 kcal，低于建议范围。',
+      adjustment: '调整总量或能量密度后重新验证。',
+    },
+  ];
+  const output = localizeSemanticResult({ findings }, 'zh');
+  assert.deepEqual(output.findings.map(item => item.title), ['动物蛋白比例过低', '每日能量偏低']);
+  assert.doesNotMatch(JSON.stringify(output.findings), /营养检查结果|能量检查结果|请以本项的结构化数值为准/);
+});
+
 test('AI translates only whitelisted summary fields and never receives findings', async () => {
   const finding = { ...safetyFinding };
   let received;
