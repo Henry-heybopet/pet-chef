@@ -94,6 +94,11 @@ const TEMPLATES = Object.freeze({
 
 const L = (...values) => Object.fromEntries(SUPPORTED_LOCALES.map((locale, index) => [locale, values[index]]));
 const EXTRA_FINDING_TEMPLATES = Object.freeze({
+  MICRONUTRIENT_SOURCE_MISSING: Object.fromEntries(SUPPORTED_LOCALES.map((locale, index) => [locale, [
+    ['长期主食缺少维生素和矿物质', 'Vitamins and minerals are missing for long-term feeding', 'Vitamine und Mineralstoffe fehlen für die Langzeitfütterung', 'Vitamines et minéraux manquants pour l’alimentation à long terme', 'Faltan vitaminas y minerales para la alimentación prolongada', 'Vitamine e minerali mancanti per l’alimentazione a lungo termine', '長期給与に必要なビタミン・ミネラルが不足しています', '장기 급여에 필요한 비타민과 미네랄이 부족합니다'][index],
+    ['未识别到钙源或完整营养平衡包，长期可能造成营养失衡。', 'No calcium source or complete nutrition pack was identified, which may cause imbalance over time.', 'Es wurde keine Kalziumquelle oder kein vollständiges Nährstoffpaket erkannt; langfristig kann ein Ungleichgewicht entstehen.', 'Aucune source de calcium ni pack nutritionnel complet n’a été identifié, ce qui peut entraîner un déséquilibre à long terme.', 'No se identificó una fuente de calcio ni un pack nutricional completo, lo que puede causar desequilibrios con el tiempo.', 'Non è stata identificata una fonte di calcio o un pack nutrizionale completo; nel tempo può causare squilibri.', 'カルシウム源または総合栄養パックが確認できず、長期的に栄養バランスを崩す可能性があります。', '칼슘 공급원이나 완전 영양 팩이 확인되지 않아 장기적으로 영양 불균형이 생길 수 있습니다.'][index],
+    ['按专业方案补充明确剂量的维生素和矿物质，或添加王牌全价营养包。', 'Add professionally dosed vitamins and minerals, or use a VIP Pet complete nutrition pack.', 'Ergänzen Sie fachlich dosierte Vitamine und Mineralstoffe oder verwenden Sie ein VIP Pet Vollnährstoffpaket.', 'Ajoutez des vitamines et minéraux dosés par un professionnel, ou utilisez un pack nutritionnel complet VIP Pet.', 'Añada vitaminas y minerales con dosis profesional o use un pack nutricional completo VIP Pet.', 'Aggiungere vitamine e minerali dosati professionalmente oppure usare un pack nutrizionale completo VIP Pet.', '専門的に用量設定されたビタミン・ミネラル、またはVIP Pet総合栄養パックを追加してください。', '전문가가 용량을 정한 비타민과 미네랄을 보충하거나 VIP Pet 완전 영양 팩을 추가하세요.'][index],
+  ]])),
   SEASONING_RISK: Object.fromEntries(SUPPORTED_LOCALES.map((locale, index) => [locale, [
     ['高盐或复合调味风险', 'High-salt or mixed-seasoning risk', 'Risiko durch Salz oder Gewürzmischungen', 'Risque lié au sel ou aux assaisonnements', 'Riesgo por sal o condimentos', 'Rischio da sale o condimenti', '高塩分・複合調味料のリスク', '고염분 또는 복합 조미료 위험'][index],
     ['该食材可能含盐或成分不明的调味物。', 'This ingredient may contain salt or seasonings with unknown ingredients.', 'Diese Zutat kann Salz oder Gewürze mit unbekannten Bestandteilen enthalten.', 'Cet ingrédient peut contenir du sel ou des assaisonnements de composition inconnue.', 'Este ingrediente puede contener sal o condimentos de composición desconocida.', 'Questo ingrediente può contenere sale o condimenti dalla composizione sconosciuta.', '塩分や成分不明の調味料が含まれる可能性があります。', '소금이나 성분이 불분명한 조미료가 포함될 수 있습니다.'][index],
@@ -539,7 +544,6 @@ async function localizeSemanticResultWithAi(result, requestedLocale, translate) 
 
 function aiNutritionPresentationIsValid(analysis, requestedLocale) {
   const locale = normalizeLocale(requestedLocale);
-  if (locale === 'zh' || locale === 'ja') return true;
   const fields = [
     analysis?.breed_intro,
     analysis?.activity_desc,
@@ -547,8 +551,10 @@ function aiNutritionPresentationIsValid(analysis, requestedLocale) {
     ...(analysis?.key_nutrition_needs || []),
     ...(analysis?.cautions || []),
     ...(analysis?.recommended_categories || []),
-  ];
-  return fields.filter(Boolean).every(value => !containsHan(value));
+  ].filter(Boolean).map(String);
+  if (locale === 'zh') return true;
+  if (locale === 'ja') return fields.length > 0 && /[\u3040-\u30ff]/.test(fields.join(' '));
+  return fields.every(value => !containsHan(value));
 }
 
 function buildAiNutritionFallback({ requestedLocale, age, weight, intake = {}, averageWeight = null }) {

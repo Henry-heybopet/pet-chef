@@ -5,6 +5,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const { validateIngredientSafety, hasToxicIngredients, generateSafetyWarnings } = require('./safety_filter');
 const { breedsDb } = require('../data/breeds_db');
 const { recipesDb } = require('../data/recipes_db');
+const { localizeComparison } = require('./comparison_localization');
 
 async function callDeepSeekAPI(systemPrompt, userPrompt) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
@@ -199,7 +200,10 @@ async function generateAIRecipe(breedName, age, weight, goals, existingRecipeNam
 /**
  * 比较新老配方选择并给出警告和说明
  */
-async function compareRecipeSelection(dogProfile, currentSelection, proposedSelection) {
+async function compareRecipeSelection(dogProfile, currentSelection, proposedSelection, locale = 'zh') {
+  // Safety and scoring are deterministic; only the semantic result is localized.
+  return getLocalComparisonWarning(dogProfile, currentSelection, proposedSelection, locale);
+  /* istanbul ignore next -- retained temporarily for compatibility reference */
   const prompt = `请分析以下犬只的鲜食配方变更，评估其潜在的营养风险和变化，以JSON格式返回：
 
 犬只信息：
@@ -420,8 +424,10 @@ function calculateAScore(dogProfile, recipeName) {
 function getADetailsAndReason(dogProfile, currentName, proposedName, currentScore, proposedScore) {
   let details = '';
   let reason = '';
+  let detailCode = 'BALANCED_VARIETY';
   
   if (proposedName.includes('牛肉') || proposedName.includes('补能')) {
+    detailCode = 'BEEF_ENERGY';
     details = `当前推荐配方选用低脂禽肉/鱼类，蛋白质高且脂肪仅约6%；计划更换配方为红肉牛肉，粗脂肪升至14%，属于高热量能量食谱。`;
     if (dogProfile.age >= 8 || (dogProfile.goals && dogProfile.goals.some(g => g.includes('低脂') || g.includes('减肥')))) {
       reason = `鉴于爱犬年龄偏大或有低脂调理诉求，高脂牛肉可能会加重肠胃和胰腺负荷，故推荐配方打分（${currentScore}%）优于更换配方（${proposedScore}%）。`;
@@ -429,12 +435,15 @@ function getADetailsAndReason(dogProfile, currentName, proposedName, currentScor
       reason = `更换配方可带来更强劲的能量补充，但在平衡性调和上当前推荐配方（${currentScore}%）适配打分更高。`;
     }
   } else if (proposedName.includes('低脂') || proposedName.includes('关节') || proposedName.includes('轻盈')) {
+    detailCode = 'LOW_FAT_SUPPORT';
     details = `两款均属低脂配方。推荐配方均衡易消化；更换配方为针对性低脂，并补充了南瓜和冬瓜以提升纤维含量。`;
     reason = `结合爱犬对低脂及关节护理的特定需求，更换配方（${proposedScore}%）匹配度极高，可提供优异的体重管理与骨关节润滑。`;
   } else if (proposedName.includes('温和') || proposedName.includes('消化') || proposedName.includes('兔肉')) {
+    detailCode = 'GENTLE_DIGESTION';
     details = `当前推荐配方维稳效果优良；计划更换为温和兔脊肉，属单一优质蛋白，粗脂肪极低，更契合高敏感度消化系统。`;
     reason = `兔肉具有高消化、低过敏的特征，非常适合肠胃娇嫩或易软便的犬只，打分达 ${proposedScore}%，两款对比各有特色。`;
   } else if (proposedName.includes('心') || proposedName.includes('金枪鱼') || proposedName.includes('亮毛') || proposedName.includes('三文鱼')) {
+    detailCode = 'FISH_ANTIOXIDANT';
     details = `推荐配方蛋白质吸收温和；更换配方主打金枪鱼白肉，富含Omega-3（DHA/EPA）及抗氧化蓝莓，对心血管更佳。`;
     reason = `海鱼与浆果的天然抗氧配比可强化心脑血管活性及皮毛屏障，针对心肺与毛发养护打分为 ${proposedScore}%，极为理想。`;
   } else {
@@ -442,14 +451,15 @@ function getADetailsAndReason(dogProfile, currentName, proposedName, currentScor
     reason = `两款均符合 AAFCO 全价平衡标准，当前推荐得分（${currentScore}%）略高。更换配方（${proposedScore}%）也可作为日常换粮换口味的选择。`;
   }
   
-  return { details, reason };
+  return { details, reason, detailCode };
 }
 
 // 本地降级对比逻辑
-function getLocalComparisonWarning(dogProfile, current, proposed) {
+function getLocalComparisonWarning(dogProfile, current, proposed, locale = 'zh') {
   let warningText = '';
   let level = 'none';
   let hasWarning = false;
+  const warningItems = [];
 
   // 1. A包切换检查
   let a_comparison = null;
@@ -459,6 +469,7 @@ function getLocalComparisonWarning(dogProfile, current, proposed) {
       warningText += '⚠️ 您选择的新配方包含牛肉，牛肉的脂肪含量比鸡肉/火鸡更高。由于您的爱犬有低脂或减肥目标，建议尽量保持低脂的鸡肉或兔肉配方。';
       level = 'info';
       hasWarning = true;
+      warningItems.push({ code: 'LOW_FAT_BEEF' });
     }
 
     const currentScore = calculateAScore(dogProfile, current.a_recipe_name);
@@ -466,7 +477,7 @@ function getLocalComparisonWarning(dogProfile, current, proposed) {
     if (current.a_recipe_name === proposed.a_recipe_name) {
       proposedScore = currentScore;
     }
-    const { details, reason } = getADetailsAndReason(dogProfile, current.a_recipe_name, proposed.a_recipe_name, currentScore, proposedScore);
+    const { details, reason, detailCode } = getADetailsAndReason(dogProfile, current.a_recipe_name, proposed.a_recipe_name, currentScore, proposedScore);
     
     // 过敏硬警示判定
     const recipeObj = getRecipeByName(dogProfile, proposed.a_recipe_name);
@@ -504,6 +515,7 @@ function getLocalComparisonWarning(dogProfile, current, proposed) {
       warningText += `🚫 警告：新配方 ${proposed.a_recipe_name} 中含有过敏原 ${matchedAllergen}，这与您的爱犬的过敏原匹配，强烈建议不要选择！`;
       level = 'warning';
       hasWarning = true;
+      warningItems.push({ code: 'ALLERGEN', facts: { allergen: matchedAllergen } });
     }
 
     a_comparison = {
@@ -511,7 +523,8 @@ function getLocalComparisonWarning(dogProfile, current, proposed) {
       current_score: currentScore,
       proposed_score: proposedScore,
       comparison_details: details,
-      score_reason: reason
+      score_reason: reason,
+      detail_code: detailCode,
     };
   }
 
@@ -522,10 +535,12 @@ function getLocalComparisonWarning(dogProfile, current, proposed) {
       warningText += '🚫 警告：大型犬的幼犬生长发育与普通幼犬有显著差异，需要精准控钙磷的比例以防止发育性骨关节病。不建议将其更换为普通全价营养包！';
       level = 'warning';
       hasWarning = true;
+      warningItems.push({ code: 'LARGE_PUPPY_B' });
     } else {
       warningText += `⚠️ 提示：您将推荐的 ${recB} 替换为了 ${proposed.b_pack_name}，全价营养包是针对特定生命阶段/功能匹配设计的，随意替换可能会打破微量营养平衡。`;
       level = 'info';
       hasWarning = true;
+      warningItems.push({ code: 'B_PACK_CHANGE' });
     }
   }
 
@@ -537,6 +552,7 @@ function getLocalComparisonWarning(dogProfile, current, proposed) {
       warningText += ` 提示：移除了 ${removedC.join('、')}，对应的特定功能强化（如关节或肠胃支持）将会减弱。`;
       level = level === 'none' ? 'info' : level;
       hasWarning = true;
+      warningItems.push({ code: 'C_PACK_REMOVED' });
     }
   }
 
@@ -544,18 +560,30 @@ function getLocalComparisonWarning(dogProfile, current, proposed) {
     warningText = '配置已更新，配方成分平衡满足需求。';
   }
 
-  return {
+  return localizeComparison({
     has_warning: hasWarning,
     warning_level: level,
-    warning_text: warningText.trim(),
-    a_comparison: a_comparison
-  };
+    show_dialog: Boolean(a_comparison),
+    detail_code: a_comparison?.detail_code || 'BALANCED_VARIETY',
+    warning_items: warningItems,
+    facts: {
+      current_score: a_comparison?.current_score,
+      proposed_score: a_comparison?.proposed_score,
+    },
+  }, locale);
 }
 
 /**
  * 批量比较新老配方选择并给出警告和说明 (稳定、自洽、一次性计算)
  */
-async function compareRecipeSelectionBatch(dogProfile, currentSelection, proposedSelections) {
+async function compareRecipeSelectionBatch(dogProfile, currentSelection, proposedSelections, locale = 'zh') {
+  return {
+    comparisons: Object.fromEntries(proposedSelections.map(proposed => [
+      proposed.a_recipe_name,
+      getLocalComparisonWarning(dogProfile, currentSelection, proposed, locale),
+    ])),
+  };
+  /* istanbul ignore next -- retained temporarily for compatibility reference */
   const currentScore = calculateAScore(dogProfile, currentSelection.a_recipe_name);
   
   const enrichedProposed = proposedSelections.map(p => {
@@ -616,7 +644,8 @@ ${enrichedProposed.map((p, idx) => `
 }`;
 
   try {
-    const apiKey = process.env.DEEPSEEK_API_KEY || 'sk-85673c68584b4c06a9aa5d1fe5db5108';
+    const apiKey = process.env.DEEPSEEK_API_KEY;
+    if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not configured');
     const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
     const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 
@@ -678,4 +707,4 @@ ${enrichedProposed.map((p, idx) => `
   }
 }
 
-module.exports = { analyzeBreedNutrition, generateAIRecipe, compareRecipeSelection, compareRecipeSelectionBatch };
+module.exports = { analyzeBreedNutrition, generateAIRecipe, compareRecipeSelection, compareRecipeSelectionBatch, getLocalComparisonWarning };

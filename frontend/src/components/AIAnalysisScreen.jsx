@@ -2,9 +2,10 @@
 import React from 'react';
 import TopBar from './TopBar';
 import { useTranslation } from '../i18n/translations';
-import { tData, tTag, tBreedDesc } from '../i18n/dataTranslations';
+import { tData, tTag, tBreedDesc, tBenefit, tPack } from '../i18n/dataTranslations';
 import { api } from '../api';
 import { demoRecipes } from '../data/demoRecipes';
+import { resolveRecipeImageUrl } from '../utils/recipeImage';
 
 // Nutrition needs translation map for rule-engine fallback
 const NEED_TR = {
@@ -125,6 +126,8 @@ function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack,
   const tags = recipe.tags || [];
   const ingredients = Object.entries(recipe.ingredients || {});
   const benefits = Object.entries(recipe.ingredient_benefits || {});
+  const displayName = recipe.presentation?.name || tData(recipe.name, lang);
+  const ingredientName = name => recipe.presentation?.ingredients?.[name]?.name || tData(name, lang);
 
   return (
     <div className="animate-fade flex-col" style={{ flex: 1, minHeight: 0 }}>
@@ -153,7 +156,7 @@ function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack,
         <div style={{ width: '100%', height: 'min(22dvh, 190px)', background: 'rgba(0,230,255,0.05)' }}>
           {recipe.img ? (
             <img
-              src={recipe.img}
+              src={resolveRecipeImageUrl(recipe.img)}
               alt=""
               style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
             />
@@ -167,7 +170,7 @@ function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack,
         <div style={{ padding: '18px 16px 4px' }}>
           <div style={{ marginBottom: 14 }}>
             <h2 style={{ color: 'var(--primary)', margin: '0 0 6px', fontSize: 24, lineHeight: 1.18, fontWeight: 900 }}>
-              {tData(recipe.name, lang)}
+              {displayName}
             </h2>
             {tags.length > 0 && (
               <div style={{ color: 'var(--gray)', fontSize: 13, lineHeight: 1.5, marginBottom: 10 }}>
@@ -198,7 +201,7 @@ function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack,
                 const grams = Math.round((Number(pct) / 100) * perMealGrams);
                 return (
                   <div key={ing} style={{ background: 'rgba(255,255,255,0.045)', border: '1px solid rgba(255,255,255,0.06)', padding: '10px 12px', borderRadius: 10, minWidth: 0 }}>
-                    <div style={{ color: '#fff', fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tData(ing, lang)}</div>
+                    <div style={{ color: '#fff', fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ingredientName(ing)}</div>
                     <div style={{ color: 'var(--primary)', fontSize: 14, fontWeight: 900, marginTop: 4 }}>{pct}% ({grams}g)</div>
                   </div>
                 );
@@ -212,8 +215,8 @@ function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack,
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {benefits.map(([name, ben]) => (
                   <div key={name} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: '10px 12px' }}>
-                    <div style={{ color: 'var(--text)', fontSize: 13, fontWeight: 800, marginBottom: 4 }}>{tData(name, lang)}</div>
-                    <div style={{ color: 'var(--gray)', fontSize: 12, lineHeight: 1.55 }}>{ben}</div>
+                    <div style={{ color: 'var(--text)', fontSize: 13, fontWeight: 800, marginBottom: 4 }}>{ingredientName(name)}</div>
+                    <div style={{ color: 'var(--gray)', fontSize: 12, lineHeight: 1.55 }}>{recipe.presentation?.ingredient_benefits?.[name] || tBenefit(name, ben, lang)}</div>
                   </div>
                 ))}
               </div>
@@ -243,8 +246,8 @@ function RecipeDetailPage({ recipe, analysis, comparison, isRecommended, onBack,
           <section style={{ marginBottom: 12 }}>
             <h3 style={{ color: '#fff', fontSize: 15, margin: '0 0 10px', fontWeight: 800 }}>{t('pairingAdvice')}</h3>
             <div style={{ fontSize: 12, color: 'var(--gray)', lineHeight: 1.65, padding: 12, background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(0,230,255,0.22)', borderRadius: 12 }}>
-              <div style={{ marginBottom: 6 }}><strong style={{ color: 'var(--secondary)' }}>{t('recommendedBPack')}</strong>{recipe.b_pack ? tData(recipe.b_pack, lang) : t('noneValue')}</div>
-              <div><strong style={{ color: '#00FFA3' }}>{t('recommendedCPack')}</strong>{recipe.c_pack ? tData(recipe.c_pack, lang) : t('noneValue')}</div>
+              <div style={{ marginBottom: 6 }}><strong style={{ color: 'var(--secondary)' }}>{t('recommendedBPack')}</strong>{recipe.b_pack ? tPack(recipe.b_pack, lang) : t('noneValue')}</div>
+              <div><strong style={{ color: '#00FFA3' }}>{t('recommendedCPack')}</strong>{recipe.c_pack ? tPack(recipe.c_pack, lang) : t('noneValue')}</div>
             </div>
           </section>
         </div>
@@ -370,6 +373,30 @@ function ComparisonSheet({ data, hoveredCard, setHoveredCard, onClose, t, lang }
 export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang, authToken }) {
   const t = useTranslation(lang);
   const { analysis, breedName, age, weight } = profile;
+  const [catalogRecipes, setCatalogRecipes] = React.useState(demoRecipes);
+
+  React.useEffect(() => {
+    let active = true;
+    api.getRecipes({ all: 1, locale: lang })
+      .then(result => {
+        if (!active || !result?.success) return;
+        const fallbackById = new Map(demoRecipes.map(recipe => [recipe.id, recipe]));
+        setCatalogRecipes(result.recipes.map(recipe => {
+          const fallback = fallbackById.get(recipe.id) || {};
+          return {
+            ...fallback,
+            ...recipe,
+            img: recipe.img || fallback.img || '',
+            ingredient_benefits: {
+              ...(fallback.ingredient_benefits || {}),
+              ...(recipe.presentation?.ingredient_benefits || {}),
+            },
+          };
+        }));
+      })
+      .catch(error => console.warn('[RecipeCatalog] localized catalog unavailable:', error?.message || 'unknown'));
+    return () => { active = false; };
+  }, [lang]);
 
   const lifeStageLabel = { '幼犬': `🐾 ${t('puppyStage')}`, '成年犬': `🐕 ${t('adultStage')}`, '老年犬': `🦴 ${t('seniorStage')}` }[analysis?.life_stage] || `🐕 ${t('adultStage')}`;
   const activityLabel = { low: t('activityLow'), medium: t('activityMedium'), high: t('activityHigh'), very_high: t('activityWorking') }[analysis?.activity_level] || t('activityMedium');
@@ -396,12 +423,12 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     }
 
     // 增加对功能性目标的辅助匹配
-    let recipes = demoRecipes.filter(r => r.category === targetCat);
+    let recipes = catalogRecipes.filter(r => r.category === targetCat);
     if (recipes.length === 0) {
-      recipes = demoRecipes.slice(0, 5); // 兜底
+      recipes = catalogRecipes.slice(0, 5); // 兜底
     }
     return recipes;
-  }, [analysis, weight]);
+  }, [analysis, weight, catalogRecipes]);
 
   // 默认推荐前 3 个
   const defaultRecommendedA = React.useMemo(() => {
@@ -579,8 +606,8 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
       return;
     }
 
-    const currentA = demoRecipes.find(r => r.id === selectedAId)?.name || '';
-    const proposedA = demoRecipes.find(r => r.id === nextAId)?.name || '';
+    const currentA = catalogRecipes.find(r => r.id === selectedAId)?.name || '';
+    const proposedA = catalogRecipes.find(r => r.id === nextAId)?.name || '';
     if (!profile?.id) {
       alert(t('savePetBeforeCompare'));
       return;
@@ -647,14 +674,14 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
   };
 
   const continueSelectA = async (id) => {
-    const proposedRecipe = demoRecipes.find(r => r.id === id);
+    const proposedRecipe = catalogRecipes.find(r => r.id === id);
     if (!proposedRecipe) return;
 
     const proposedName = proposedRecipe.name;
     const cached = comparisonsCache[proposedName];
 
     if (cached && cached.a_comparison && cached.a_comparison.show_dialog) {
-      const currentRecipe = demoRecipes.find(r => r.id === selectedAId);
+      const currentRecipe = catalogRecipes.find(r => r.id === selectedAId);
       setAComparisonData({
         currentName: currentRecipe?.name || '',
         proposedName: proposedName,
@@ -679,7 +706,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
   };
 
   const handleSelectA = async (id) => {
-    const proposedRecipe = demoRecipes.find(r => r.id === id);
+    const proposedRecipe = catalogRecipes.find(r => r.id === id);
     if (!proposedRecipe) return;
 
     const matchedAllergen = checkRecipeAllergen(proposedRecipe);
@@ -731,7 +758,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{tData(r.name, lang)}</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{r.presentation?.name || tData(r.name, lang)}</span>
             {cachedScore !== undefined && cachedScore !== null && (
               <span style={{ fontSize: 11, color: matchedAllergen ? '#f87171' : 'var(--primary)', fontWeight: 800 }}>({t('matchPercent', { score: cachedScore })})</span>
             )}
@@ -744,7 +771,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
             )}
           </div>
           <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
-            {Object.keys(r.ingredients || {}).slice(0, 4).map(name => tData(name, lang)).join('/')}...
+            {Object.keys(r.ingredients || {}).slice(0, 4).map(name => r.presentation?.ingredients?.[name]?.name || tData(name, lang)).join('/')}...
           </div>
         </div>
         <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 11, height: 'fit-content' }} onClick={(e) => { e.stopPropagation(); setShowDetailRecipe(r); }}>
@@ -755,8 +782,8 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
   };
 
   const activeRecipeObj = React.useMemo(() => {
-    return demoRecipes.find(r => r.id === selectedAId) || categoryRecipes[0];
-  }, [selectedAId, categoryRecipes]);
+    return catalogRecipes.find(r => r.id === selectedAId) || categoryRecipes[0];
+  }, [selectedAId, categoryRecipes, catalogRecipes]);
 
   if (showDetailRecipe) {
     return (

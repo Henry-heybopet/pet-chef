@@ -20,6 +20,12 @@ const router = express.Router();
 const avatarDir = path.resolve(__dirname, '../../public/uploads/avatars');
 const imageTypes = { png: 'png', jpeg: 'jpg', jpg: 'jpg', webp: 'webp' };
 const maxAvatarBytes = 5 * 1024 * 1024;
+const FRESH_CHECK_ERRORS = {
+  dogOnly: ['鲜食验证仅支持犬类宠物档案','Fresh Check currently supports dog profiles only','Die Frischfutter-Prüfung unterstützt derzeit nur Hundeprofile','La validation des repas frais prend actuellement en charge uniquement les profils de chiens','La validación de comida fresca solo admite actualmente perfiles de perros','La verifica del cibo fresco supporta attualmente solo profili di cani','フレッシュフード検証は現在、犬のプロフィールのみ対応しています','신선식 검증은 현재 반려견 프로필만 지원합니다'],
+  ingredientRequired: ['请至少填写一种食材及克重','Enter at least one ingredient and its weight','Geben Sie mindestens eine Zutat und ihr Gewicht ein','Indiquez au moins un ingrédient et son poids','Introduzca al menos un ingrediente y su peso','Inserisci almeno un ingrediente e il relativo peso','食材と重量を1つ以上入力してください','식재료와 중량을 하나 이상 입력하세요'],
+  invalidIngredient: ['请检查食材名称和克重（每项需大于 0g）','Check the ingredient names and weights; each must be greater than 0 g','Prüfen Sie Zutaten und Gewichte; jeder Wert muss über 0 g liegen','Vérifiez les ingrédients et leur poids ; chaque valeur doit dépasser 0 g','Revise los ingredientes y los pesos; cada valor debe ser mayor que 0 g','Controlla ingredienti e pesi; ogni valore deve essere superiore a 0 g','食材名と重量を確認してください（各項目は0gより大きい必要があります）','식재료명과 중량을 확인하세요(각 항목은 0g보다 커야 합니다)'],
+};
+const localizedError = (key, locale) => FRESH_CHECK_ERRORS[key][['zh','en','de','fr','es','it','ja','ko'].indexOf(locale)] || FRESH_CHECK_ERRORS[key][0];
 
 function asyncHandler(fn) {
   return (req, res) => Promise.resolve(fn(req, res)).catch(error => {
@@ -209,16 +215,16 @@ router.post('/fresh-check/recognize', authMiddleware, asyncHandler(async (req, r
 }));
 
 router.post('/fresh-check/analyze', authMiddleware, asyncHandler(async (req, res) => {
+  const locale = normalizeLocale(req.body?.locale || req.body?.lang);
   const user = await requireUser(req);
   const pet = await petRepository.getPetForUser(user.id, req.body?.pet_id);
   if (!pet) return res.status(404).json({ success: false, error: 'Pet not found' });
-  if (pet.species && pet.species !== 'dog') return res.status(400).json({ success: false, error: 'Fresh Check 仅支持犬类宠物档案' });
+  if (pet.species && pet.species !== 'dog') return res.status(400).json({ success: false, error: localizedError('dogOnly', locale) });
   const ingredients = Array.isArray(req.body?.ingredients) ? req.body.ingredients : [];
-  if (!ingredients.length) return res.status(400).json({ success: false, error: '请至少填写一种食材及克重' });
+  if (!ingredients.length) return res.status(400).json({ success: false, error: localizedError('ingredientRequired', locale) });
   const result = await buildFreshCheckAnalysis({ pet, ingredients, meal_intent: req.body?.meal_intent, b_pack_category: req.body?.b_pack_category });
-  if (!result.recipe.ingredients.length) return res.status(400).json({ success: false, error: '请检查食材名称和克重（每项需大于 0g）' });
+  if (!result.recipe.ingredients.length) return res.status(400).json({ success: false, error: localizedError('invalidIngredient', locale) });
   const analysis_id = storeAnalysis({ userId: user.id, kind: 'fresh-check', result });
-  const locale = normalizeLocale(req.body?.locale || req.body?.lang);
   const localized = await localizeSemanticResultWithAi(result, locale, translatePresentationFields);
   storeRendered({ analysisId: analysis_id, userId: user.id, kind: 'fresh-check', locale, localized });
   res.json({ success: true, analysis_id, ...localized });

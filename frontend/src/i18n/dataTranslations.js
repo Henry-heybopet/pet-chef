@@ -130,6 +130,24 @@ const R = { // Recipe names
 '火鸡低敏':['Turkey Hypoallergenic','Truthahn Hypoallergen','Dinde Hypoallergénique','Pavo Hipoalergénico','Tacchino Ipoallergenico','七面鳥低アレルゲン','칠면조 저알레르기'],
 '鱼肉低敏':['Fish Hypoallergenic','Fisch Hypoallergen','Poisson Hypoallergénique','Pescado Hipoalergénico','Pesce Ipoallergenico','魚低アレルゲン','생선 저알레르기'],
 '羊肉低敏':['Lamb Hypoallergenic','Lamm Hypoallergen','Agneau Hypoallergénique','Cordero Hipoalergénico','Agnello Ipoallergenico','ラム低アレルゲン','양고기 저알레르기'],
+'金枪鱼护心':['Tuna Heart Care','Thunfisch Herzschutz','Thon soin du cœur','Atún cuidado cardíaco','Tonno per il cuore','ツナ心臓ケア','참치 심장 케어'],
+'金枪鱼单一低敏':['Tuna Single-Protein Hypoallergenic','Thunfisch Einzelprotein Hypoallergen','Thon mono-protéine hypoallergénique','Atún monoproteico hipoalergénico','Tonno monoproteico ipoallergenico','ツナ単一たんぱく低アレルゲン','참치 단일 단백질 저알레르기'],
+'兔肉菠菜单一低敏':['Rabbit Spinach Hypoallergenic','Kaninchen-Spinat Hypoallergen','Lapin épinards hypoallergénique','Conejo y espinaca hipoalergénico','Coniglio e spinaci ipoallergenico','ウサギ肉ほうれん草低アレルゲン','토끼 시금치 저알레르기'],
+'兔肉红薯单一低敏':['Rabbit Sweet Potato Hypoallergenic','Kaninchen-Süßkartoffel Hypoallergen','Lapin patate douce hypoallergénique','Conejo y camote hipoalergénico','Coniglio e patata dolce ipoallergenico','ウサギ肉さつまいも低アレルゲン','토끼 고구마 저알레르기'],
+'鸭肉胡萝卜单一低敏':['Duck Carrot Hypoallergenic','Ente-Karotte Hypoallergen','Canard carotte hypoallergénique','Pato y zanahoria hipoalergénico','Anatra e carota ipoallergenico','鴨肉にんじん低アレルゲン','오리 당근 저알레르기'],
+'鸭肉南瓜单一低敏':['Duck Pumpkin Hypoallergenic','Ente-Kürbis Hypoallergen','Canard citrouille hypoallergénique','Pato y calabaza hipoalergénico','Anatra e zucca ipoallergenico','鴨肉かぼちゃ低アレルゲン','오리 호박 저알레르기'],
+'金枪鱼抗氧':['Tuna Antioxidant','Thunfisch Antioxidativ','Thon antioxydant','Atún antioxidante','Tonno antiossidante','ツナ抗酸化','참치 항산화'],
+'兔肉低脂':['Low-Fat Rabbit','Kaninchen Fettarm','Lapin faible en gras','Conejo bajo en grasa','Coniglio magro','低脂肪ウサギ肉','저지방 토끼'],
+'鸡肉美毛':['Chicken Coat Care','Hähnchen Fellpflege','Poulet soin du pelage','Pollo cuidado del pelo','Pollo cura del pelo','チキン被毛ケア','닭고기 피모 관리'],
+'金枪鱼抗炎':['Tuna Anti-Inflammatory','Thunfisch Entzündungshemmend','Thon anti-inflammatoire','Atún antiinflamatorio','Tonno antinfiammatorio','ツナ抗炎症','참치 항염'],
+'金枪鱼亮毛':['Tuna Shiny Coat','Thunfisch Glänzendes Fell','Thon pelage brillant','Atún pelo brillante','Tonno pelo lucente','ツナ艶毛','참치 윤기모'],
+'兔肉抗敏':['Rabbit Hypoallergenic','Kaninchen Hypoallergen','Lapin hypoallergénique','Conejo hipoalergénico','Coniglio ipoallergenico','ウサギ肉低アレルゲン','토끼 저알레르기'],
+'金枪鱼缓生长':['Tuna Gentle Growth','Thunfisch Sanftes Wachstum','Thon croissance douce','Atún crecimiento suave','Tonno crescita graduale','ツナ緩やか成長','참치 완만 성장'],
+'兔肉低钙成长':['Rabbit Low-Calcium Growth','Kaninchen Kalziumarm','Lapin croissance faible calcium','Conejo crecimiento bajo en calcio','Coniglio crescita a basso calcio','ウサギ肉低カルシウム成長','토끼 저칼슘 성장'],
+'金枪鱼南瓜脑发育':['Tuna Pumpkin Brain Development','Thunfisch-Kürbis Gehirnentwicklung','Thon citrouille développement cérébral','Atún calabaza desarrollo cerebral','Tonno zucca sviluppo cerebrale','ツナかぼちゃ脳発達','참치 호박 두뇌 발달'],
+'金枪鱼燕麦成长':['Tuna Oat Growth','Thunfisch-Hafer Wachstum','Thon avoine croissance','Atún avena crecimiento','Tonno avena crescita','ツナオーツ成長','참치 귀리 성장'],
+'兔肉南瓜肠胃餐':['Rabbit Pumpkin Digestive','Kaninchen-Kürbis Verdauung','Lapin citrouille digestif','Conejo calabaza digestivo','Coniglio zucca digestivo','ウサギ肉かぼちゃ胃腸食','토끼 호박 소화식'],
+'鸭肉红薯成长':['Duck Sweet Potato Growth','Ente-Süßkartoffel Wachstum','Canard patate douce croissance','Pato camote crecimiento','Anatra patata dolce crescita','鴨肉さつまいも成長','오리 고구마 성장'],
 '幼犬成长营养包B':['Puppy Growth Pack B','Welpen-Wachstumspaket B','Pack croissance chiot B','Pack crecimiento cachorro B','Pacchetto crescita cucciolo B','子犬成長栄養パックB','강아지 성장 영양 팩 B'],
 '大型幼犬稳骨控钙营养包B':['Large Puppy Calcium-Control Pack B','Kalziumkontrollpaket B für große Welpen','Pack B calcium contrôlé grand chiot','Pack B calcio controlado cachorro grande','Pacchetto B calcio controllato cuccioli grandi','大型子犬カルシウム調整パックB','대형 강아지 칼슘 조절 팩 B'],
 '成犬维护营养包B':['Adult Maintenance Pack B','Erhaltungspaket B für erwachsene Hunde','Pack entretien adulte B','Pack mantenimiento adulto B','Pacchetto mantenimento adulto B','成犬維持栄養パックB','성견 유지 영양 팩 B'],
@@ -158,6 +176,27 @@ const R = { // Recipe names
 '高浓度葡萄糖胺 / 软骨素 / MSM，关节润滑保护。':['Glucosamine, chondroitin and MSM support joint lubrication.','Glucosamin, Chondroitin und MSM unterstützen die Gelenke.','Glucosamine, chondroïtine et MSM soutiennent les articulations.','Glucosamina, condroitina y MSM apoyan las articulaciones.','Glucosamina, condroitina e MSM supportano le articolazioni.','グルコサミン・コンドロイチン・MSMで関節を支えます。','글루코사민·콘드로이틴·MSM이 관절 윤활을 지원합니다.'],
 '天然辅酶Q10 / L-肉碱 / 纯牛磺酸，强健心肌。':['CoQ10, L-carnitine and taurine support heart muscle.','CoQ10, L-Carnitin und Taurin unterstützen den Herzmuskel.','CoQ10, L-carnitine et taurine soutiennent le muscle cardiaque.','CoQ10, L-carnitina y taurina apoyan el músculo cardíaco.','CoQ10, L-carnitina e taurina supportano il muscolo cardiaco.','CoQ10・L-カルニチン・タウリンで心筋を支えます。','CoQ10·L-카르니틴·타우린이 심장 근육을 지원합니다.'],
 '酵母β-葡聚糖 / 蓝莓花青素，清除自由基抗衰。':['Yeast beta-glucan and blueberry anthocyanins provide antioxidant immune support.','Hefe-Beta-Glucan und Heidelbeer-Anthocyane unterstützen Immunsystem und Antioxidation.','Bêta-glucane de levure et anthocyanes de myrtille soutiennent l’immunité.','Beta-glucano de levadura y antocianinas de arándano apoyan la inmunidad.','Beta-glucano di lievito e antociani di mirtillo sostengono l’immunità.','酵母βグルカンとブルーベリーアントシアニンで抗酸化・免疫を支えます。','효모 베타글루칸과 블루베리 안토시아닌이 항산화·면역을 지원합니다.'],
+};
+const NB = { // Curated ingredient benefit copy
+'鸡小胸':['Lean, easy-to-digest protein for growth and weight control.','Mageres, leicht verdauliches Protein für Wachstum und Gewichtskontrolle.','Protéine maigre et digeste pour la croissance et le contrôle du poids.','Proteína magra y digestiva para crecimiento y control de peso.','Proteina magra e digeribile per crescita e controllo del peso.','成長と体重管理に適した、消化しやすい低脂肪たんぱく源です。','성장과 체중 관리에 적합한 소화하기 쉬운 저지방 단백질입니다.'],
+'南瓜':['Low-calorie fiber and beta-carotene support digestion.','Kalorienarme Ballaststoffe und Beta-Carotin unterstützen die Verdauung.','Fibres peu caloriques et bêta-carotène soutiennent la digestion.','Fibra baja en calorías y betacaroteno apoyan la digestión.','Fibre a basso contenuto calorico e beta-carotene aiutano la digestione.','低カロリーの食物繊維とβカロテンが消化を支えます。','저칼로리 식이섬유와 베타카로틴이 소화를 돕습니다.'],
+'冬瓜丁':['High moisture and very low calories support weight management.','Viel Wasser und sehr wenig Kalorien unterstützen die Gewichtskontrolle.','Très hydratant et peu calorique, il aide au contrôle du poids.','Su alto contenido de agua y pocas calorías ayudan a controlar el peso.','Ricco di acqua e povero di calorie, aiuta il controllo del peso.','水分が多く低カロリーで、体重管理を支えます。','수분이 많고 열량이 낮아 체중 관리를 돕습니다.'],
+'全熟燕麦片':['Soluble fiber supports gut health, steady energy and satiety.','Lösliche Ballaststoffe unterstützen Darm, Energie und Sättigung.','Les fibres solubles soutiennent l’intestin, l’énergie et la satiété.','La fibra soluble favorece el intestino, la energía estable y la saciedad.','Le fibre solubili sostengono intestino, energia e sazietà.','水溶性食物繊維が腸、安定したエネルギー、満腹感を支えます。','수용성 식이섬유가 장 건강과 안정적인 에너지, 포만감을 돕습니다.'],
+'菠菜':['Iron, folate and antioxidants support blood and eye health.','Eisen, Folsäure und Antioxidantien unterstützen Blut und Augen.','Fer, folates et antioxydants soutiennent le sang et les yeux.','Hierro, folato y antioxidantes apoyan la sangre y la vista.','Ferro, folati e antiossidanti sostengono sangue e vista.','鉄、葉酸、抗酸化成分が血液と目の健康を支えます。','철분, 엽산, 항산화 성분이 혈액과 눈 건강을 돕습니다.'],
+'蓝莓':['Anthocyanins provide antioxidant support for cognition and vision.','Anthocyane unterstützen antioxidativ Kognition und Sehkraft.','Les anthocyanes soutiennent cognition et vision par leur action antioxydante.','Las antocianinas apoyan la cognición y la vista.','Gli antociani sostengono cognizione e vista.','アントシアニンが認知機能と視力を抗酸化サポートします。','안토시아닌이 인지 기능과 시력을 항산화 방식으로 돕습니다.'],
+'胡萝卜':['Beta-carotene and fiber support skin, vision and digestion.','Beta-Carotin und Ballaststoffe unterstützen Haut, Augen und Verdauung.','Bêta-carotène et fibres soutiennent peau, vision et digestion.','Betacaroteno y fibra apoyan piel, vista y digestión.','Beta-carotene e fibre sostengono pelle, vista e digestione.','βカロテンと食物繊維が皮膚、目、消化を支えます。','베타카로틴과 식이섬유가 피부, 눈, 소화를 돕습니다.'],
+'西兰花':['Vitamin C, vitamin K and plant antioxidants support immunity.','Vitamin C, Vitamin K und Pflanzenstoffe unterstützen die Abwehr.','Vitamines C et K et antioxydants végétaux soutiennent l’immunité.','Vitaminas C y K y antioxidantes vegetales apoyan la inmunidad.','Vitamine C e K e antiossidanti vegetali sostengono l’immunità.','ビタミンC・Kと植物性抗酸化成分が免疫を支えます。','비타민 C·K와 식물성 항산화 성분이 면역을 돕습니다.'],
+'苹果':['Pectin, vitamin C and quercetin support digestion and antioxidant balance.','Pektin, Vitamin C und Quercetin unterstützen Verdauung und Antioxidation.','Pectine, vitamine C et quercétine soutiennent digestion et antioxydants.','Pectina, vitamina C y quercetina apoyan digestión y antioxidantes.','Pectina, vitamina C e quercetina sostengono digestione e antiossidanti.','ペクチン、ビタミンC、ケルセチンが消化と抗酸化を支えます。','펙틴, 비타민 C, 퀘르세틴이 소화와 항산화를 돕습니다.'],
+'金枪鱼白肉':['Lean protein, taurine, EPA and DHA support heart and cognition.','Mageres Protein, Taurin, EPA und DHA unterstützen Herz und Kognition.','Protéines maigres, taurine, EPA et DHA soutiennent cœur et cognition.','Proteína magra, taurina, EPA y DHA apoyan corazón y cognición.','Proteine magre, taurina, EPA e DHA sostengono cuore e cognizione.','低脂肪たんぱく、タウリン、EPA、DHAが心臓と認知を支えます。','저지방 단백질, 타우린, EPA, DHA가 심장과 인지 건강을 돕습니다.'],
+'红薯':['Low-GI carbohydrate and fiber provide steady energy and digestive support.','Niedrig-glykämische Kohlenhydrate und Ballaststoffe liefern stabile Energie.','Glucides à IG bas et fibres apportent énergie stable et soutien digestif.','Carbohidratos de IG bajo y fibra aportan energía estable y apoyo digestivo.','Carboidrati a basso IG e fibre forniscono energia stabile e supporto digestivo.','低GIの炭水化物と食物繊維が安定したエネルギーと消化を支えます。','저GI 탄수화물과 식이섬유가 안정적인 에너지와 소화를 돕습니다.'],
+'牛肉':['Protein, iron, zinc and vitamin B12 support muscle and vitality.','Protein, Eisen, Zink und Vitamin B12 unterstützen Muskeln und Vitalität.','Protéines, fer, zinc et vitamine B12 soutiennent muscles et vitalité.','Proteína, hierro, zinc y vitamina B12 apoyan músculos y vitalidad.','Proteine, ferro, zinco e vitamina B12 sostengono muscoli e vitalità.','たんぱく質、鉄、亜鉛、ビタミンB12が筋肉と活力を支えます。','단백질, 철분, 아연, 비타민 B12가 근육과 활력을 돕습니다.'],
+'牛心':['CoQ10, taurine and iron support heart muscle and stamina.','CoQ10, Taurin und Eisen unterstützen Herzmuskel und Ausdauer.','CoQ10, taurine et fer soutiennent le muscle cardiaque et l’endurance.','CoQ10, taurina y hierro apoyan el corazón y la resistencia.','CoQ10, taurina e ferro sostengono cuore e resistenza.','CoQ10、タウリン、鉄が心筋と持久力を支えます。','CoQ10, 타우린, 철분이 심장 근육과 지구력을 돕습니다.'],
+'兔里脊':['Very lean, digestible novel protein for sensitive dogs.','Sehr mageres, gut verdauliches Protein für empfindliche Hunde.','Protéine très maigre et digeste pour chiens sensibles.','Proteína muy magra y digestiva para perros sensibles.','Proteina molto magra e digeribile per cani sensibili.','非常に低脂肪で消化しやすく、敏感な犬に適したたんぱく源です。','매우 저지방이며 소화가 쉬워 민감한 반려견에 적합한 단백질입니다.'],
+'鸭小胸':['Digestible poultry protein with iron and B vitamins supports coat and immunity.','Gut verdauliches Geflügelprotein mit Eisen und B-Vitaminen unterstützt Fell und Abwehr.','Protéine de volaille digeste, fer et vitamines B soutiennent pelage et immunité.','Proteína aviar digestiva, hierro y vitaminas B apoyan pelo e inmunidad.','Proteina avicola digeribile, ferro e vitamine B sostengono pelo e immunità.','消化しやすい鴨たんぱくと鉄・ビタミンB群が被毛と免疫を支えます。','소화하기 쉬운 오리 단백질과 철분·비타민 B군이 피모와 면역을 돕습니다.'],
+'鸡心':['Taurine, CoQ10 and creatine support heart and muscle energy.','Taurin, CoQ10 und Kreatin unterstützen Herz und Muskelenergie.','Taurine, CoQ10 et créatine soutiennent cœur et énergie musculaire.','Taurina, CoQ10 y creatina apoyan corazón y energía muscular.','Taurina, CoQ10 e creatina sostengono cuore ed energia muscolare.','タウリン、CoQ10、クレアチンが心臓と筋肉エネルギーを支えます。','타우린, CoQ10, 크레아틴이 심장과 근육 에너지를 돕습니다.'],
+'鸡肝':['Vitamin A, B12, iron and copper support immunity and blood formation.','Vitamin A, B12, Eisen und Kupfer unterstützen Abwehr und Blutbildung.','Vitamines A et B12, fer et cuivre soutiennent immunité et sang.','Vitaminas A y B12, hierro y cobre apoyan inmunidad y sangre.','Vitamine A e B12, ferro e rame sostengono immunità e sangue.','ビタミンA・B12、鉄、銅が免疫と造血を支えます。','비타민 A·B12, 철분, 구리가 면역과 조혈을 돕습니다.'],
+'山药丁':['Gentle, low-GI carbohydrate supports the stomach and digestion.','Sanfte, niedrig-glykämische Kohlenhydrate unterstützen Magen und Verdauung.','Glucide doux à IG bas, il soutient estomac et digestion.','Carbohidrato suave de IG bajo que apoya estómago y digestión.','Carboidrato delicato a basso IG che sostiene stomaco e digestione.','低GIで胃にやさしい炭水化物が消化を支えます。','저GI의 순한 탄수화물이 위와 소화를 돕습니다.'],
+'牛肝':['Nutrient-dense vitamins and minerals support blood formation and liver function.','Nährstoffreiche Vitamine und Mineralien unterstützen Blutbildung und Leberfunktion.','Vitamines et minéraux concentrés soutiennent sang et fonction hépatique.','Vitaminas y minerales concentrados apoyan sangre y función hepática.','Vitamine e minerali concentrati sostengono sangue e funzione epatica.','高密度のビタミン・ミネラルが造血と肝機能を支えます。','고밀도 비타민과 미네랄이 조혈과 간 기능을 돕습니다.'],
 };
 const G = { // Tags
 '成长':['Growth','Wachstum','Croissance','Crecimiento','Crescita','成長','성장'],
@@ -222,16 +261,51 @@ const D = {
 '马尔济斯':['Maltese\'s long white coat needs lots of protein and Omega-3. Tear stains are common, low-iron low-mineral diet helps reduce them.','Malteser: Langes weißes Fell braucht viel Protein und Omega-3. Tränenflecken häufig, eisenarme Diät hilft.','Bichon Maltais: long pelage blanc nécessite protéines et Omega-3. Traces de larmes fréquentes, régime pauvre en fer.','Maltés: pelo largo blanco necesita proteína y Omega-3. Manchas de lágrimas frecuentes, dieta baja en hierro.','Maltese: pelo lungo bianco necessita proteine e Omega-3. Macchie lacrimali frequenti, dieta povera di ferro.','マルチーズの長い白い毛にタンパク質とOmega-3が必要。涙やけが多く、低鉄低ミネラル食が効果的。','말티즈의 긴 흰 털에 단백질과 Omega-3 필요. 눈물자국이 흔하며 저철분 저미네랄 식이가 도움.'],
 };
 const L = ['en','de','fr','es','it','ja','ko'];
+const PACK_SUMMARY = {
+  '幼犬成长营养包B': '用于小型/中型幼犬，高营养密度，强化高矿物与钙磷比。',
+  '大型幼犬稳骨控钙营养包B': '专为大型犬幼犬设计，精准限制钙含量，窄钙磷比以支持骨骼健康发育。',
+  '成犬维护营养包B': '成犬日常均衡维护款，平稳微量元素平衡。',
+  '成犬/美毛基础营养包B': '成犬美毛基础，高含量Omega-3及不饱和油脂配比。',
+  '成犬/护肝基础营养包B': '低矿物盐负担设计，适合肝脏养护或消化道敏感群体。',
+  '老年犬轻负担营养包B': '老年犬专属，限制磷与多余钙，轻负担易水解。',
+  '低敏单一蛋白营养包B': '不添加任何动物骨肉粉载体，纯矿物游离态以防过敏。',
+  '脑发育支持功能包C': 'DHA藻油 / 胆碱 / 牛磺酸，支持幼犬神经传导。',
+  '美毛护肤支持功能包C': '天然卵磷脂 / 有机锌 / 生物素，强化皮脂屏障。',
+  '护肝支持功能包C': '天然水飞蓟素 / 胆碱 / 姜黄素，抗氧化护肝。',
+  '肠胃健康支持功能包C': '果寡糖益生元 / 酵母后生元，调理胃肠微生态。',
+  '关节支持功能包C': '高浓度葡萄糖胺 / 软骨素 / MSM，关节润滑保护。',
+  '心脏健康支持功能包C': '天然辅酶Q10 / L-肉碱 / 纯牛磺酸，强健心肌。',
+  '抗炎免疫支持功能包C': '酵母β-葡聚糖 / 蓝莓花青素，清除自由基抗衰。',
+};
 export function tData(zhName, lang) {
   if (!lang || lang === 'zh') return zhName;
   const idx = L.indexOf(lang);
   if (idx < 0) return zhName;
   return B[zhName]?.[idx] || I[zhName]?.[idx] || R[zhName]?.[idx] || G[zhName]?.[idx] || zhName;
 }
+export function hasDataTranslation(zhName, lang) {
+  return !lang || lang === 'zh' || Boolean(B[zhName] || I[zhName] || R[zhName] || G[zhName]);
+}
 export function tTag(zhTag, lang) {
   if (!lang || lang === 'zh') return zhTag;
   const idx = L.indexOf(lang);
   return idx >= 0 && G[zhTag]?.[idx] || zhTag;
+}
+export function tBenefit(ingredientName, canonical, lang) {
+  if (!lang || lang === 'zh') return canonical;
+  const idx = L.indexOf(lang);
+  return idx >= 0 ? (NB[ingredientName]?.[idx] || canonical) : canonical;
+}
+export function hasBenefitTranslation(ingredientName, lang) {
+  return !lang || lang === 'zh' || Boolean(NB[ingredientName]);
+}
+export function tPack(canonical, lang) {
+  if (!canonical || !lang || lang === 'zh') return canonical;
+  if (canonical === '无') return { en: 'None', de: 'Keine', fr: 'Aucun', es: 'Ninguno', it: 'Nessuno', ja: 'なし', ko: '없음' }[lang] || canonical;
+  const name = String(canonical).split(/[：:（(]/)[0].trim();
+  const summary = PACK_SUMMARY[name];
+  const localizedName = tData(name, lang);
+  return summary ? `${localizedName}: ${tData(summary, lang)}` : localizedName;
 }
 export function tBreedDesc(breedName, zhDesc, lang) {
   if (!lang || lang === 'zh') return zhDesc;

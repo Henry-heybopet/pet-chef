@@ -340,7 +340,7 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken,
           <div style={{ marginLeft: 'auto', color: 'var(--primary)', fontSize: 20 }}>→</div>
         </button>
         <button onClick={onAIEntry} className={`home-action-button home-action-ai ${authToken ? '' : 'is-locked'}`}>
-          <div className="home-action-icon">🤖</div>
+          <img className="home-action-icon-image" src="/fresh-check-icon.png" alt={t('aiRecipe')} />
           <div>
             <div className="home-action-title" style={{ color: 'var(--secondary)' }}>{t('aiRecipe')}</div>
             <div className="home-action-desc">{t('aiRecipeDesc')}</div>

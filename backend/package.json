@@ -6,9 +6,12 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:fresh-check": "node --test test/fresh_check.test.js",
+    "test:i18n": "node --test test/i18n_presentation.test.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma db push",
     "db:seed": "node prisma/seed.js",
+    "db:seed:i18n": "node scripts/seed_catalog_translations.mjs",
+    "check:recipe-images": "node scripts/check_recipe_images.js",
     "recipes:import": "python3 scripts/import_recipes_from_excel.py",
     "db:sync": "node src/data/sync_db_recipes.js"
   },

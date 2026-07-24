@@ -22,13 +22,15 @@ const petRepository = require('./services/pet_repository');
 const userRepository = require('./services/user_repository');
 const adminAccounts = require('./services/admin_accounts');
 const { normalizeLocale, aiNutritionPresentationIsValid, buildAiNutritionFallback, cachedAiNutritionAnalysis } = require('./services/localization');
+const { attachCatalogPresentations } = require('./services/catalog_localization');
+const { localizeComparison } = require('./services/comparison_localization');
 
 const app = express();
 app.set('trust proxy', 1);
 const uploadsDir = path.resolve(__dirname, '../public/uploads');
 const recipeUploadsDir = path.join(uploadsDir, 'recipes');
 const runtimeDataDir = path.resolve(__dirname, '../.data');
-const AI_RECOMMENDATION_CACHE_VERSION = 8;
+const AI_RECOMMENDATION_CACHE_VERSION = 9;
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(recipeUploadsDir, { recursive: true });
 fs.mkdirSync(runtimeDataDir, { recursive: true });
@@ -149,7 +151,8 @@ app.get('/api/v1/recipes', async (req, res) => {
   };
 
   const { recipes, source } = await listRecipes(filterFn);
-  const result = all ? recipes : recipes.filter(filterFn);
+  const filtered = all ? recipes : recipes.filter(filterFn);
+  const result = await attachCatalogPresentations(filtered, req.query.locale || req.query.lang);
 
   res.json({ success: true, recipes: result, count: result.length, source });
 });
@@ -161,7 +164,8 @@ app.get('/api/v1/recipes/:id', async (req, res) => {
   const { recipe, source } = await getRecipeById(req.params.id);
 
   if (!recipe) return res.status(404).json({ success: false, error: 'Recipe not found' });
-  res.json({ success: true, recipe, source });
+  const [localizedRecipe] = await attachCatalogPresentations([recipe], req.query.locale || req.query.lang);
+  res.json({ success: true, recipe: localizedRecipe, source });
 });
 
 const ADMIN_ROUTE_MODULES = [
@@ -430,7 +434,7 @@ function hasRecipeAllergen(recipe, allergens = []) {
   });
 }
 
-function applyAllergenWarning(comparison, dogProfile, selection, recipeIndexByName = {}) {
+function applyAllergenWarning(comparison, dogProfile, selection, recipeIndexByName = {}, locale = 'zh') {
   const recipeName = selection?.a_recipe_name;
   const recipe = recipeIndexByName[recipeName];
   const matchedAllergen = (dogProfile.allergens || []).find(allergen => {
@@ -438,13 +442,22 @@ function applyAllergenWarning(comparison, dogProfile, selection, recipeIndexByNa
     return hasRecipeAllergen(recipe, [allergen]) || aliases.some(alias => String(recipeName || '').includes(alias));
   });
   if (!matchedAllergen) return comparison;
-  const allergens = matchedAllergen || '已登记过敏原';
-  return {
-    ...comparison,
+  if (comparison?.semantic?.warning_items?.some(item => item.code === 'ALLERGEN')) return comparison;
+  const semantic = comparison?.semantic || {
+    show_dialog: Boolean(comparison?.a_comparison),
+    detail_code: 'BALANCED_VARIETY',
+    facts: {
+      current_score: comparison?.a_comparison?.current_score,
+      proposed_score: comparison?.a_comparison?.proposed_score,
+    },
+    warning_items: [],
+  };
+  return localizeComparison({
+    ...semantic,
     has_warning: true,
     warning_level: 'warning',
-    warning_text: `该配方包含或疑似包含过敏原：${allergens}，不建议选择。`,
-  };
+    warning_items: [...(semantic.warning_items || []), { code: 'ALLERGEN', facts: { allergen: matchedAllergen } }],
+  }, locale);
 }
 
 // ============================================================
@@ -580,6 +593,7 @@ async function resolveDogProfileFromRequest(req) {
 // ============================================================
 app.post('/api/v1/recommend/compare', async (req, res) => {
   const { currentSelection, proposedSelection } = req.body;
+  const requestedLocale = normalizeLocale(req.body?.lang);
   const resolved = await resolveDogProfileFromRequest(req);
   const dogProfile = resolved.dogProfile;
   if (!dogProfile || !currentSelection || !proposedSelection) {
@@ -601,12 +615,13 @@ app.post('/api/v1/recommend/compare', async (req, res) => {
 
       if (!isExpired && !isDirty && !isOldVersion) {
         const proposedRecipeName = proposedSelection.a_recipe_name;
-        if (cacheData.comparisons && cacheData.comparisons[proposedRecipeName]) {
+        const localizedComparisons = cacheData.comparisons_by_locale?.[requestedLocale];
+        if (localizedComparisons && localizedComparisons[proposedRecipeName]) {
           console.log(`[Compare Cache Hit File] Served ${proposedRecipeName} from cache for ${petCacheId}`);
           const { recipes } = await listRecipes();
           return res.json({
             success: true,
-            comparison: applyAllergenWarning(cacheData.comparisons[proposedRecipeName], dogProfile, proposedSelection, buildRecipeIndexByName(recipes))
+            comparison: applyAllergenWarning(localizedComparisons[proposedRecipeName], dogProfile, proposedSelection, buildRecipeIndexByName(recipes), requestedLocale)
           });
         }
       }
@@ -621,8 +636,8 @@ app.post('/api/v1/recommend/compare', async (req, res) => {
     const comparison = await compareRecipeSelection({
       ...dogProfile,
       recipeIndexByName,
-    }, currentSelection, proposedSelection);
-    res.json({ success: true, comparison: applyAllergenWarning(comparison, dogProfile, proposedSelection, recipeIndexByName) });
+    }, currentSelection, proposedSelection, requestedLocale);
+    res.json({ success: true, comparison: applyAllergenWarning(comparison, dogProfile, proposedSelection, recipeIndexByName, requestedLocale) });
   } catch (err) {
     console.error('Comparison API error:', err.message);
     res.status(500).json({ success: false, error: err.message });
@@ -635,6 +650,7 @@ app.post('/api/v1/recommend/compare', async (req, res) => {
 // ============================================================
 app.post('/api/v1/recommend/compare/batch', async (req, res) => {
   const { currentSelection, proposedSelections } = req.body;
+  const requestedLocale = normalizeLocale(req.body?.lang);
   const resolved = await resolveDogProfileFromRequest(req);
   const dogProfile = resolved.dogProfile;
   if (!dogProfile || !currentSelection || !proposedSelections || !Array.isArray(proposedSelections)) {
@@ -647,11 +663,11 @@ app.post('/api/v1/recommend/compare/batch', async (req, res) => {
     const result = await compareRecipeSelectionBatch({
       ...dogProfile,
       recipeIndexByName,
-    }, currentSelection, proposedSelections);
+    }, currentSelection, proposedSelections, requestedLocale);
     const comparisons = { ...result.comparisons };
     proposedSelections.forEach(selection => {
       if (comparisons[selection.a_recipe_name]) {
-        comparisons[selection.a_recipe_name] = applyAllergenWarning(comparisons[selection.a_recipe_name], dogProfile, selection, recipeIndexByName);
+        comparisons[selection.a_recipe_name] = applyAllergenWarning(comparisons[selection.a_recipe_name], dogProfile, selection, recipeIndexByName, requestedLocale);
       }
     });
     res.json({ success: true, comparisons });
@@ -686,6 +702,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
   let cacheValid = false;
   let cacheNeedsWrite = false;
   let cachedAnalyses = {};
+  let cachedComparisonsByLocale = {};
 
   if (fs.existsSync(cacheFilePath)) {
     try {
@@ -698,7 +715,8 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
         : !isProfileEqual(cacheData.dogProfile, dogProfile);
 
       if (!isExpired && !isDirty && !isOldVersion) {
-        comparisons = cacheData.comparisons || null;
+        cachedComparisonsByLocale = cacheData.comparisons_by_locale || {};
+        comparisons = cachedComparisonsByLocale[requestedLocale] || null;
         cacheValid = true;
         cachedAnalyses = cacheData.analyses_by_locale || {};
         const cachedAnalysis = cachedAiNutritionAnalysis(cacheData, requestedLocale);
@@ -758,7 +776,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
 
   const mergedAnalysis = { ...analysis, ...intake };
 
-  if (!cacheValid) {
+  if (!comparisons) {
     const lifeStage = mergedAnalysis.life_stage || '成年犬';
     let targetCat = '成犬通用';
     if (lifeStage === '幼犬') {
@@ -823,7 +841,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
     };
 
     try {
-      const result = await compareRecipeSelectionBatch(scoringDogProfile, currentSelection, proposedSelections);
+      const result = await compareRecipeSelectionBatch(scoringDogProfile, currentSelection, proposedSelections, requestedLocale);
       comparisons = result.comparisons;
       cacheNeedsWrite = true;
     } catch (err) {
@@ -831,7 +849,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       comparisons = {};
       const { getLocalComparisonWarning } = require('./services/gemini');
       proposedSelections.forEach(p => {
-        comparisons[p.a_recipe_name] = getLocalComparisonWarning(scoringDogProfile, currentSelection, p);
+        comparisons[p.a_recipe_name] = getLocalComparisonWarning(scoringDogProfile, currentSelection, p, requestedLocale);
       });
       cacheNeedsWrite = true;
     }
@@ -847,7 +865,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       analyses_by_locale: { ...cachedAnalyses, [requestedLocale]: mergedAnalysis },
       analysis: mergedAnalysis,
       analysis_locale: requestedLocale,
-      comparisons: comparisons
+      comparisons_by_locale: { ...cachedComparisonsByLocale, [requestedLocale]: comparisons }
     }, null, 2), 'utf8');
     console.log(`[Cache Written File] Saved analysis cache for pet ${petCacheId}`);
   }
