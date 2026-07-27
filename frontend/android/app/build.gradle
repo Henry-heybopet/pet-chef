@@ -14,6 +14,12 @@ def escapeBuildConfig = { value ->
     return value.replace("\\", "\\\\").replace("\"", "\\\"")
 }
 
+def releaseStoreFilePath = System.getenv("ANDROID_RELEASE_STORE_FILE") ?: ""
+def releaseStorePassword = System.getenv("ANDROID_RELEASE_STORE_PASSWORD") ?: ""
+def releaseKeyAlias = System.getenv("ANDROID_RELEASE_KEY_ALIAS") ?: ""
+def releaseKeyPassword = System.getenv("ANDROID_RELEASE_KEY_PASSWORD") ?: ""
+def releaseSigningReady = [releaseStoreFilePath, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { !it.isEmpty() }
+
 android {
     namespace = "com.heybopet.petchef"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -24,8 +30,8 @@ android {
         applicationId "com.heybopet.petchef"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "2.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "String", "TUYA_ANDROID_APP_KEY", "\"${escapeBuildConfig(readSecret('TUYA_ANDROID_APP_KEY'))}\""
         buildConfigField "String", "TUYA_ANDROID_APP_SECRET", "\"${escapeBuildConfig(readSecret('TUYA_ANDROID_APP_SECRET'))}\""
@@ -35,8 +41,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (releaseSigningReady) {
+                storeFile file(releaseStoreFilePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
@@ -70,6 +87,12 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
+
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.name.toLowerCase().contains("release") } && !releaseSigningReady) {
+        throw new GradleException("Release signing is required. Set ANDROID_RELEASE_STORE_FILE, ANDROID_RELEASE_STORE_PASSWORD, ANDROID_RELEASE_KEY_ALIAS and ANDROID_RELEASE_KEY_PASSWORD.")
+    }
+}
 
 try {
     def servicesJSON = file('google-services.json')

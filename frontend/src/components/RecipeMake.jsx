@@ -4,30 +4,58 @@ import TopBar from './TopBar';
 import { api } from '../api/index';
 import { useTranslation } from '../i18n/translations';
 import { tData } from '../i18n/dataTranslations';
-
-const CAT_COLORS = { protein: '#FF4D6D', carb: '#FFB800', veg: '#00FFA3', addition: '#9D00FF' };
-
-function getIngCat(name) {
-  if (['鸡', '牛', '鱼', '鸭', '羊', '鹿', '火鸡', '蛋'].some(m => name.includes(m))) return 'protein';
-  if (['红薯', '南瓜', '燕麦', '糙米', '米饭', '土豆', '藜麦', '山药'].some(c => name.includes(c))) return 'carb';
-  if (['油', '粉', '素', '胺', '黄'].some(s => name.includes(s))) return 'addition';
-  return 'veg';
-}
+import {
+  getIngredientCategory,
+  INGREDIENT_CATEGORY_COLORS,
+  sortRecipeIngredientList,
+} from '../utils/recipeIngredients';
 
 export default function RecipeMake({ onBack, recipe, profile, onStartCooking, lang }) {
   const t = useTranslation(lang);
-  const CAT_LABELS = { protein: t('protein'), carb: t('carb'), veg: t('veg'), addition: t('addition') };
+  const CAT_LABELS = {
+    protein: t('ingredientCategoryAnimal'),
+    carb: t('ingredientCategoryStarch'),
+    veg: t('ingredientCategoryProduce'),
+    addition: t('ingredientCategoryOther'),
+  };
   const [cookData, setCookData] = useState(null);
   const [packCount, setPackCount] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [paramsLoading, setParamsLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const displayGrams = packCount * 200;
 
   useEffect(() => {
     if (!recipe || !profile) return;
-    api.cookParams({ recipeId: recipe.id, breedId: profile.breedId, weight: profile.weight, age: profile.age }).then(d => {
+    let alive = true;
+    setParamsLoading(true);
+    setError('');
+    api.cookParams({
+      recipeId: recipe.id,
+      breedId: profile.breedId,
+      weight: profile.weight,
+      age: profile.age,
+      ageMonths: profile.age_months ?? profile.ageMonths,
+      activityLevel: profile.activityLevel,
+      targetWeight: profile.targetWeight,
+      feedingGoal: profile.feedingGoal,
+      neutered: profile.neutered,
+      lifeStage: profile.lifeStage,
+      totalGrams: displayGrams,
+    }).then(d => {
+      if (!alive) return;
       if (d.success) setCookData(d);
+      else setError(lang === 'zh' && d.error ? d.error : t('cookingParamsFailed'));
+    }).catch(err => {
+      if (alive) setError(lang === 'zh' && err?.message ? err.message : t('cookingParamsFailed'));
+    }).finally(() => {
+      if (!alive) return;
       setLoading(false);
+      setParamsLoading(false);
     });
-  }, [recipe, profile]);
+    return () => { alive = false; };
+  }, [recipe, profile, displayGrams]);
 
   if (loading) {
     return (
@@ -42,16 +70,15 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
   if (!cookData) return null;
 
   const { intake, ingredientList, cookParams } = cookData;
-  const displayGrams = packCount * 200;
   const packOptions = [1, 2, 3];
 
-  const displayIngredients = ingredientList.map(ing => ({
+  const displayIngredients = sortRecipeIngredientList(ingredientList.map(ing => ({
     ...ing, grams: ing.pct ? Math.round((ing.pct / 100) * displayGrams) : null,
-  }));
+  })));
 
   return (
     <div className="animate-fade flex-col" style={{ flex: 1, paddingBottom: 100 }}>
-      <TopBar onBack={onBack} title={t('recipeMake')} />
+      <TopBar onBack={onBack} title={t('recipeMake')} tone="recipe" />
       <div style={{ padding: '0 24px 16px' }}>
         <div className="card glass" style={{ padding: '14px 16px' }}>
           <div style={{ fontSize: 13, color: 'var(--gray)', lineHeight: 1.6 }}>
@@ -76,7 +103,7 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
         <div
           style={{ width: '100%', padding: '12px 14px', border: '1px solid #FFB800', borderRadius: 'var(--radius-sm)', background: 'rgba(255,184,0,0.08)', marginBottom: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', marginBottom: 10 }}>
-            <span style={{ fontWeight: 800, fontSize: 14, color: '#FFB800' }}>{t('customAmount')}</span>
+            <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--theme-warning)' }}>{t('customAmount')}</span>
             <span style={{ fontSize: 12, color: 'var(--gray)' }}>{t('freshPackDesc')}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
@@ -92,13 +119,13 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
                     borderRadius: 10,
                     border: `1px solid ${active ? '#FFB800' : 'rgba(255,184,0,0.28)'}`,
                     background: active ? 'rgba(255,184,0,0.18)' : 'rgba(255,255,255,0.03)',
-                    color: active ? '#FFB800' : 'var(--text-main)',
+                    color: active ? 'var(--theme-warning)' : 'var(--text-main)',
                     fontWeight: 800,
                     cursor: 'pointer',
                   }}
                 >
                   <div>{count}{t('packUnit')}</div>
-                  <div style={{ fontSize: 11, color: active ? '#FFD56A' : 'var(--gray)', marginTop: 2 }}>{count * 200}g</div>
+                  <div style={{ fontSize: 11, color: active ? 'var(--theme-warning)' : 'var(--gray)', marginTop: 2 }}>{count * 200}g</div>
                 </button>
               );
             })}
@@ -109,12 +136,13 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
         </div>
       </div>
       <div style={{ padding: '0 24px', flex: 1 }}>
+        {error && <div style={{ color: '#FF4D5E', fontSize: 12, marginBottom: 10 }}>{error}</div>}
         <div style={{ fontSize: 13, color: 'var(--gray)', marginBottom: 12 }}>
           {t('ingredientList')} · {displayIngredients.length} {t('types')} · {t('thisPrep')} <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{displayGrams}g</span>
         </div>
         {displayIngredients.map(ing => {
-          const cat = getIngCat(ing.name);
-          const color = CAT_COLORS[cat];
+          const cat = getIngredientCategory(ing.name);
+          const color = INGREDIENT_CATEGORY_COLORS[cat];
           return (
             <div key={ing.name} style={{ display: 'flex', alignItems: 'center', padding: '12px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 12, marginBottom: 8, border: '1px solid var(--border)' }}>
               <div style={{ width: 6, height: 32, borderRadius: 3, background: color, marginRight: 12, flexShrink: 0 }} />
@@ -135,9 +163,9 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
       </div>
       <div className="glass" style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, padding: '16px 24px', display: 'flex', gap: 12, zIndex: 100, background: 'rgba(10,13,20,0.95)', borderTop: '1px solid var(--border)' }}>
         <button className="btn-secondary" style={{ flex: 1 }} onClick={onBack}>{t('back')}</button>
-        <button className="btn-primary" style={{ flex: 2, boxShadow: '0 0 24px rgba(0,230,255,0.35)' }}
+        <button className="btn-primary" disabled={paramsLoading} style={{ flex: 2, boxShadow: '0 0 24px rgba(0,230,255,0.35)', opacity: paramsLoading ? 0.6 : 1 }}
           onClick={() => onStartCooking({ recipe, profile, intake, cookParams, displayGrams, displayIngredients, packCount, packGrams: 200 })}>
-          {t('startCook')}
+          {paramsLoading ? t('calculatingParams') : t('startCook')}
         </button>
       </div>
     </div>

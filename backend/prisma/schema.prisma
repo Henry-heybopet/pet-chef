@@ -327,6 +327,7 @@ model DevicePetBinding {
 model Recipe {
   id                 String       @id
   name               String
+  img                String?
   species            PetSpecies
   category           String
   life_stage         String?
@@ -341,6 +342,7 @@ model Recipe {
   updated_at         DateTime     @updatedAt
 
   source             RecipeSource?      @relation(fields: [source_id], references: [id])
+  translations       RecipeTranslation[]
   cooking_operations CookingOperation[]
   feeding_records    FeedingRecord[]
 
@@ -349,6 +351,21 @@ model Recipe {
   @@index([status])
   @@index([source_id])
   @@map("recipes")
+}
+
+model RecipeTranslation {
+  recipe_id          String
+  locale             String
+  name               String
+  description        String?
+  translation_status String   @default("translated")
+  updated_at         DateTime @updatedAt
+
+  recipe Recipe @relation(fields: [recipe_id], references: [id], onDelete: Cascade)
+
+  @@id([recipe_id, locale])
+  @@index([locale])
+  @@map("recipe_translations")
 }
 
 model RecipeSource {
@@ -386,9 +403,40 @@ model IngredientLibrary {
   benefits          String?
   created_at        DateTime @default(now())
 
+  translations IngredientTranslation[]
+
   @@index([category])
   @@index([safety_level])
   @@map("ingredient_library")
+}
+
+model IngredientTranslation {
+  ingredient_id     String
+  locale             String
+  name               String
+  benefits           String?
+  translation_status String   @default("translated")
+  updated_at         DateTime @updatedAt
+
+  ingredient IngredientLibrary @relation(fields: [ingredient_id], references: [id], onDelete: Cascade)
+
+  @@id([ingredient_id, locale])
+  @@index([locale])
+  @@map("ingredient_translations")
+}
+
+model PackTranslation {
+  pack_code          String
+  locale             String
+  canonical_name     String
+  name               String
+  description        String?
+  translation_status String   @default("translated")
+  updated_at         DateTime @updatedAt
+
+  @@id([pack_code, locale])
+  @@index([locale])
+  @@map("pack_translations")
 }
 
 model CookingOperation {
