@@ -17,6 +17,12 @@ RUN npm ci --omit=dev 2>/dev/null || npm install --omit=dev
 # Copy application code
 COPY backend/src/ ./src/
 COPY backend/prisma/ ./prisma/
+COPY backend/migrations/ ./migrations/
+COPY backend/scripts/ ./scripts/
+# The catalog seed reuses the audited frontend dictionaries as the single translation source.
+COPY frontend/package.json /frontend/package.json
+COPY frontend/src/data/demoRecipes.js /frontend/src/data/demoRecipes.js
+COPY frontend/src/i18n/dataTranslations.js /frontend/src/i18n/dataTranslations.js
 RUN mkdir -p /app/public/uploads
 
 # Generate Prisma client during build so it is baked into the read-only image

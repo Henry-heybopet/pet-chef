@@ -90,8 +90,8 @@ async function seedRecipes() {
           INSERT INTO recipes (
             id, name, category, category_code, life_stage, dog_size,
             tags, ingredients, water_content_pct, protein_pct,
-            carb_pct, veg_pct, add_pct, cooking_base
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            carb_pct, veg_pct, add_pct, cooking_base, img
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
           ON CONFLICT (id) DO UPDATE SET
             name = EXCLUDED.name,
             category = EXCLUDED.category,
@@ -106,6 +106,10 @@ async function seedRecipes() {
             veg_pct = EXCLUDED.veg_pct,
             add_pct = EXCLUDED.add_pct,
             cooking_base = EXCLUDED.cooking_base,
+            img = CASE
+              WHEN recipes.img IS NULL OR BTRIM(recipes.img) = '' THEN EXCLUDED.img
+              ELSE recipes.img
+            END,
             updated_at = NOW()
         `;
 
@@ -124,6 +128,7 @@ async function seedRecipes() {
           recipe.veg_pct || null,
           recipe.add_pct || null,
           recipe.cooking_base ? JSON.stringify(recipe.cooking_base) : null,
+          recipe.img || null,
         ];
 
         await client.query(sql, values);
