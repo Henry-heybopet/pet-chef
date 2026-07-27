@@ -18,7 +18,7 @@ test('350g低肉高碳水配方会被确定性结构规则识别', () => {
   assert.equal(report.macro_nutrition.estimated_grams.fat_g, 2);
   assert.equal(report.macro_nutrition.estimated_grams.carb_g, 24);
   assert.ok(codes(report).has('LOW_ANIMAL_PROTEIN'));
-  assert.ok(codes(report).has('HIGH_CARB'));
+  assert.ok(codes(report).has('VERY_HIGH_CARB'));
   assert.ok(codes(report).has('HIGH_VEGETABLE'));
   assert.ok(codes(report).has('LOW_FAT_SOURCE'));
   assert.ok(value(report, 'structure') <= 40);
@@ -56,7 +56,7 @@ test('B包只补微量营养，不改变宏量结构或把长期适宜性设为1
   assert.equal(after.daily_need.recipe_kcal, before.daily_need.recipe_kcal);
   assert.ok(after.findings.some(item => item.title === '必需脂肪酸待确认'));
   assert.ok(codes(after).has('LOW_ANIMAL_PROTEIN'));
-  assert.ok(codes(after).has('HIGH_CARB'));
+  assert.ok(codes(after).has('VERY_HIGH_CARB'));
   assert.ok(value(after, 'long_term') < 100);
   assert.ok(value(after, 'long_term') <= value(after, 'structure'));
 });
@@ -118,6 +118,7 @@ test('530g牛肉牛肝配方识别动物蛋白、内脏和三文鱼油', () => {
     organ_pct: 9.4,
     carb_pct: 28.3,
     vegetable_pct: 11.3,
+    fruit_pct: 0,
     fat_containing_ingredient_pct: 60.4,
     fat_source_pct: 3.8,
   });
@@ -134,12 +135,110 @@ test('530g牛肉牛肝配方识别动物蛋白、内脏和三文鱼油', () => {
 test('不完整PostgreSQL食材行不会覆盖静态基础营养数据', () => {
   const merged = nutritionRepository.mergeIngredientRows(ingredientsDb, [
     { id: '牛肉', name: '牛肉', category: 'protein', protein_pct: null, fat_pct: null, calories_per_100g: null },
+    { id: '兔里脊', name: '兔里脊', category: 'catalog', protein_pct: null, fat_pct: null, calories_per_100g: null },
     { id: '自定义食材', name: '自定义食材', category: 'veg', calories_per_100g: '25.5' },
   ]);
   assert.equal(merged['牛肉'].protein_pct, 26);
   assert.equal(merged['牛肉'].fat_pct, 12);
   assert.equal(merged['牛肉'].calories_per_100g, 213);
+  assert.equal(merged['兔里脊'].category, 'protein');
+  assert.equal(merged['兔里脊'].protein_pct, 22);
   assert.equal(merged['自定义食材'].calories_per_100g, '25.5');
+});
+
+test('兔里脊通用目录行仍计入动物蛋白结构和蛋白质营养', () => {
+  const ingredientMap = nutritionRepository.mergeIngredientRows(ingredientsDb, [
+    { id: '兔里脊', name: '兔里脊', category: 'catalog', protein_pct: null, fat_pct: null, calories_per_100g: null },
+  ]);
+  const report = _test.localCheck({
+    pet: { ...adult, age_months: 3, life_stage: 'puppy', current_weight_kg: 5.3 },
+    ingredients: [{ name: '兔里脊', grams: 205 }, { name: '南瓜', grams: 117 }, { name: '全熟燕麦片', grams: 117 }, { name: '胡萝卜', grams: 58 }, { name: '菠菜', grams: 47 }, { name: '苹果', grams: 12 }],
+    mealIntent: 'long_term',
+    selectedBPack: { name: '幼犬成长营养包B', description: '维矿预混料、钙磷矿物粉、Omega-3鱼油或藻油' },
+    ingredientMap,
+  });
+  const rabbit = report.macro_nutrition.details.find(item => item.name === '兔里脊');
+  assert.equal(rabbit.category, 'protein');
+  assert.equal(rabbit.protein_g, 45.1);
+  assert.equal(report.macro_nutrition.ingredient_weight_ratios.animal_protein_pct, 36.9);
+  assert.equal(report.macro_nutrition.ingredient_weight_ratios.fruit_pct, 2.2);
+  assert.ok(value(report, 'structure') > 20);
+});
+
+test('动物性食材按40、45、65、75百分比分段且提示与扣分分离', () => {
+  const at39 = analyze([{ name: '鸡胸肉', grams: 39 }, { name: '米饭', grams: 35 }, { name: '胡萝卜', grams: 26 }]);
+  const at42 = analyze([{ name: '鸡胸肉', grams: 42 }, { name: '米饭', grams: 33 }, { name: '胡萝卜', grams: 25 }]);
+  const at55 = analyze([{ name: '鸡胸肉', grams: 55 }, { name: '米饭', grams: 30 }, { name: '胡萝卜', grams: 15 }]);
+  const at70 = analyze([{ name: '鸡胸肉', grams: 70 }, { name: '米饭', grams: 20 }, { name: '胡萝卜', grams: 10 }]);
+  const at76 = analyze([{ name: '鸡胸肉', grams: 76 }, { name: '米饭', grams: 14 }, { name: '胡萝卜', grams: 10 }]);
+
+  assert.ok(codes(at39).has('LOW_ANIMAL_PROTEIN'));
+  assert.ok(codes(at42).has('ANIMAL_PROTEIN_ACCEPTABLE_REVIEW'));
+  assert.ok(!at42.score_details.structure.deductions.some(item => item.code.startsWith('STRUCTURE_ANIMAL_PROTEIN')));
+  assert.ok(![...codes(at55)].some(code => code.includes('ANIMAL_PROTEIN')));
+  assert.ok(codes(at70).has('HIGH_ANIMAL_PROTEIN_REVIEW'));
+  assert.ok(!at70.score_details.structure.deductions.some(item => item.code.startsWith('STRUCTURE_ANIMAL_PROTEIN')));
+  assert.ok(codes(at76).has('EXCESSIVE_ANIMAL_PROTEIN'));
+  assert.ok(at76.score_details.structure.deductions.some(item => item.code === 'STRUCTURE_ANIMAL_PROTEIN_HIGH'));
+});
+
+test('淀粉类碳水按10、15、35、45百分比分段', () => {
+  const at5 = analyze([{ name: '鸡胸肉', grams: 70 }, { name: '米饭', grams: 5 }, { name: '胡萝卜', grams: 25 }]);
+  const at12 = analyze([{ name: '鸡胸肉', grams: 65 }, { name: '米饭', grams: 12 }, { name: '胡萝卜', grams: 23 }]);
+  const at25 = analyze([{ name: '鸡胸肉', grams: 60 }, { name: '米饭', grams: 25 }, { name: '胡萝卜', grams: 15 }]);
+  const at40 = analyze([{ name: '鸡胸肉', grams: 50 }, { name: '米饭', grams: 40 }, { name: '胡萝卜', grams: 10 }]);
+  const at50 = analyze([{ name: '鸡胸肉', grams: 40 }, { name: '米饭', grams: 50 }, { name: '胡萝卜', grams: 10 }]);
+
+  assert.ok(codes(at5).has('LOW_CARB_FORMULA'));
+  assert.ok(codes(at12).has('LOW_CARB'));
+  assert.ok(![...codes(at25)].some(code => code.includes('CARB')));
+  assert.ok(codes(at40).has('HIGH_CARB'));
+  assert.ok(at40.score_details.structure.deductions.some(item => item.code === 'STRUCTURE_CARB_HIGH'));
+  assert.ok(codes(at50).has('VERY_HIGH_CARB'));
+  assert.ok(at50.score_details.structure.deductions.some(item => item.code === 'STRUCTURE_CARB_VERY_HIGH'));
+});
+
+test('非淀粉果蔬和水果按独立区间计算', () => {
+  const at4 = analyze([{ name: '鸡胸肉', grams: 65 }, { name: '米饭', grams: 31 }, { name: '胡萝卜', grams: 4 }]);
+  const at7 = analyze([{ name: '鸡胸肉', grams: 63 }, { name: '米饭', grams: 30 }, { name: '胡萝卜', grams: 7 }]);
+  const at20 = analyze([{ name: '鸡胸肉', grams: 50 }, { name: '米饭', grams: 30 }, { name: '胡萝卜', grams: 15 }, { name: '苹果', grams: 5 }]);
+  const at28 = analyze([{ name: '鸡胸肉', grams: 42 }, { name: '米饭', grams: 30 }, { name: '胡萝卜', grams: 25 }, { name: '苹果', grams: 3 }]);
+  const at35 = analyze([{ name: '鸡胸肉', grams: 40 }, { name: '米饭', grams: 25 }, { name: '胡萝卜', grams: 30 }, { name: '苹果', grams: 5 }]);
+  const fruit10 = analyze([{ name: '鸡胸肉', grams: 55 }, { name: '米饭', grams: 30 }, { name: '胡萝卜', grams: 5 }, { name: '苹果', grams: 10 }]);
+
+  assert.ok(codes(at4).has('LOW_NON_STARCHY_PRODUCE'));
+  assert.ok(codes(at7).has('LOW_NON_STARCHY_PRODUCE'));
+  assert.equal(at20.macro_nutrition.ingredient_weight_ratios.vegetable_pct, 20);
+  assert.equal(at20.macro_nutrition.ingredient_weight_ratios.fruit_pct, 5);
+  assert.ok(![...codes(at20)].some(code => ['HIGH_VEGETABLE', 'VERY_HIGH_VEGETABLE', 'HIGH_FRUIT'].includes(code)));
+  assert.ok(codes(at28).has('HIGH_VEGETABLE'));
+  assert.ok(codes(at35).has('VERY_HIGH_VEGETABLE'));
+  assert.equal(fruit10.macro_nutrition.ingredient_weight_ratios.fruit_pct, 10);
+  assert.ok(codes(fruit10).has('HIGH_FRUIT'));
+  assert.ok(fruit10.score_details.structure.deductions.some(item => item.code === 'STRUCTURE_FRUIT_HIGH'));
+});
+
+test('结构分段边界按下一区间起点执行且不发生一克误判', () => {
+  const animal = pct => analyze([{ name: '鸡胸肉', grams: pct }, { name: '米饭', grams: (100 - pct) / 2 }, { name: '胡萝卜', grams: (100 - pct) / 2 }]);
+  assert.ok(codes(animal(40)).has('ANIMAL_PROTEIN_ACCEPTABLE_REVIEW'));
+  assert.ok(![...codes(animal(45))].some(code => code.includes('ANIMAL_PROTEIN')));
+  assert.ok(![...codes(animal(65))].some(code => code.includes('ANIMAL_PROTEIN')));
+  assert.ok(codes(animal(75)).has('HIGH_ANIMAL_PROTEIN_REVIEW'));
+
+  const carb = pct => analyze([{ name: '鸡胸肉', grams: 50 }, { name: '米饭', grams: pct }, { name: '胡萝卜', grams: 50 - pct }]);
+  assert.ok(codes(carb(10)).has('LOW_CARB'));
+  assert.ok(![...codes(carb(15))].some(code => ['LOW_CARB_FORMULA', 'LOW_CARB', 'HIGH_CARB', 'VERY_HIGH_CARB'].includes(code)));
+  assert.ok(![...codes(carb(35))].some(code => ['LOW_CARB_FORMULA', 'LOW_CARB', 'HIGH_CARB', 'VERY_HIGH_CARB'].includes(code)));
+  assert.ok(codes(carb(45)).has('HIGH_CARB'));
+
+  const produce = pct => analyze([{ name: '鸡胸肉', grams: 50 }, { name: '米饭', grams: 50 - pct }, { name: '胡萝卜', grams: pct }]);
+  assert.ok(codes(produce(5)).has('LOW_NON_STARCHY_PRODUCE'));
+  assert.ok(!codes(produce(10)).has('LOW_NON_STARCHY_PRODUCE'));
+  assert.ok(![...codes(produce(25))].some(code => ['HIGH_VEGETABLE', 'VERY_HIGH_VEGETABLE'].includes(code)));
+  assert.ok(codes(produce(30)).has('HIGH_VEGETABLE'));
+
+  const fruit5 = analyze([{ name: '鸡胸肉', grams: 50 }, { name: '米饭', grams: 30 }, { name: '胡萝卜', grams: 15 }, { name: '苹果', grams: 5 }]);
+  assert.ok(!codes(fruit5).has('HIGH_FRUIT'));
 });
 
 test('名称分类不依赖营养覆盖，但缺失营养仍明确标记为不完整', () => {
@@ -174,6 +273,34 @@ test('幼犬专业确认不会再把长期适宜性固定锁定为60分', () => 
   assert.ok(report.long_term_detail.explanation.includes('限制'));
   assert.equal(report.suitability_detail.components.length, 7);
   assert.equal(report.suitability_detail.value, Math.round(report.suitability_detail.components.reduce((sum, item) => sum + item.earned, 0)));
+});
+
+test('明确含Omega-3鱼油或藻油的必配全价营养包覆盖必需脂肪酸来源', () => {
+  const report = analyze(
+    [{ name: '鸡胸肉', grams: 220 }, { name: '米饭', grams: 55 }, { name: '胡萝卜', grams: 40 }],
+    { name: '成犬维护营养包B', description: '维矿预混料、钙磷矿物粉、Omega-3鱼油或藻油' }
+  );
+  assert.equal(codes(report).has('ESSENTIAL_FATTY_ACID_SOURCE_MISSING'), false);
+  const applied = report.findings.find(item => item.code === 'B_PACK_APPLIED');
+  assert.ok(applied.facts.coverage_codes.includes('fatty_acids'));
+});
+
+test('雷达低分解释与当前食谱分项计算使用同一份确定性数据', () => {
+  const puppy = { ...adult, age_months: 3.6, life_stage: 'puppy', current_weight_kg: 5.3, activity_level: 'high', neutered: false };
+  const report = analyze(
+    [{ name: '鸡小胸', grams: 35 }, { name: '鸡心', grams: 10 }, { name: '全熟燕麦片', grams: 20 }, { name: '红薯', grams: 15 }, { name: '西兰花', grams: 10 }, { name: '蓝莓', grams: 5 }],
+    { name: '幼犬成长营养包B', description: '维矿预混料、钙磷矿物粉、Omega-3鱼油或藻油' },
+    puppy
+  );
+  assert.equal(report.score_details.nutrition.score, value(report, 'nutrition'));
+  assert.equal(report.score_details.structure.score, value(report, 'structure'));
+  assert.equal(report.score_details.long_term.score, value(report, 'long_term'));
+  assert.equal(report.score_details.nutrition.components.protein, 100);
+  assert.ok(report.score_details.nutrition.components.fat < 100);
+  assert.equal(report.score_details.nutrition.components.micronutrients, 100);
+  assert.ok(report.score_details.nutrition.deductions.some(item => item.code === 'NUTRITION_FAT_BELOW_STAGE'));
+  assert.ok(report.score_details.structure.deductions.length > 0);
+  assert.ok(report.score_details.long_term.limiting_factors.length > 0);
 });
 
 test('肉类自身脂肪与额外油脂分开显示', () => {
@@ -363,4 +490,31 @@ test('疾病适配提示明确建议听从专业医师建议', () => {
   const health = report.suitability_detail.components.find(item => item.key === 'health');
   assert.ok(health.adjustment.includes('建议听从专业医师建议'));
   assert.ok(report.findings.some(item => item.title === '需要专业确认' && item.adjustment.includes('建议听从专业医师建议')));
+});
+
+test('宠物适配性扣分提供分项得分、宏量适配和健康标签事实', () => {
+  const report = analyze(
+    [{ name: '金枪鱼白肉', grams: 100 }, { name: '米饭', grams: 100 }],
+    null,
+    {
+      ...adult,
+      current_weight_kg: 7.5,
+      target_weight_kg: 7,
+      health_tags: ['obesity', 'kidney'],
+      feeding_goal: 'weight_loss',
+      activity_level: 'low',
+      neutered: true,
+    }
+  );
+  const deductions = report.score_details.suitability.deductions;
+  const stage = deductions.find(item => item.code === 'LIFE_STAGE_MACRO_CHECK');
+  const health = deductions.find(item => item.code === 'HEALTH_CONSTRAINTS_REVIEWED');
+
+  assert.equal(stage.facts.component_max, 20);
+  assert.ok(Number.isFinite(stage.facts.component_earned));
+  assert.ok(Number.isFinite(stage.facts.protein_score));
+  assert.ok(Number.isFinite(stage.facts.fat_score));
+  assert.deepEqual(health.facts.health_tags, ['obesity', 'kidney']);
+  assert.equal(health.facts.component_earned, 12);
+  assert.equal(health.facts.component_max, 20);
 });

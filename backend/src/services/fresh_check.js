@@ -1,6 +1,7 @@
 const { analyzeFreshCheck, lookupFreshCheckIngredientFacts, recognizeFreshCheckRecipe } = require('./deepseek');
 const { listBPackOptions, getIngredientMap } = require('./nutrition_repository');
 const { breedsDb } = require('../data/breeds_db');
+const { dailyEnergyNeed } = require('./nutrition_energy');
 
 const FORBIDDEN = ['木糖醇', '巧克力', '可可', '咖啡', '咖啡因', '酒精', '葡萄', '葡萄干', '洋葱', '大蒜', '韭菜', '葱', '夏威夷果', '牛油果', '熟骨', '骨头', '尖锐骨'];
 const INEDIBLE = ['石头', '石块', '铁钉', '钉子', '玻璃', '塑料', '金属', '电池', '硬币', '磁铁', '木头', '水泥', '清洁剂', '洗衣液', '漂白剂', '玩具', '纸巾', '衣服'];
@@ -9,6 +10,7 @@ const PROTEIN = ['鸡', '牛', '羊', '猪', '鱼', '虾', '蛋', '肉'];
 const ORGAN = ['肝', '肾', '心', '肚', '胗'];
 const CARB = ['米', '饭', '薯', '土豆', '南瓜', '燕麦', '藜麦', '玉米'];
 const VEGETABLE = ['菜', '萝卜', '西兰花', '菠菜', '蓝莓', '苹果', '黄瓜', '西葫芦'];
+const FRUIT = ['苹果', '蓝莓', '草莓', '蔓越莓', '覆盆子', '黑莓', '梨', '香蕉', '西瓜', '哈密瓜', '桃', '芒果', '木瓜'];
 const FAT = ['鱼油', '橄榄油', '亚麻籽油'];
 const CALCIUM = ['钙', '蛋壳粉', '骨粉', '营养包'];
 const B_PACK_CATEGORIES = ['幼犬通用', '控钙幼犬（大型幼犬）', '成犬通用', '老年犬通用', '美毛护肤', '低敏单一蛋白', '护肝'];
@@ -54,7 +56,7 @@ function bPackCoverage(description) {
     vitamins: /维生素|维矿|预混/.test(text),
     minerals: /矿物|维矿|预混|钙磷/.test(text),
     calcium: /钙/.test(text),
-    fatty_acids: false,
+    fatty_acids: /omega[-\s]?3|鱼油|藻油|dha|epa|脂肪酸/i.test(text),
   };
 }
 
@@ -196,12 +198,15 @@ async function getFreshCheckBPackOptions(pet) {
 }
 
 function classifyRecipe(items) {
-  const categories = { protein: [], organ: [], carb: [], vegetable: [], fat: [], calcium: [] };
+  const categories = { protein: [], organ: [], carb: [], vegetable: [], fruit: [], fat: [], calcium: [] };
   items.forEach(item => {
     if (has(item.name, ORGAN)) categories.organ.push(item);
     else if (has(item.name, PROTEIN)) categories.protein.push(item);
     else if (has(item.name, CARB)) categories.carb.push(item);
-    else if (has(item.name, VEGETABLE)) categories.vegetable.push(item);
+    else if (has(item.name, FRUIT)) {
+      categories.fruit.push(item);
+      categories.vegetable.push(item);
+    } else if (has(item.name, VEGETABLE)) categories.vegetable.push(item);
     if (has(item.name, FAT)) categories.fat.push(item);
     if (has(item.name, CALCIUM)) categories.calcium.push(item);
   });
@@ -213,6 +218,7 @@ function canonicalCategory(name, record = {}) {
   if (has(name, FAT)) return 'fat';
   if (record.category === 'protein' || has(name, PROTEIN)) return 'protein';
   if (record.category === 'carb' || has(name, CARB)) return 'carb';
+  if (record.category === 'fruit' || has(name, FRUIT)) return 'fruit';
   if (['veg', 'vegetable'].includes(record.category) || has(name, VEGETABLE)) return 'vegetable';
   return 'other';
 }
@@ -235,7 +241,7 @@ function macroStandard(pet) {
 function calculateMacroNutrition({ pet, ingredients, ingredientMap = {}, ingredientFacts = [] }) {
   const facts = new Map(ingredientFacts.map(item => [item.name, item]));
   const total = ingredients.reduce((sum, item) => sum + item.grams, 0);
-  const totals = { animal_protein_g: 0, organ_g: 0, carb_ingredient_g: 0, vegetable_g: 0, fat_source_g: 0, fat_containing_g: 0, protein_g: 0, fat_g: 0, carb_g: 0, water_g: 0, kcal: 0, covered_g: 0, water_covered_g: 0 };
+  const totals = { animal_protein_g: 0, organ_g: 0, carb_ingredient_g: 0, vegetable_g: 0, fruit_g: 0, fat_source_g: 0, fat_containing_g: 0, protein_g: 0, fat_g: 0, carb_g: 0, water_g: 0, kcal: 0, covered_g: 0, water_covered_g: 0 };
   const details = ingredients.map(item => {
     const local = matchIngredientRecord(item.name, ingredientMap);
     const ai = facts.get(item.name);
@@ -259,7 +265,8 @@ function calculateMacroNutrition({ pet, ingredients, ingredientMap = {}, ingredi
     if (categoryKnown && ['protein', 'organ'].includes(category)) totals.animal_protein_g += item.grams;
     if (categoryKnown && category === 'organ') totals.organ_g += item.grams;
     if (categoryKnown && category === 'carb') totals.carb_ingredient_g += item.grams;
-    if (categoryKnown && category === 'vegetable') totals.vegetable_g += item.grams;
+    if (categoryKnown && ['vegetable', 'fruit'].includes(category)) totals.vegetable_g += item.grams;
+    if (categoryKnown && category === 'fruit') totals.fruit_g += item.grams;
     if (categoryKnown && category === 'fat') totals.fat_source_g += item.grams;
     if (known && fatPct > 0) totals.fat_containing_g += item.grams;
     totals.protein_g += nutrient.protein_g; totals.fat_g += nutrient.fat_g; totals.carb_g += nutrient.carb_g; totals.kcal += nutrient.kcal;
@@ -273,7 +280,7 @@ function calculateMacroNutrition({ pet, ingredients, ingredientMap = {}, ingredi
   const coveragePct = pct(totals.covered_g);
   const waterCoveragePct = pct(totals.water_covered_g);
   return {
-    ingredient_weight_ratios: { animal_protein_pct: pct(totals.animal_protein_g), organ_pct: pct(totals.organ_g), carb_pct: pct(totals.carb_ingredient_g), vegetable_pct: pct(totals.vegetable_g), fat_containing_ingredient_pct: pct(totals.fat_containing_g), fat_source_pct: pct(totals.fat_source_g) },
+    ingredient_weight_ratios: { animal_protein_pct: pct(totals.animal_protein_g), organ_pct: pct(totals.organ_g), carb_pct: pct(totals.carb_ingredient_g), vegetable_pct: pct(totals.vegetable_g), fruit_pct: pct(totals.fruit_g), fat_containing_ingredient_pct: pct(totals.fat_containing_g), fat_source_pct: pct(totals.fat_source_g) },
     estimated_grams: { protein_g: Number(totals.protein_g.toFixed(1)), fat_g: Number(totals.fat_g.toFixed(1)), carb_g: Number(totals.carb_g.toFixed(1)), water_g: Number(totals.water_g.toFixed(1)) },
     estimated_water_pct: waterCoveragePct >= 80 ? Number((totals.water_g / totals.water_covered_g * 100).toFixed(1)) : null,
     water_coverage_pct: waterCoveragePct,
@@ -286,13 +293,27 @@ function calculateMacroNutrition({ pet, ingredients, ingredientMap = {}, ingredi
 function structureAssessment(macros, mealIntent) {
   const r = macros.ingredient_weight_ratios;
   let penalty = 0;
-  if (r.animal_protein_pct === 0) penalty += 50; else if (r.animal_protein_pct < 5) penalty += 40; else if (r.animal_protein_pct < 20) penalty += 30; else if (r.animal_protein_pct < 35) penalty += 25; else if (r.animal_protein_pct < 45) penalty += 15; else if (r.animal_protein_pct > 75) penalty += 10;
-  if (r.carb_pct > 45) penalty += 20; else if (r.carb_pct > 35) penalty += 15; else if (r.carb_pct > 30) penalty += 8;
-  if (r.vegetable_pct > 35) penalty += 15; else if (r.vegetable_pct > 25) penalty += 8;
-  if (r.organ_pct > 15) penalty += 10; else if (mealIntent === 'long_term' && r.organ_pct === 0) penalty += 5;
+  const deductions = [];
+  const deduct = (code, points, facts) => {
+    penalty += points;
+    deductions.push({ code, points, facts });
+  };
+  if (r.animal_protein_pct === 0) deduct('STRUCTURE_ANIMAL_PROTEIN_MISSING', 50, { actual_pct: r.animal_protein_pct, minimum_pct: 40 });
+  else if (r.animal_protein_pct < 5) deduct('STRUCTURE_ANIMAL_PROTEIN_VERY_LOW', 40, { actual_pct: r.animal_protein_pct, minimum_pct: 40 });
+  else if (r.animal_protein_pct < 20) deduct('STRUCTURE_ANIMAL_PROTEIN_LOW', 30, { actual_pct: r.animal_protein_pct, minimum_pct: 40 });
+  else if (r.animal_protein_pct < 40) deduct('STRUCTURE_ANIMAL_PROTEIN_LOW', 25, { actual_pct: r.animal_protein_pct, minimum_pct: 40 });
+  else if (r.animal_protein_pct > 75) deduct('STRUCTURE_ANIMAL_PROTEIN_HIGH', 10, { actual_pct: r.animal_protein_pct, maximum_pct: 75 });
+  if (r.carb_pct > 45) deduct('STRUCTURE_CARB_VERY_HIGH', 20, { actual_pct: r.carb_pct, maximum_pct: 45 });
+  else if (r.carb_pct > 35) deduct('STRUCTURE_CARB_HIGH', 15, { actual_pct: r.carb_pct, maximum_pct: 35 });
+  if (r.vegetable_pct > 30) deduct('STRUCTURE_VEGETABLE_VERY_HIGH', 15, { actual_pct: r.vegetable_pct, maximum_pct: 30 });
+  else if (r.vegetable_pct > 25) deduct('STRUCTURE_VEGETABLE_HIGH', 8, { actual_pct: r.vegetable_pct, maximum_pct: 25 });
+  if (r.fruit_pct > 10) deduct('STRUCTURE_FRUIT_HIGH', 10, { actual_pct: r.fruit_pct, maximum_pct: 5 });
+  else if (r.fruit_pct > 5) deduct('STRUCTURE_FRUIT_HIGH', 5, { actual_pct: r.fruit_pct, maximum_pct: 5 });
+  if (r.organ_pct > 15) deduct('STRUCTURE_ORGAN_HIGH', 10, { actual_pct: r.organ_pct, maximum_pct: 15 });
+  else if (mealIntent === 'long_term' && r.organ_pct === 0) deduct('STRUCTURE_ORGAN_MISSING', 5, { actual_pct: 0 });
   const fatLow = macros.per_1000_kcal.fat_g !== null && macros.per_1000_kcal.fat_g < macros.standards.fat_min_g_per_1000kcal;
-  if (fatLow && r.fat_source_pct === 0) penalty += 10;
-  return { score: score(100 - penalty), fatLow };
+  if (fatLow && r.fat_source_pct === 0) deduct('STRUCTURE_FAT_SOURCE_MISSING', 10, { actual_pct: 0 });
+  return { score: score(100 - penalty), fatLow, deductions };
 }
 
 function profileNotice(pet, items) {
@@ -315,11 +336,20 @@ function profileNotice(pet, items) {
 }
 
 function petSuitability({ pet, findings, macros, energyScore, selectedBPack }) {
-  const component = (key, label, max, earned, reason, adjustment, reason_code, facts = {}) => ({
-    key, label, max, earned: Number(Math.max(0, Math.min(max, earned)).toFixed(1)), reason, adjustment,
-    label_code: `SUITABILITY_${key.toUpperCase()}_LABEL`, reason_code,
-    adjustment_code: `SUITABILITY_${key.toUpperCase()}_ADJUSTMENT`, facts,
-  });
+  const component = (key, label, max, earned, reason, adjustment, reason_code, facts = {}) => {
+    const normalizedEarned = Number(Math.max(0, Math.min(max, earned)).toFixed(1));
+    return {
+      key, label, max, earned: normalizedEarned, reason, adjustment,
+      label_code: `SUITABILITY_${key.toUpperCase()}_LABEL`, reason_code,
+      adjustment_code: `SUITABILITY_${key.toUpperCase()}_ADJUSTMENT`,
+      facts: {
+        ...facts,
+        component_key: key,
+        component_earned: normalizedEarned,
+        component_max: max,
+      },
+    };
+  };
   const ratio = (value, minimum) => value === null || !minimum ? 0.5 : Math.max(0, Math.min(1, value / minimum));
   const stage = petLifeStage(pet);
   const size = petBodySize(pet);
@@ -378,12 +408,19 @@ function petSuitability({ pet, findings, macros, energyScore, selectedBPack }) {
   const hasFoodRecords = (pet.allergens || []).length || (pet.food_restrictions || []).length || (pet.allergy_symptoms || []).length;
   const allergyEarned = foodConflict ? 0 : macros.coverage.status === 'uncertain' && hasFoodRecords ? 10 : 15;
   const components = [
-    component('life_stage', '年龄与生命阶段', 20, stageEarned, `按${macros.standards.stage}阶段核对蛋白质与脂肪最低值。`, '调整蛋白质和脂肪密度，使其达到当前年龄阶段要求。', 'LIFE_STAGE_MACRO_CHECK', { stage_standard: macros.standards.stage }),
+    component('life_stage', '年龄与生命阶段', 20, stageEarned, `按${macros.standards.stage}阶段核对蛋白质与脂肪最低值。`, '调整蛋白质和脂肪密度，使其达到当前年龄阶段要求。', 'LIFE_STAGE_MACRO_CHECK', {
+      stage_standard: macros.standards.stage,
+      protein_score: score(proteinFit * 100),
+      fat_score: score(fatFit * 100),
+    }),
     component('body_size', '体型与成长约束', 10, sizeEarned, sizeReason, '大型或巨型幼犬需要确认控钙成长方案。', !size ? 'BODY_SIZE_UNKNOWN' : stage === 'puppy' && ['large', 'giant'].includes(size) ? (selectedBPack?.category === '控钙幼犬（大型幼犬）' ? 'LARGE_PUPPY_PACK_APPLIED' : 'LARGE_PUPPY_PACK_UNCONFIRMED') : 'BODY_SIZE_CHECKED', { body_size_code: size }),
     component('weight_energy', '体重、目标与能量', 15, weightEarned, targetWeightConflict ? `当前食谱能量与食量可执行性得分${energyScore}分；幼犬目标${targetWeight}kg低于当前${weight}kg，档案冲突。` : `当前食谱能量与食量可执行性得分${energyScore}分；当前${weight || '未填'}kg，目标${targetWeight || '未填'}kg。`, targetWeightConflict ? '暂停使用该目标体重推导减重；复核BCS、生长曲线，并降低不可执行的每日食物体积。' : '调整食谱总量或能量密度，并补全当前及目标体重。', targetWeightConflict ? 'WEIGHT_ENERGY_PUPPY_TARGET_CONFLICT' : 'WEIGHT_ENERGY_PROFILE', { energy_score: energyScore, current_weight_kg: weight || null, target_weight_kg: targetWeight || null }),
     component('activity_neuter', '活动、绝育与喂养目标', 10, activityEarned, `活动水平${pet.activity_level || '未填'}、${pet.neutered ? '已绝育' : '未绝育'}、目标${pet.feeding_goal || '未填'}。`, '补全活动水平、绝育状态和喂养目标。', 'ACTIVITY_NEUTER_GOAL_PROFILE', { activity_level: pet.activity_level || null, neutered: Boolean(pet.neutered), feeding_goal: pet.feeding_goal || null }),
     component('physiology', '孕哺与恢复状态', 10, physiologyEarned, physiologyReason, '孕哺或恢复期应使用对应的专用长期方案。', ['pregnancy', 'lactation'].includes(pet.special_period) ? 'PHYSIOLOGY_PREGNANCY_LACTATION' : ['post_op_rest', 'illness_recovery'].includes(pet.special_period) ? (pet.feeding_goal === 'post_surgery_recovery' ? 'PHYSIOLOGY_RECOVERY_ALIGNED' : 'PHYSIOLOGY_RECOVERY_NOT_ALIGNED') : 'PHYSIOLOGY_NORMAL', { special_period: pet.special_period || null, neutered: Boolean(pet.neutered) }),
-    component('health', '基础疾病约束', 20, healthEarned, healthReason, '存在基础疾病时，请补充专业营养指标并按疾病约束调整；建议听从专业医师建议。', health.length ? 'HEALTH_CONSTRAINTS_REVIEWED' : 'HEALTH_NONE', { health_record_count: health.length }),
+    component('health', '基础疾病约束', 20, healthEarned, healthReason, '存在基础疾病时，请补充专业营养指标并按疾病约束调整；建议听从专业医师建议。', health.length ? 'HEALTH_CONSTRAINTS_REVIEWED' : 'HEALTH_NONE', {
+      health_record_count: health.length,
+      health_tags: health,
+    }),
     component('allergy', '过敏与不耐受', 15, allergyEarned, foodConflict ? '当前食谱命中过敏或食物限制记录。' : '未发现当前食材与已登记过敏或不耐受记录冲突。', '删除冲突食材并选择安全替代来源。', foodConflict ? 'ALLERGY_CONFLICT' : 'ALLERGY_NONE', { food_conflict: foodConflict }),
   ];
   const value = pet.species && pet.species !== 'dog' ? 0 : score(components.reduce((sum, item) => sum + item.earned, 0));
@@ -410,7 +447,7 @@ function normalizeIngredientFacts(items = [], allowedNames = []) {
     is_food: item?.is_food === true ? true : item?.is_food === false ? false : null,
     dog_safety: ['safe', 'unsafe', 'uncertain'].includes(item?.dog_safety) ? item.dog_safety : null,
     kcal_per_100g: nullableNumber(item?.kcal_per_100g, 0, 900),
-    category: ['protein', 'organ', 'carb', 'vegetable', 'fat', 'addition', 'unknown'].includes(item?.category) ? item.category : 'unknown',
+    category: ['protein', 'organ', 'carb', 'vegetable', 'fruit', 'fat', 'addition', 'unknown'].includes(item?.category) ? item.category : 'unknown',
     protein_pct: nullableNumber(item?.protein_pct, 0, 100),
     fat_pct: nullableNumber(item?.fat_pct, 0, 100),
     carb_pct: nullableNumber(item?.carb_pct, 0, 100),
@@ -491,51 +528,6 @@ function energyFor(item, ingredientFacts = new Map(), ingredientMap = {}) {
   const fallback = fallbackKcalPer100(item);
   if (fallback !== null) return { kcal: Math.round(item.grams * fallback / 100), kcal_per_100g: fallback, source: 'category_fallback', confidence: 'low' };
   return { kcal: null, kcal_per_100g: null, source: 'unresolved', confidence: 'low' };
-}
-
-function dailyEnergyNeed(pet) {
-  const weight = Number(pet.current_weight_kg || pet.weight || 0);
-  const ageMonths = Number(pet.age_months || 0);
-  const targetWeight = Number(pet.target_weight_kg || pet.targetWeight || 0);
-  const puppy = pet.life_stage === 'puppy' || (ageMonths > 0 && ageMonths < 12);
-  const rer = weight ? Math.round(70 * Math.pow(weight, 0.75)) : 0;
-  const lifeFactor = puppy ? (ageMonths < 4 ? 3 : 2) : pet.life_stage === 'senior' ? 1.4 : 1.6;
-  const recordedActivity = { low: 0.85, medium: 1, high: 1.15, working: 1.3 }[pet.activity_level] || 1;
-  const activity = puppy && ageMonths > 0 && ageMonths < 4 ? 1 : recordedActivity;
-  const goal = { weight_loss: 0.85, muscle_gain: 1.1, post_surgery_recovery: 0.9, gastrointestinal_care: 0.9 }[pet.feeding_goal] || 1;
-  const targetAdjustment = !puppy && weight && targetWeight ? Math.max(0.9, Math.min(1.1, targetWeight / weight)) : 1;
-  const neuterFactor = pet.neutered ? 0.9 : 1;
-  const targetWeightConflict = Boolean(puppy && weight && targetWeight && targetWeight < weight);
-  const dailyKcal = Math.round(rer * lifeFactor * activity * goal * targetAdjustment * neuterFactor);
-  return {
-    stage_label: puppy ? '幼犬' : pet.life_stage === 'senior' ? '老年犬' : '成犬',
-    stage_code: puppy ? 'puppy' : pet.life_stage === 'senior' ? 'senior' : 'adult',
-    rer_kcal: rer,
-    daily_kcal: dailyKcal,
-    min_kcal: Math.round(dailyKcal * 0.85),
-    max_kcal: Math.round(dailyKcal * 1.15),
-    meals_per_day: puppy ? (ageMonths < 6 ? 4 : 3) : 2,
-    age_months: ageMonths || null,
-    current_weight_kg: weight || null,
-    target_weight_kg: targetWeight || null,
-    activity_level: pet.activity_level || 'medium',
-    activity_factor: activity,
-    recorded_activity_factor: recordedActivity,
-    activity_note: puppy && ageMonths > 0 && ageMonths < 4 ? '4个月以下幼犬先按 3×RER 估算，不再叠加普通活动系数；活动量仅用于观察后续体重、BCS和生长曲线变化。' : null,
-    activity_note_code: puppy && ageMonths > 0 && ageMonths < 4 ? 'EARLY_PUPPY_RER_ACTIVITY_NOT_MULTIPLIED' : null,
-    neutered: Boolean(pet.neutered),
-    neuter_factor: neuterFactor,
-    feeding_goal: pet.feeding_goal || 'maintenance',
-    goal_factor: goal,
-    target_adjustment: targetAdjustment,
-    target_weight_conflict: targetWeightConflict,
-    target_weight_note: targetWeightConflict ? '幼犬目标体重低于当前体重，档案存在冲突；本次不使用该目标体重推导减重结论。' : null,
-    target_weight_note_code: targetWeightConflict ? 'PUPPY_TARGET_WEIGHT_CONFLICT' : null,
-    digestion_note: pet.feeding_goal === 'gastrointestinal_care' ? '已按肠胃护理目标保守下调 10%，并建议少量多餐。' : null,
-    digestion_note_code: pet.feeding_goal === 'gastrointestinal_care' ? 'GI_GOAL_CONSERVATIVE_ADJUSTMENT' : null,
-    note_code: puppy ? 'DAILY_ENERGY_ESTIMATE_PUPPY' : 'DAILY_ENERGY_ESTIMATE_GENERAL',
-    note: puppy ? '幼犬能量公式仅作为初始估算；应结合体重、BCS和生长曲线持续调整，个体实际需求可能与估算相差约30%。' : '能量公式仅作为初始估算；应结合体重和BCS持续调整，个体实际需求可能与估算相差约30%。',
-  };
 }
 
 function intakeFeasibility({ pet, totalWeight, energy, need, waterPct }) {
@@ -637,22 +629,48 @@ function localCheck({ pet, ingredients, mealIntent = 'long_term', selectedBPack 
   findings.push(...profileNotice(pet, ingredients));
   if (daily_need.target_weight_conflict) findings.push(finding('warning', '幼犬目标体重档案冲突', `当前体重 ${daily_need.current_weight_kg}kg，但目标体重 ${daily_need.target_weight_kg}kg 更低；幼犬仍在生长，不能据此得出减重结论。`, '暂停使用该目标体重做减重计算；请结合BCS、犬种生长曲线和连续称重，由兽医复核目标。', 'PUPPY_TARGET_WEIGHT_CONFLICT', 'profile', { current_weight_kg: daily_need.current_weight_kg, target_weight_kg: daily_need.target_weight_kg }));
   const ratios = macro_nutrition.ingredient_weight_ratios;
-  if (ratios.animal_protein_pct < 35) findings.push(finding('warning', '动物蛋白比例过低', `动物蛋白食材占配方 ${ratios.animal_protein_pct}%，低于本产品长期鲜食结构参考下限 35%。`, '提高适配的动物蛋白食材占比，并同步缩减过量的碳水或果蔬；调整后重新验证。', 'LOW_ANIMAL_PROTEIN', 'structure', { actual_pct: ratios.animal_protein_pct, minimum_pct: 35 }));
-  if (ratios.carb_pct > 35) findings.push(finding(ratios.carb_pct > 45 ? 'warning' : 'notice', '碳水比例过高', `碳水类食材占配方 ${ratios.carb_pct}%，超过本产品结构参考上限 35%。`, '减少高占比碳水食材，并用适配的动物蛋白替换；不要只靠增加营养包配平。', 'HIGH_CARB', 'structure', { actual_pct: ratios.carb_pct, maximum_pct: 35 }));
-  if (ratios.vegetable_pct > 25) findings.push(finding(ratios.vegetable_pct > 35 ? 'warning' : 'notice', '果蔬比例过高', `果蔬类食材占配方 ${ratios.vegetable_pct}%，超过本产品结构参考上限 25%。`, '缩减果蔬总量，使其不挤占动物蛋白和必要能量来源。', 'HIGH_VEGETABLE', 'structure', { actual_pct: ratios.vegetable_pct, maximum_pct: 25 }));
+  if (ratios.animal_protein_pct < 40) {
+    findings.push(finding('warning', '动物性食材占比较低', `动物性食材占配方 ${ratios.animal_protein_pct}%，低于 40%。`, '重点检查蛋白质、脂肪、必需氨基酸和能量密度，并提高适配的动物性食材占比。', 'LOW_ANIMAL_PROTEIN', 'structure', { actual_pct: ratios.animal_protein_pct, minimum_pct: 40 }));
+  } else if (ratios.animal_protein_pct < 45) {
+    findings.push(finding('notice', '动物性食材处于可接受区间', `动物性食材占配方 ${ratios.animal_protein_pct}%，位于 40%–45% 可接受区间。`, '通过营养计算确认蛋白质、脂肪和必需氨基酸，并重点检查能量密度能否满足当前宠物需求。', 'ANIMAL_PROTEIN_ACCEPTABLE_REVIEW', 'structure', { actual_pct: ratios.animal_protein_pct, minimum_pct: 40, recommended_minimum_pct: 45 }));
+  } else if (ratios.animal_protein_pct > 65 && ratios.animal_protein_pct <= 75) {
+    findings.push(finding('notice', '高动物性食材结构', `动物性食材占配方 ${ratios.animal_protein_pct}%，属于 65%–75% 高动物性食材结构。`, '这不一定有问题，但应检查脂肪、钙磷、内脏比例和总能量是否超标。', 'HIGH_ANIMAL_PROTEIN_REVIEW', 'structure', { actual_pct: ratios.animal_protein_pct, high_range_minimum_pct: 65, maximum_pct: 75 }));
+  } else if (ratios.animal_protein_pct > 75) {
+    findings.push(finding('warning', '动物性食材占比超过75%', `动物性食材占配方 ${ratios.animal_protein_pct}%，不能据此自动判定健康。`, '检查纤维和其他食材空间是否被挤压，并复核脂肪、磷、铜、维生素A及总能量。', 'EXCESSIVE_ANIMAL_PROTEIN', 'structure', { actual_pct: ratios.animal_protein_pct, maximum_pct: 75 }));
+  }
+  if (ratios.carb_pct < 10) {
+    findings.push(finding('notice', '低碳水配方', `淀粉类碳水食材占配方 ${ratios.carb_pct}%，低于 10%。`, '标记为低碳水配方，并确认脂肪、蛋白质和总能量能够满足需求。', 'LOW_CARB_FORMULA', 'structure', { actual_pct: ratios.carb_pct, low_threshold_pct: 10 }));
+  } else if (ratios.carb_pct < 15) {
+    findings.push(finding('notice', '碳水比例偏低', `淀粉类碳水食材占配方 ${ratios.carb_pct}%，位于 10%–15% 偏低区间。`, '结合活动量、脂肪来源和总能量确认长期适用性。', 'LOW_CARB', 'structure', { actual_pct: ratios.carb_pct, recommended_minimum_pct: 15 }));
+  } else if (ratios.carb_pct > 45) {
+    findings.push(finding('warning', '碳水比例超过45%', `淀粉类碳水食材占配方 ${ratios.carb_pct}%，不建议作为常规犬鲜食结构。`, '减少淀粉类碳水，避免稀释动物性营养，并重新核算蛋白质密度和总能量。', 'VERY_HIGH_CARB', 'structure', { actual_pct: ratios.carb_pct, maximum_pct: 45 }));
+  } else if (ratios.carb_pct > 35) {
+    findings.push(finding('notice', '碳水比例偏高', `淀粉类碳水食材占配方 ${ratios.carb_pct}%，位于 35%–45% 偏高区间。`, '检查蛋白质密度和总能量，并在需要时减少淀粉类碳水。', 'HIGH_CARB', 'structure', { actual_pct: ratios.carb_pct, maximum_pct: 35 }));
+  }
+  if (ratios.vegetable_pct < 5) {
+    findings.push(finding('notice', '非淀粉果蔬比例较低', `非淀粉果蔬占配方 ${ratios.vegetable_pct}%，低于 5%。`, '检查实际纤维含量和食材多样性，不仅凭食材重量下结论。', 'LOW_NON_STARCHY_PRODUCE', 'structure', { actual_pct: ratios.vegetable_pct, low_threshold_pct: 5 }));
+  } else if (ratios.vegetable_pct < 10) {
+    findings.push(finding('notice', '非淀粉果蔬比例偏低', `非淀粉果蔬占配方 ${ratios.vegetable_pct}%，位于 5%–10% 偏低区间。`, '结合实际纤维含量和粪便情况确认是否需要增加低淀粉蔬菜。', 'LOW_NON_STARCHY_PRODUCE', 'structure', { actual_pct: ratios.vegetable_pct, recommended_minimum_pct: 10 }));
+  } else if (ratios.vegetable_pct > 30) {
+    findings.push(finding('warning', '非淀粉果蔬比例超过30%', `非淀粉果蔬占配方 ${ratios.vegetable_pct}%，通常不建议。`, '减少果蔬总量，避免日粮体积过大、能量密度下降和纤维过多。', 'VERY_HIGH_VEGETABLE', 'structure', { actual_pct: ratios.vegetable_pct, maximum_pct: 30 }));
+  } else if (ratios.vegetable_pct > 25) {
+    findings.push(finding('notice', '非淀粉果蔬比例偏高', `非淀粉果蔬占配方 ${ratios.vegetable_pct}%，位于 25%–30% 偏高区间。`, '检查能量密度和粪便情况，并避免挤占动物性营养来源。', 'HIGH_VEGETABLE', 'structure', { actual_pct: ratios.vegetable_pct, maximum_pct: 25 }));
+  }
+  if (ratios.fruit_pct > 5) {
+    findings.push(finding(ratios.fruit_pct > 10 ? 'warning' : 'notice', '水果比例偏高', `水果占配方 ${ratios.fruit_pct}%，超过建议的 0%–5%。`, '减少高糖水果，使主要果蔬来源回到低淀粉蔬菜。', 'HIGH_FRUIT', 'structure', { actual_pct: ratios.fruit_pct, maximum_pct: 5 }));
+  }
   if (structureResult.fatLow && ratios.fat_source_pct === 0) findings.push(finding('warning', '脂肪来源不足', `估算脂肪为 ${macro_nutrition.per_1000_kcal.fat_g}g/1000kcal，低于当前阶段参考最低值 ${macro_nutrition.standards.fat_min_g_per_1000kcal}g/1000kcal，且没有明确脂肪来源。`, '在专业建议下加入适配的脂肪来源，重新核算总能量与必需脂肪酸。', 'LOW_FAT_SOURCE', 'nutrition', { actual_g_per_1000kcal: macro_nutrition.per_1000_kcal.fat_g, minimum_g_per_1000kcal: macro_nutrition.standards.fat_min_g_per_1000kcal }));
   if (macro_nutrition.coverage.status === 'uncertain') findings.push(finding('warning', '宏量营养估算不完整', `仅覆盖 ${macro_nutrition.coverage.weight_pct}% 食材重量，无法可靠判断蛋白质、脂肪和碳水是否达标。`, '补充未识别食材的生熟状态或营养标签后重新验证。', 'MACRO_DATA_INCOMPLETE', 'nutrition', { coverage_weight_pct: macro_nutrition.coverage.weight_pct }));
   const unresolvedNutrition = ingredientFacts.filter(item => item.nutrition_unresolved);
   unresolvedNutrition.forEach(item => findings.push(finding('notice', `未查询到${item.name}食材的营养值`, `${item.name} 经两次查询仍未返回有效营养值，未计入食品营养值计算。`, '请补充准确食材名称、部位、生熟状态或包装营养标签后重新验证。', 'INGREDIENT_NUTRITION_UNAVAILABLE', 'nutrition', { ingredient_name: item.name, ingredient_id: ingredientId(item.name), lookup_attempts: item.lookup_attempts || 2 })));
+  const packCoverage = selectedBPack ? (selectedBPack.coverage || bPackCoverage(selectedBPack.description)) : {};
   const bPackNeeded = mealIntent === 'long_term' && !categories.calcium.length;
   if (!selectedBPack && !categories.calcium.length && mealIntent === 'long_term') findings.push(finding('warning', '长期主食缺少维生素和矿物质', '未识别到钙源或完整营养平衡包，长期可能造成钙磷、维生素及微量营养失衡。', '按专业方案加入明确剂量的维生素和矿物质，或者添加王牌全价营养包。', 'MICRONUTRIENT_SOURCE_MISSING', 'nutrition'));
-  if (!categories.fat.length && mealIntent === 'long_term') findings.push(finding('notice', '必需脂肪酸待确认', '未识别到明确的必需脂肪酸来源；全价营养包仅用于维生素和矿物质配平，不能替代脂肪酸来源。', '在专业建议下补充适配的必需脂肪酸来源。', 'ESSENTIAL_FATTY_ACID_SOURCE_MISSING', 'nutrition'));
+  if (!categories.fat.length && !packCoverage.fatty_acids && mealIntent === 'long_term') findings.push(finding('notice', '必需脂肪酸待确认', '未识别到明确的必需脂肪酸来源，且当前全价营养包说明中未标明 Omega-3、鱼油或藻油。', '选择明确包含必需脂肪酸的全价营养包，或在专业建议下补充适配来源。', 'ESSENTIAL_FATTY_ACID_SOURCE_MISSING', 'nutrition'));
   if (selectedBPack) {
-    const coverage = selectedBPack.coverage || bPackCoverage(selectedBPack.description);
-    const covered = [['vitamins', '维生素'], ['minerals', '矿物质'], ['calcium', '钙源']].filter(([key]) => coverage[key]).map(([, label]) => label);
-    findings.push(finding('safe', '已选择全价营养包补充维生素和矿物质', `${selectedBPack.name} 按数据库说明覆盖：${covered.join('、') || '暂无可确认项目'}；按每100克食材配10克、烹饪完成后拌入，不计入食材总重、宏量营养、能量、食材比例或烹饪参数。`, '请严格按标注剂量在烹饪完成后拌入，并继续处理仍存在的结构、能量和必需脂肪酸问题。', 'B_PACK_APPLIED', 'nutrition', { category_code: selectedBPack.category_code || B_PACK_CATEGORY_CODES[selectedBPack.category] || 'UNKNOWN', coverage_codes: covered.length ? Object.keys(coverage).filter(key => coverage[key]) : [], grams_per_100g: 10 }));
+    const covered = [['vitamins', '维生素'], ['minerals', '矿物质'], ['calcium', '钙源'], ['fatty_acids', '必需脂肪酸']].filter(([key]) => packCoverage[key]).map(([, label]) => label);
+    findings.push(finding('safe', '已识别必配全价营养包覆盖项目', `${selectedBPack.name} 按数据库说明覆盖：${covered.join('、') || '暂无可确认项目'}；按每100克食材配10克、烹饪完成后拌入，不计入食材总重、宏量营养、能量、食材比例或烹饪参数。`, '请严格按标注剂量在烹饪完成后拌入，并继续处理仍存在的食谱结构和能量问题。', 'B_PACK_APPLIED', 'nutrition', { category_code: selectedBPack.category_code || B_PACK_CATEGORY_CODES[selectedBPack.category] || 'UNKNOWN', coverage_codes: covered.length ? Object.keys(packCoverage).filter(key => packCoverage[key]) : [], grams_per_100g: 10 }));
   }
-  if (!categories.carb.length) findings.push(finding('notice', '碳水/淀粉来源待确认', '未识别到碳水来源；低碳食谱不一定适合长期主食。', '结合宠物活动量和专业建议确认能量来源。', 'CARB_SOURCE_MISSING', 'nutrition'));
   findings.push(energyFinding({ energy, need: daily_need, categories, feasibility: intake_feasibility }));
   const otherUnknownEnergy = energy.unknown.filter(name => !unresolvedNutrition.some(item => item.name === name));
   if (otherUnknownEnergy.length) findings.push(finding('notice', '部分能量密度仍待确认', `${otherUnknownEnergy.join('、')} 暂无可靠能量数值；系统已基于其余食材继续评分，当前总能量为保守下限。`, '补充生熟状态或包装营养标签后重新验证，可提高评估精度。', 'ENERGY_DENSITY_INCOMPLETE', 'energy', { ingredient_names: otherUnknownEnergy }));
@@ -667,11 +685,32 @@ function localCheck({ pet, ingredients, mealIntent = 'long_term', selectedBPack 
   const proteinAdequacy = macro_nutrition.per_1000_kcal.protein_g === null ? 0 : Math.min(100, macro_nutrition.per_1000_kcal.protein_g / macro_nutrition.standards.protein_min_g_per_1000kcal * 100);
   const fatAdequacy = macro_nutrition.per_1000_kcal.fat_g === null ? 0 : Math.min(100, macro_nutrition.per_1000_kcal.fat_g / macro_nutrition.standards.fat_min_g_per_1000kcal * 100);
   const macroAdequacy = (proteinAdequacy + fatAdequacy) / 2;
-  const packCoverage = selectedBPack ? (selectedBPack.coverage || bPackCoverage(selectedBPack.description)) : {};
   const microCovered = categories.calcium.length || (packCoverage.vitamins && packCoverage.minerals && packCoverage.calcium);
   const microScore = microCovered ? 100 : mealIntent === 'long_term' ? 35 : 65;
   let completeness = score(macroAdequacy * 0.6 + microScore * 0.4);
   if (macro_nutrition.coverage.status === 'uncertain') completeness = Math.min(completeness, 60);
+  const nutritionDeductions = [];
+  if (proteinAdequacy < 100) nutritionDeductions.push({
+    code: 'NUTRITION_PROTEIN_BELOW_STAGE',
+    facts: {
+      actual_g_per_1000kcal: macro_nutrition.per_1000_kcal.protein_g,
+      minimum_g_per_1000kcal: macro_nutrition.standards.protein_min_g_per_1000kcal,
+      stage_code: daily_need.stage_code,
+    },
+  });
+  if (fatAdequacy < 100) nutritionDeductions.push({
+    code: 'NUTRITION_FAT_BELOW_STAGE',
+    facts: {
+      actual_g_per_1000kcal: macro_nutrition.per_1000_kcal.fat_g,
+      minimum_g_per_1000kcal: macro_nutrition.standards.fat_min_g_per_1000kcal,
+      stage_code: daily_need.stage_code,
+    },
+  });
+  if (microScore < 100) nutritionDeductions.push({ code: 'NUTRITION_MICRONUTRIENT_INCOMPLETE', facts: {} });
+  if (macro_nutrition.coverage.status === 'uncertain') nutritionDeductions.push({
+    code: 'NUTRITION_DATA_COVERAGE_INCOMPLETE',
+    facts: { coverage_weight_pct: macro_nutrition.coverage.weight_pct },
+  });
   const calorieScore = !daily_need.daily_kcal ? 50 : score(100 - Math.abs(energy.total_kcal - daily_need.daily_kcal) / daily_need.daily_kcal * 100);
   const energyScore = Math.min(calorieScore, intake_feasibility.score);
   const suitabilityDetail = petSuitability({ pet, findings, macros: macro_nutrition, energyScore, selectedBPack });
@@ -693,6 +732,44 @@ function localCheck({ pet, ingredients, mealIntent = 'long_term', selectedBPack 
     b_pack_needed: bPackNeeded,
     daily_need: { ...daily_need, recipe_kcal: energy.total_kcal, recipe_kcal_per_gram: energy.kcal_per_gram ? Number(energy.kcal_per_gram.toFixed(2)) : null, calorie_match_score: calorieScore, intake_feasibility, unknown_ingredients: energy.unknown, energy_estimates: energy.estimates },
     macro_nutrition,
+    score_details: {
+      nutrition: {
+        score: completeness,
+        components: {
+          protein: score(proteinAdequacy),
+          fat: score(fatAdequacy),
+          micronutrients: microScore,
+        },
+        deductions: nutritionDeductions,
+      },
+      structure: {
+        score: structure,
+        ratios: macro_nutrition.ingredient_weight_ratios,
+        deductions: structureResult.deductions,
+      },
+      suitability: {
+        score: suitability,
+        deductions: suitabilityDetail.components
+          .filter(item => item.earned < item.max)
+          .map(item => ({ code: item.reason_code, points: Number((item.max - item.earned).toFixed(1)), facts: item.facts })),
+      },
+      energy: {
+        score: energyScore,
+        deductions: findings
+          .filter(item => item.domain === 'energy' && item.level !== 'safe')
+          .map(item => ({ code: item.code, facts: item.facts })),
+      },
+      safety: {
+        score: safety,
+        deductions: findings
+          .filter(item => item.domain === 'safety' && item.level !== 'safe')
+          .map(item => ({ code: item.code, facts: item.facts })),
+      },
+      long_term: {
+        score: longTerm,
+        limiting_factors: limitingFactors.map(item => ({ key: item.key, value: item.value })),
+      },
+    },
     suitability_detail: suitabilityDetail,
     long_term_detail: {
       score: longTerm,
@@ -776,4 +853,10 @@ async function buildFreshCheckAnalysis({ pet, ingredients, meal_intent, b_pack_c
   return local;
 }
 
-module.exports = { recognizeFreshCheck, buildFreshCheckAnalysis, getFreshCheckBPackOptions, _test: { calculateMacroNutrition, structureAssessment, dailyEnergyNeed, intakeFeasibility, localCheck, normalizeIngredientFacts, lookupIngredientFactsWithRetry, hasNutritionValues, bPackApplication, selectBPackOption } };
+module.exports = {
+  recognizeFreshCheck,
+  buildFreshCheckAnalysis,
+  getFreshCheckBPackOptions,
+  evaluateRecipe: localCheck,
+  _test: { calculateMacroNutrition, structureAssessment, dailyEnergyNeed, intakeFeasibility, localCheck, normalizeIngredientFacts, lookupIngredientFactsWithRetry, hasNutritionValues, bPackApplication, selectBPackOption },
+};
