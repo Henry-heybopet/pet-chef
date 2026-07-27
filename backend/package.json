@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:fresh-check": "node --test test/fresh_check.test.js",
+    "test:nutrition-energy": "node --test test/nutrition_energy.test.js",
     "test:i18n": "node --test test/i18n_presentation.test.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma db push",

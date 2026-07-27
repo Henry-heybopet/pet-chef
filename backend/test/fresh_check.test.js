@@ -134,12 +134,33 @@ test('530g牛肉牛肝配方识别动物蛋白、内脏和三文鱼油', () => {
 test('不完整PostgreSQL食材行不会覆盖静态基础营养数据', () => {
   const merged = nutritionRepository.mergeIngredientRows(ingredientsDb, [
     { id: '牛肉', name: '牛肉', category: 'protein', protein_pct: null, fat_pct: null, calories_per_100g: null },
+    { id: '兔里脊', name: '兔里脊', category: 'catalog', protein_pct: null, fat_pct: null, calories_per_100g: null },
     { id: '自定义食材', name: '自定义食材', category: 'veg', calories_per_100g: '25.5' },
   ]);
   assert.equal(merged['牛肉'].protein_pct, 26);
   assert.equal(merged['牛肉'].fat_pct, 12);
   assert.equal(merged['牛肉'].calories_per_100g, 213);
+  assert.equal(merged['兔里脊'].category, 'protein');
+  assert.equal(merged['兔里脊'].protein_pct, 22);
   assert.equal(merged['自定义食材'].calories_per_100g, '25.5');
+});
+
+test('兔里脊通用目录行仍计入动物蛋白结构和蛋白质营养', () => {
+  const ingredientMap = nutritionRepository.mergeIngredientRows(ingredientsDb, [
+    { id: '兔里脊', name: '兔里脊', category: 'catalog', protein_pct: null, fat_pct: null, calories_per_100g: null },
+  ]);
+  const report = _test.localCheck({
+    pet: { ...adult, age_months: 3, life_stage: 'puppy', current_weight_kg: 5.3 },
+    ingredients: [{ name: '兔里脊', grams: 205 }, { name: '南瓜', grams: 117 }, { name: '全熟燕麦片', grams: 117 }, { name: '胡萝卜', grams: 58 }, { name: '菠菜', grams: 47 }, { name: '苹果', grams: 12 }],
+    mealIntent: 'long_term',
+    selectedBPack: { name: '幼犬成长营养包B', description: '维矿预混料、钙磷矿物粉、Omega-3鱼油或藻油' },
+    ingredientMap,
+  });
+  const rabbit = report.macro_nutrition.details.find(item => item.name === '兔里脊');
+  assert.equal(rabbit.category, 'protein');
+  assert.equal(rabbit.protein_g, 45.1);
+  assert.equal(report.macro_nutrition.ingredient_weight_ratios.animal_protein_pct, 36.9);
+  assert.ok(value(report, 'structure') > 20);
 });
 
 test('名称分类不依赖营养覆盖，但缺失营养仍明确标记为不完整', () => {
@@ -174,6 +195,34 @@ test('幼犬专业确认不会再把长期适宜性固定锁定为60分', () => 
   assert.ok(report.long_term_detail.explanation.includes('限制'));
   assert.equal(report.suitability_detail.components.length, 7);
   assert.equal(report.suitability_detail.value, Math.round(report.suitability_detail.components.reduce((sum, item) => sum + item.earned, 0)));
+});
+
+test('明确含Omega-3鱼油或藻油的必配全价营养包覆盖必需脂肪酸来源', () => {
+  const report = analyze(
+    [{ name: '鸡胸肉', grams: 220 }, { name: '米饭', grams: 55 }, { name: '胡萝卜', grams: 40 }],
+    { name: '成犬维护营养包B', description: '维矿预混料、钙磷矿物粉、Omega-3鱼油或藻油' }
+  );
+  assert.equal(codes(report).has('ESSENTIAL_FATTY_ACID_SOURCE_MISSING'), false);
+  const applied = report.findings.find(item => item.code === 'B_PACK_APPLIED');
+  assert.ok(applied.facts.coverage_codes.includes('fatty_acids'));
+});
+
+test('雷达低分解释与当前食谱分项计算使用同一份确定性数据', () => {
+  const puppy = { ...adult, age_months: 3.6, life_stage: 'puppy', current_weight_kg: 5.3, activity_level: 'high', neutered: false };
+  const report = analyze(
+    [{ name: '鸡小胸', grams: 35 }, { name: '鸡心', grams: 10 }, { name: '全熟燕麦片', grams: 20 }, { name: '红薯', grams: 15 }, { name: '西兰花', grams: 10 }, { name: '蓝莓', grams: 5 }],
+    { name: '幼犬成长营养包B', description: '维矿预混料、钙磷矿物粉、Omega-3鱼油或藻油' },
+    puppy
+  );
+  assert.equal(report.score_details.nutrition.score, value(report, 'nutrition'));
+  assert.equal(report.score_details.structure.score, value(report, 'structure'));
+  assert.equal(report.score_details.long_term.score, value(report, 'long_term'));
+  assert.equal(report.score_details.nutrition.components.protein, 100);
+  assert.ok(report.score_details.nutrition.components.fat < 100);
+  assert.equal(report.score_details.nutrition.components.micronutrients, 100);
+  assert.ok(report.score_details.nutrition.deductions.some(item => item.code === 'NUTRITION_FAT_BELOW_STAGE'));
+  assert.ok(report.score_details.structure.deductions.length > 0);
+  assert.ok(report.score_details.long_term.limiting_factors.length > 0);
 });
 
 test('肉类自身脂肪与额外油脂分开显示', () => {

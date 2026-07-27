@@ -30,7 +30,19 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
     let alive = true;
     setParamsLoading(true);
     setError('');
-    api.cookParams({ recipeId: recipe.id, breedId: profile.breedId, weight: profile.weight, age: profile.age, totalGrams: displayGrams }).then(d => {
+    api.cookParams({
+      recipeId: recipe.id,
+      breedId: profile.breedId,
+      weight: profile.weight,
+      age: profile.age,
+      ageMonths: profile.age_months ?? profile.ageMonths,
+      activityLevel: profile.activityLevel,
+      targetWeight: profile.targetWeight,
+      feedingGoal: profile.feedingGoal,
+      neutered: profile.neutered,
+      lifeStage: profile.lifeStage,
+      totalGrams: displayGrams,
+    }).then(d => {
       if (!alive) return;
       if (d.success) setCookData(d);
       else setError(lang === 'zh' && d.error ? d.error : t('cookingParamsFailed'));

@@ -12,10 +12,12 @@ const { analyzeBreedNutrition, generateAIRecipe, compareRecipeSelection, compare
 const { evaluatePetBCS } = require('./services/deepseek');
 const { validateIngredientSafety, hasToxicIngredients, hasCautionIngredients, generateSafetyWarnings } = require('./services/safety_filter');
 const { startCooking, pauseCooking, stopCooking, getDeviceStatus } = require('./services/tuya');
-const { calcCookingParams, calcDailyIntake, calcIngredientGrams } = require('./services/cooking_engine');
+const { calcCookingParams, calcDailyIntake, calcRecipeFeedingPlan, calcIngredientGrams } = require('./services/cooking_engine');
+const { recommendationScoreFromValidation } = require('./services/nutrition_energy');
 const heyboRoutes = require('./routes/heybo');
 const { getCorsOrigins, printRegionSummary, getEnvironment } = require('./config/region_config');
-const { listRecipes, listAdminRecipes, getRecipeById, getRecipeNames, createRecipe, updateRecipe, buildRecipeIndexByName } = require('./services/nutrition_repository');
+const { listRecipes, listAdminRecipes, getRecipeById, getRecipeNames, createRecipe, updateRecipe, buildRecipeIndexByName, getIngredientMap } = require('./services/nutrition_repository');
+const { evaluateRecipe } = require('./services/fresh_check');
 const store = require('./services/heybo_store');
 const { generateToken, verifyToken } = require('./services/auth');
 const petRepository = require('./services/pet_repository');
@@ -30,7 +32,7 @@ app.set('trust proxy', 1);
 const uploadsDir = path.resolve(__dirname, '../public/uploads');
 const recipeUploadsDir = path.join(uploadsDir, 'recipes');
 const runtimeDataDir = path.resolve(__dirname, '../.data');
-const AI_RECOMMENDATION_CACHE_VERSION = 9;
+const AI_RECOMMENDATION_CACHE_VERSION = 12;
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(recipeUploadsDir, { recursive: true });
 fs.mkdirSync(runtimeDataDir, { recursive: true });
@@ -484,11 +486,9 @@ app.post('/api/v1/recommend', async (req, res) => {
   if (weight < 10) size = '小型犬';
   else if (weight > 25) size = '大型犬';
 
-  // 计算食量
-  const intake = calcDailyIntake(breed, weight, age);
-
   // 评分推荐
   const { recipes } = await listRecipes();
+  const ingredientLibrary = await getIngredientMap();
   const scored = recipes.map(r => {
     let score = 0;
     if (r.life_stage === lifeStage) score += 40;
@@ -517,10 +517,15 @@ app.post('/api/v1/recommend', async (req, res) => {
   });
 
   const top = scored.filter(r => r.score > -500).sort((a, b) => b.score - a.score).slice(0, 6);
+  const recommendations = top.map(recipe => ({
+    ...recipe,
+    feeding_plan: buildRecipeFeedingPlan(resolved.pet || dogProfile, recipe, ingredientLibrary.ingredients),
+  }));
+  const intake = recommendations[0]?.feeding_plan || calcDailyIntake(breed, weight, age);
 
   res.json({
     success: true,
-    recommendations: top,
+    recommendations,
     profile: { lifeStage, size, ...intake, breedName: breedName || breed?.name, pet_id: dogProfile.pet_id },
   });
 });
@@ -564,6 +569,63 @@ function safeCacheId(value) {
 
 function compareCachePath(petCacheId) {
   return path.join(runtimeDataDir, `compare_cache_${petCacheId}.json`);
+}
+
+function buildRecipeFeedingPlan(pet, recipe, ingredientMap) {
+  const plan = calcRecipeFeedingPlan(pet, recipe, ingredientMap);
+  if (!plan.daily_grams) return plan;
+  const ingredients = calcIngredientGrams(recipe.ingredients, plan.daily_grams)
+    .filter(item => item.grams > 0)
+    .map(item => ({ name: item.name, grams: item.grams }));
+  const report = evaluateRecipe({
+    pet,
+    ingredients,
+    mealIntent: 'long_term',
+    ingredientMap,
+    selectedBPack: {
+      name: String(recipe.b_pack || '').split('：')[0] || 'AI推荐全价营养包B',
+      description: recipe.b_pack || '',
+      category: recipe.category,
+    },
+  });
+  const scoreByKey = Object.fromEntries(report.scores.map(item => [item.key, item.value]));
+  const dangerCodes = report.findings.filter(item => item.level === 'danger').map(item => item.code);
+  return {
+    ...plan,
+    validation_scores: scoreByKey,
+    validation_details: report.score_details,
+    long_term_score: scoreByKey.long_term,
+    recommendation_score: recommendationScoreFromValidation(scoreByKey, { hasDanger: dangerCodes.length > 0 }),
+    recommendation_score_model: 'fresh_check_weighted_v1',
+    danger_codes: dangerCodes,
+    warning_codes: report.findings.filter(item => item.level === 'warning' || item.level === 'danger').map(item => item.code),
+  };
+}
+
+function buildRecipeFeedingPlans(pet, recipes, ingredientMap) {
+  return Object.fromEntries(recipes.map(recipe => [recipe.id, buildRecipeFeedingPlan(pet, recipe, ingredientMap)]));
+}
+
+function applyEnergyFeasibilityToComparisons(comparisons, recipes, plans) {
+  if (!comparisons) return comparisons;
+  const recipeByName = new Map(recipes.map(recipe => [recipe.name, recipe]));
+  return Object.fromEntries(Object.entries(comparisons).map(([name, comparison]) => {
+    const recipe = recipeByName.get(name);
+    const plan = recipe ? plans[recipe.id] : null;
+    if (!plan || !comparison?.a_comparison) return [name, comparison];
+    const proposedScore = Number(comparison.a_comparison.proposed_score);
+    const deterministicScore = Number.isFinite(Number(plan.recommendation_score)) ? Number(plan.recommendation_score) : plan.feasibility_score;
+    return [name, {
+      ...comparison,
+      energy_feasibility: plan,
+      a_comparison: {
+        ...comparison.a_comparison,
+        ai_proposed_score: Number.isFinite(proposedScore) ? proposedScore : null,
+        proposed_score: deterministicScore,
+        score_model: plan.recommendation_score_model || 'energy_feasibility',
+      },
+    }];
+  }));
 }
 
 function normalizeCacheTimestamp(value) {
@@ -693,8 +755,17 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
     id, name, feedingGoal, goals = [], bcs, allergens = []
   } = dogProfile;
 
-  const breed = breedsDb.find(b => b.id === breedId);
-  const intake = calcDailyIntake(breed, weight, age);
+  const breed = breedsDb.find(b => b.id === breedId || b.name === breedName || breedName?.includes(b.name) || b.name.includes(breedName));
+  const { recipes } = await listRecipes();
+  const ingredientLibrary = await getIngredientMap();
+  const recipeFeedingPlans = buildRecipeFeedingPlans(resolved.pet || dogProfile, recipes, ingredientLibrary.ingredients);
+  const profileLifeStage = dogProfile.lifeStage || (age < 1 ? 'puppy' : age >= 8 ? 'senior' : 'adult');
+  const targetCategory = profileLifeStage === 'puppy'
+    ? (weight >= 25 ? '控钙幼犬（大型幼犬）' : '幼犬通用')
+    : profileLifeStage === 'senior' ? '老年犬通用' : '成犬通用';
+  const categoryRecipes = recipes.filter(recipe => recipe.category === targetCategory);
+  const baselineRecipe = categoryRecipes[0] || recipes[0];
+  const intake = recipeFeedingPlans[baselineRecipe?.id] || calcDailyIntake(breed, weight, age);
 
   const petCacheId = safeCacheId(dogProfile.pet_id || id || name || 'default');
   const cacheFilePath = compareCachePath(petCacheId);
@@ -778,16 +849,6 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
 
   if (!comparisons) {
     const lifeStage = mergedAnalysis.life_stage || '成年犬';
-    let targetCat = '成犬通用';
-    if (lifeStage === '幼犬') {
-      targetCat = weight >= 25 ? '控钙幼犬（大型幼犬）' : '幼犬通用';
-    } else if (lifeStage === '老年犬') {
-      targetCat = '老年犬通用';
-    }
-
-    const { recipes } = await listRecipes();
-    const categoryRecipes = recipes.filter(r => r.category === targetCat);
-    const baselineRecipe = categoryRecipes[0] || recipes[0];
 
     let recommendedBName = '成犬维护营养包B';
     if (lifeStage === '幼犬') {
@@ -855,6 +916,20 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
     }
   }
 
+  comparisons = applyEnergyFeasibilityToComparisons(comparisons, recipes, recipeFeedingPlans);
+  const mergedAnalysisWithPlans = {
+    ...mergedAnalysis,
+    daily_energy: {
+      rer_kcal: intake.rer_kcal,
+      daily_kcal: intake.daily_kcal,
+      min_kcal: intake.min_kcal,
+      max_kcal: intake.max_kcal,
+      note: intake.note,
+      note_code: intake.note_code,
+    },
+    recipe_feeding_plans: recipeFeedingPlans,
+  };
+
   if (cacheNeedsWrite) {
     fs.writeFileSync(cacheFilePath, JSON.stringify({
       cache_version: AI_RECOMMENDATION_CACHE_VERSION,
@@ -862,8 +937,8 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       pet_id: dogProfile.pet_id || dogProfile.id,
       pet_updated_at: normalizeCacheTimestamp(dogProfile.pet_updated_at),
       dogProfile: dogProfile,
-      analyses_by_locale: { ...cachedAnalyses, [requestedLocale]: mergedAnalysis },
-      analysis: mergedAnalysis,
+      analyses_by_locale: { ...cachedAnalyses, [requestedLocale]: mergedAnalysisWithPlans },
+      analysis: mergedAnalysisWithPlans,
       analysis_locale: requestedLocale,
       comparisons_by_locale: { ...cachedComparisonsByLocale, [requestedLocale]: comparisons }
     }, null, 2), 'utf8');
@@ -873,7 +948,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
   res.json({
     success: true,
     locale: requestedLocale,
-    analysis: mergedAnalysis,
+    analysis: mergedAnalysisWithPlans,
     comparisons: comparisons,
     cache_hit: false
   });
@@ -945,13 +1020,19 @@ app.post('/api/v1/ingredients/safety-check', async (req, res) => {
 // body: { recipeId, weight, age, breedId, mealType: 'daily'|'per_meal' }
 // ============================================================
 app.post('/api/v1/cook/params', async (req, res) => {
-  const { recipeId, weight = 15, age = 3, breedId, totalGrams } = req.body;
+  const {
+    recipeId, weight = 15, age = 3, ageMonths, breedId, totalGrams,
+    activityLevel, targetWeight, feedingGoal, neutered, lifeStage,
+  } = req.body;
 
   const { recipe } = await getRecipeById(recipeId);
   if (!recipe) return res.status(404).json({ success: false, error: 'Recipe not found' });
 
   const breed = breedsDb.find(b => b.id === breedId);
-  const intake = calcDailyIntake(breed, weight, age);
+  const ingredientLibrary = await getIngredientMap();
+  const intake = buildRecipeFeedingPlan({
+    weight, age, ageMonths, activityLevel, targetWeight, feedingGoal, neutered, lifeStage,
+  }, recipe, ingredientLibrary.ingredients);
 
   // 使用传入的克数（每餐），或自动计算
   const cookGrams = totalGrams || intake.per_meal_grams;

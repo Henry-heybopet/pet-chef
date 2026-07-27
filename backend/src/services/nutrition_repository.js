@@ -235,6 +235,9 @@ function mergeIngredientRows(seedIngredients, rows) {
     const definedFields = Object.fromEntries(
       Object.entries(row).filter(([, value]) => value !== null && value !== undefined && value !== '')
     );
+    if (definedFields.category === 'catalog' && merged[name]?.category && merged[name].category !== 'catalog') {
+      delete definedFields.category;
+    }
     merged[name] = { ...(merged[name] || {}), ...definedFields };
   }
   return merged;
