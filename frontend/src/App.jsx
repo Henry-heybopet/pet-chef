@@ -370,6 +370,7 @@ function AppInner() {
   const [aiProfile, setAiProfile] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedRecipe, setSelectedRecipe] = useState(null);
+  const [recipeMakeReturnScreen, setRecipeMakeReturnScreen] = useState('recipe_list');
   const [freshCheckResult, setFreshCheckResult] = useState(null);
   const [freshCheckDraft, setFreshCheckDraft] = useState(null);
   const [cookingData, setCookingData] = useState(null);
@@ -855,7 +856,11 @@ function AppInner() {
     setScreen('pet_management');
   };
 
-  const handleSelectRecipe = (recipe) => { setSelectedRecipe(recipe); setScreen('recipe_make'); };
+  const handleSelectRecipe = (recipe) => {
+    setSelectedRecipe(recipe);
+    setRecipeMakeReturnScreen(screen === 'ai_analysis' ? 'ai_analysis' : 'recipe_list');
+    setScreen('recipe_make');
+  };
   const handleStartCooking = (data) => {
     setCookingData(data);
     setScreen('device_flow');
@@ -892,7 +897,7 @@ function AppInner() {
       else if (entrySource === 'ai') setScreen('ai_analysis');
       else setScreen('pet_management');
     }
-    if (screen === 'recipe_make') setScreen('recipe_list');
+    if (screen === 'recipe_make') setScreen(recipeMakeReturnScreen);
     if (screen === 'cooking') setScreen('recipe_make');
     if (screen === 'pet_details') setScreen('pet_management');
     return true;
