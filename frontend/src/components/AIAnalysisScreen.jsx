@@ -1,7 +1,7 @@
 // AIAnalysisScreen.jsx — AI analysis results + categories (i18n)
 import React from 'react';
 import TopBar from './TopBar';
-import { useTranslation } from '../i18n/translations';
+import { useTranslation, VALIDATION_REASON_KEYS } from '../i18n/translations';
 import { tData, tTag, tBreedDesc, tBenefit, tPack } from '../i18n/dataTranslations';
 import { api } from '../api';
 import { demoRecipes } from '../data/demoRecipes';
@@ -108,29 +108,6 @@ const SCORE_LABEL_KEYS = {
   energy: 'freshScoreEnergy',
 };
 
-const VALIDATION_REASON_KEYS = {
-  NUTRITION_PROTEIN_BELOW_STAGE: 'validationProteinBelowStage',
-  NUTRITION_FAT_BELOW_STAGE: 'validationFatBelowStage',
-  NUTRITION_MICRONUTRIENT_INCOMPLETE: 'validationMicronutrientIncomplete',
-  NUTRITION_DATA_COVERAGE_INCOMPLETE: 'validationDataCoverageIncomplete',
-  STRUCTURE_ANIMAL_PROTEIN_MISSING: 'validationAnimalProteinMissing',
-  STRUCTURE_ANIMAL_PROTEIN_VERY_LOW: 'validationAnimalProteinLow',
-  STRUCTURE_ANIMAL_PROTEIN_LOW: 'validationAnimalProteinLow',
-  STRUCTURE_ANIMAL_PROTEIN_BELOW_IDEAL: 'validationAnimalProteinBelowIdeal',
-  STRUCTURE_ANIMAL_PROTEIN_HIGH: 'validationAnimalProteinHigh',
-  STRUCTURE_CARB_HIGH: 'validationCarbHigh',
-  STRUCTURE_CARB_VERY_HIGH: 'validationCarbVeryHigh',
-  STRUCTURE_CARB_ABOVE_IDEAL: 'validationCarbAboveIdeal',
-  STRUCTURE_VEGETABLE_HIGH: 'validationVegetableHigh',
-  STRUCTURE_VEGETABLE_VERY_HIGH: 'validationVegetableVeryHigh',
-  STRUCTURE_FRUIT_HIGH: 'validationFruitHigh',
-  STRUCTURE_ORGAN_HIGH: 'validationOrganHigh',
-  STRUCTURE_ORGAN_MISSING: 'validationOrganMissing',
-  STRUCTURE_FAT_SOURCE_MISSING: 'validationFatSourceMissing',
-  LIFE_STAGE_MACRO_CHECK: 'validationSuitabilityLifeStage',
-  WEIGHT_ENERGY_PROFILE: 'validationSuitabilityWeightEnergy',
-};
-
 function validationReasonText(deduction, t) {
   if (deduction?.code === 'LIFE_STAGE_MACRO_CHECK') {
     const stageKey = {
@@ -159,7 +136,9 @@ function validationReasonText(deduction, t) {
     return t('validationSuitabilityHealth', { ...deduction.facts, health_tags: healthTags || '-' });
   }
   const key = VALIDATION_REASON_KEYS[deduction?.code];
-  return key ? t(key, deduction.facts || {}) : t('validationScoreBelowFull');
+  return key
+    ? t(key, deduction.facts || {})
+    : t('validationLocalizationUnavailable', { code: deduction?.code || '-' });
 }
 
 function getRecipeScore(recipe, comparisons) {

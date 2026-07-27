@@ -1,3 +1,5 @@
+const { FRESH_CHECK_FINDING_TEMPLATES } = require('./fresh_check_finding_templates');
+
 const SUPPORTED_LOCALES = Object.freeze(['zh', 'en', 'de', 'fr', 'es', 'it', 'ja', 'ko']);
 const INGREDIENT_NAMES = Object.freeze({
   grape: ['葡萄', 'grapes', 'Trauben', 'le raisin', 'las uvas', 'l’uva', 'ぶどう', '포도'],
@@ -134,15 +136,28 @@ const GENERIC_FINDING = Object.freeze({
   ],
 });
 const KNOWN_FINDING_CODES = new Set([
-  ...Object.keys(TEMPLATES), ...Object.keys(EXTRA_FINDING_TEMPLATES),
-  'PROFESSIONAL_CONFIRMATION_REQUIRED', 'PUPPY_TARGET_WEIGHT_CONFLICT', 'LOW_ANIMAL_PROTEIN',
-  'ANIMAL_PROTEIN_ACCEPTABLE_REVIEW', 'HIGH_ANIMAL_PROTEIN_REVIEW', 'EXCESSIVE_ANIMAL_PROTEIN',
-  'LOW_CARB_FORMULA', 'LOW_CARB', 'HIGH_CARB', 'VERY_HIGH_CARB',
-  'LOW_NON_STARCHY_PRODUCE', 'HIGH_VEGETABLE', 'VERY_HIGH_VEGETABLE', 'HIGH_FRUIT',
-  'LOW_FAT_SOURCE', 'MACRO_DATA_INCOMPLETE', 'INGREDIENT_NUTRITION_UNAVAILABLE',
-  'MICRONUTRIENT_SOURCE_MISSING', 'ESSENTIAL_FATTY_ACID_SOURCE_MISSING', 'B_PACK_APPLIED', 'CARB_SOURCE_MISSING',
-  'ENERGY_DENSITY_INCOMPLETE', 'RECIPE_WEIGHT_TOO_LOW', 'MISSING_WEIGHT', 'MISSING_ENERGY_SOURCE',
-  'EXCESSIVE_DAILY_FOOD_VOLUME', 'DAILY_ENERGY_HIGH', 'DAILY_ENERGY_LOW', 'DAILY_ENERGY_ADEQUATE',
+  ...Object.keys(TEMPLATES),
+  ...Object.keys(EXTRA_FINDING_TEMPLATES),
+  ...Object.keys(FRESH_CHECK_FINDING_TEMPLATES),
+]);
+const KNOWN_VALIDATION_DETAIL_CODES = new Set([
+  'NUTRITION_PROTEIN_BELOW_STAGE', 'NUTRITION_FAT_BELOW_STAGE',
+  'NUTRITION_MICRONUTRIENT_INCOMPLETE', 'NUTRITION_DATA_COVERAGE_INCOMPLETE',
+  'STRUCTURE_ANIMAL_PROTEIN_MISSING', 'STRUCTURE_ANIMAL_PROTEIN_VERY_LOW',
+  'STRUCTURE_ANIMAL_PROTEIN_LOW', 'STRUCTURE_ANIMAL_PROTEIN_BELOW_IDEAL',
+  'STRUCTURE_ANIMAL_PROTEIN_HIGH', 'STRUCTURE_CARB_HIGH', 'STRUCTURE_CARB_VERY_HIGH',
+  'STRUCTURE_CARB_ABOVE_IDEAL', 'STRUCTURE_VEGETABLE_HIGH',
+  'STRUCTURE_VEGETABLE_VERY_HIGH', 'STRUCTURE_FRUIT_HIGH', 'STRUCTURE_ORGAN_HIGH',
+  'STRUCTURE_ORGAN_MISSING', 'STRUCTURE_FAT_SOURCE_MISSING',
+  'LIFE_STAGE_MACRO_CHECK', 'BODY_SIZE_UNKNOWN', 'LARGE_PUPPY_PACK_UNCONFIRMED',
+  'WEIGHT_ENERGY_PROFILE', 'WEIGHT_ENERGY_PUPPY_TARGET_CONFLICT',
+  'ACTIVITY_NEUTER_GOAL_PROFILE', 'PHYSIOLOGY_PREGNANCY_LACTATION',
+  'PHYSIOLOGY_RECOVERY_ALIGNED', 'PHYSIOLOGY_RECOVERY_NOT_ALIGNED',
+  'HEALTH_CONSTRAINTS_REVIEWED', 'ALLERGY_CONFLICT', 'ALLERGY_NONE',
+  'MISSING_WEIGHT', 'MISSING_ENERGY_SOURCE', 'EXCESSIVE_DAILY_FOOD_VOLUME',
+  'DAILY_ENERGY_HIGH', 'DAILY_ENERGY_LOW', 'ENERGY_DENSITY_INCOMPLETE',
+  'INEDIBLE', 'FORBIDDEN', 'AI_UNSAFE_INGREDIENT', 'INGREDIENT_SAFETY_UNCERTAIN',
+  'SEASONING_RISK',
 ]);
 
 const TEXT = Object.freeze({
@@ -151,7 +166,16 @@ const TEXT = Object.freeze({
   STAGE_SENIOR: L('老年犬', 'Senior dog', 'Seniorhund', 'Chien âgé', 'Perro sénior', 'Cane anziano', 'シニア犬', '노령견'),
   DAILY_ENERGY_ESTIMATE_PUPPY: L('幼犬能量公式仅为初始估算，应结合体重、BCS和生长曲线持续调整。', 'The puppy energy formula is an initial estimate; adjust it using weight, BCS, and the growth curve.', 'Die Energieformel für Welpen ist ein Ausgangswert und muss anhand von Gewicht, BCS und Wachstum angepasst werden.', 'La formule énergétique du chiot est une estimation initiale à ajuster avec le poids, le BCS et la croissance.', 'La fórmula energética del cachorro es una estimación inicial que debe ajustarse con peso, BCS y crecimiento.', 'La formula energetica del cucciolo è una stima iniziale da adattare con peso, BCS e crescita.', '子犬の必要エネルギーは初期推定値です。体重、BCS、成長曲線で継続調整してください。', '강아지 에너지 공식은 초기 추정치이며 체중, BCS, 성장 곡선에 따라 조정해야 합니다.'),
   DAILY_ENERGY_ESTIMATE_GENERAL: L('能量公式仅为初始估算，应结合体重和BCS持续调整。', 'The energy formula is an initial estimate; adjust it using weight and BCS.', 'Die Energieformel ist ein Ausgangswert und muss anhand von Gewicht und BCS angepasst werden.', 'La formule énergétique est une estimation initiale à ajuster avec le poids et le BCS.', 'La fórmula energética es una estimación inicial que debe ajustarse con peso y BCS.', 'La formula energetica è una stima iniziale da adattare con peso e BCS.', '必要エネルギーは初期推定値です。体重とBCSで継続調整してください。', '에너지 공식은 초기 추정치이며 체중과 BCS에 따라 조정해야 합니다.'),
-  DAILY_NEED_NOT_VETERINARY_PRESCRIPTION: L('每日营养需求估算不是兽医处方。', 'The daily nutrition estimate is not a veterinary prescription.', 'Die tägliche Bedarfsschätzung ist keine tierärztliche Verordnung.', 'L’estimation quotidienne ne remplace pas une prescription vétérinaire.', 'La estimación diaria no es una prescripción veterinaria.', 'La stima giornaliera non è una prescrizione veterinaria.', '1日の栄養推定値は獣医師の処方ではありません。', '일일 영양 추정치는 수의학적 처방이 아닙니다.'),
+  DAILY_NEED_NOT_VETERINARY_PRESCRIPTION: L(
+    'AI营养建议基于犬类能量需求模型（RER/MER）、体重、年龄及活动水平综合计算，为日常喂养提供科学参考。建议根据体况评分（BCS）和实际变化持续调整。如存在疾病、特殊生理阶段或特殊营养需求，请咨询兽医。',
+    'AI nutrition recommendations are calculated using canine energy requirement models (RER/MER), together with body weight, age, and activity level, to provide a science-based reference for daily feeding. Continue adjusting them according to body condition score (BCS) and observed changes. Consult a veterinarian if your dog has a medical condition, is in a special physiological stage, or has specific nutritional requirements.',
+    'Die KI-gestützten Ernährungsempfehlungen werden anhand von Modellen zum Energiebedarf des Hundes (RER/MER) sowie Körpergewicht, Alter und Aktivitätsniveau berechnet und dienen als wissenschaftlich fundierte Orientierung für die tägliche Fütterung. Passen Sie die Empfehlungen fortlaufend an den Body Condition Score (BCS) und die tatsächliche Entwicklung an. Bei Erkrankungen, besonderen physiologischen Phasen oder speziellen Ernährungsbedürfnissen wenden Sie sich bitte an eine Tierärztin oder einen Tierarzt.',
+    'Les recommandations nutritionnelles de l’IA sont calculées à partir des modèles de besoins énergétiques du chien (RER/MER), du poids, de l’âge et du niveau d’activité, afin de fournir une référence scientifiquement fondée pour l’alimentation quotidienne. Ajustez-les régulièrement selon le score d’état corporel (BCS) et l’évolution observée. Consultez un vétérinaire en cas de maladie, de stade physiologique particulier ou de besoins nutritionnels spécifiques.',
+    'Las recomendaciones nutricionales de la IA se calculan mediante modelos de necesidades energéticas caninas (RER/MER), junto con el peso, la edad y el nivel de actividad, para ofrecer una referencia con base científica para la alimentación diaria. Ajústelas de forma continua según la puntuación de condición corporal (BCS) y los cambios observados. Consulte a un veterinario si el perro presenta una enfermedad, se encuentra en una etapa fisiológica especial o tiene necesidades nutricionales específicas.',
+    'Le raccomandazioni nutrizionali dell’IA sono calcolate mediante modelli del fabbisogno energetico del cane (RER/MER), insieme a peso, età e livello di attività, per offrire un riferimento scientificamente fondato per l’alimentazione quotidiana. Adeguarle nel tempo in base al punteggio di condizione corporea (BCS) e ai cambiamenti osservati. Consultare un veterinario in presenza di patologie, fasi fisiologiche particolari o esigenze nutrizionali specifiche.',
+    'AIによる栄養提案は、犬のエネルギー必要量モデル（RER/MER）に体重、年齢、活動量を組み合わせて算出し、日常の給与量を検討するための科学的根拠に基づく参考情報を提供します。ボディコンディションスコア（BCS）と実際の変化に応じて継続的に調整してください。疾患、特別な生理段階、または特別な栄養管理が必要な場合は、獣医師に相談してください。',
+    'AI 영양 권장 사항은 반려견의 에너지 요구량 모델(RER/MER)에 체중, 나이, 활동 수준을 종합하여 계산하며, 일상 급여를 위한 과학적 참고 기준을 제공합니다. 신체 충실도 점수(BCS)와 실제 변화에 따라 지속적으로 조정하세요. 질환이 있거나 특수 생리 단계에 있거나 특별한 영양 관리가 필요한 경우 수의사와 상담하세요.',
+  ),
   COOKING_PLAN_AWAITING_CONFIRMATION_NOT_SENT: L('这是待人工确认的鲜食机烹饪参数，尚未下发设备。', 'These appliance settings require human confirmation and have not been sent to the device.', 'Diese Geräteeinstellungen müssen bestätigt werden und wurden noch nicht an das Gerät gesendet.', 'Ces paramètres doivent être confirmés et n’ont pas été envoyés à l’appareil.', 'Estos parámetros requieren confirmación y aún no se han enviado al aparato.', 'Questi parametri richiedono conferma e non sono stati inviati all’apparecchio.', 'この調理設定は確認待ちで、機器にはまだ送信されていません。', '이 조리 설정은 확인 전이며 아직 기기로 전송되지 않았습니다.'),
   SCORE_SAFETY_LABEL: L('食材安全性', 'Ingredient safety', 'Zutatensicherheit', 'Sécurité des ingrédients', 'Seguridad de ingredientes', 'Sicurezza degli ingredienti', '食材の安全性', '식재료 안전성'),
   SCORE_SUITABILITY_LABEL: L('宠物适配性', 'Pet suitability', 'Eignung für das Tier', 'Adaptation à l’animal', 'Adecuación a la mascota', 'Idoneità per l’animale', 'ペット適合性', '반려동물 적합성'),
@@ -289,7 +313,11 @@ function presentationFor(finding, locale) {
   if (ingredientNames) facts.ingredient_name = ingredientNames[SUPPORTED_LOCALES.indexOf(locale)];
   if (facts.allergen === undefined) facts.allergen = finding.allergen || '';
   if (facts.basis === undefined) facts.basis = finding.basis || '';
-  const template = riskCode && (TEMPLATES[riskCode]?.[locale] || EXTRA_FINDING_TEMPLATES[riskCode]?.[locale]);
+  const template = riskCode && (
+    TEMPLATES[riskCode]?.[locale]
+    || EXTRA_FINDING_TEMPLATES[riskCode]?.[locale]
+    || FRESH_CHECK_FINDING_TEMPLATES[riskCode]?.[locale]
+  );
   const templateText = (template || []).join(' ');
   const hasUnlocalizedIngredient = locale !== 'zh' && templateText.includes('{ingredient_name}') && containsHan(facts.ingredient_name) && !ingredientNames;
   const hasUnlocalizedFact = locale !== 'zh' && Object.entries(facts)
@@ -314,6 +342,7 @@ function presentationFor(finding, locale) {
       adjustment: finding.adjustment || '',
       translation_status: 'fallback',
       fallback_locale: 'zh',
+      localization_error_code: !template ? 'MISSING_FINDING_TEMPLATE' : 'UNLOCALIZED_TEMPLATE_FACT',
     };
   }
 
@@ -344,6 +373,7 @@ function localizeFinding(finding, requestedLocale) {
       adjustment: presentation.adjustment,
       translation_status: presentation.translation_status,
       fallback_locale: presentation.fallback_locale,
+      ...(presentation.localization_error_code ? { localization_error_code: presentation.localization_error_code } : {}),
       ...(Object.hasOwn(source, 'message') ? { message: `${presentation.reason}${presentation.adjustment ? ` ${presentation.adjustment}` : ''}`.trim() } : {}),
     },
   };
@@ -446,6 +476,32 @@ function localizeScores(scores, locale) {
   });
 }
 
+function localizeValidationDetails(details, locale) {
+  if (!details) return { compatible: details, presentation: null };
+  const compatible = Object.fromEntries(Object.entries(details).map(([key, detail]) => {
+    const deductions = (detail?.deductions || []).map(deduction => {
+      const known = KNOWN_VALIDATION_DETAIL_CODES.has(deduction.code);
+      return {
+        ...deduction,
+        translation_status: locale === 'zh' ? 'source' : known ? 'translated' : 'fallback',
+        fallback_locale: locale === 'zh' || known ? null : 'zh',
+        ...(!known ? { localization_error_code: 'MISSING_VALIDATION_DETAIL_TEMPLATE' } : {}),
+      };
+    });
+    return [key, { ...detail, deductions }];
+  }));
+  const presentation = Object.fromEntries(Object.entries(compatible).map(([key, detail]) => [
+    key,
+    { deductions: detail.deductions },
+  ]));
+  return { compatible, presentation };
+}
+
+function validationDetailsTranslationStatus(details, requestedLocale) {
+  const locale = normalizeLocale(requestedLocale);
+  return statusFromPresentation(localizeValidationDetails(details, locale).presentation, locale);
+}
+
 function localizeSemanticResult(result, requestedLocale) {
   const locale = normalizeLocale(requestedLocale);
   const sourceFindings = (result.findings || []).map(item => ({ ...item, facts: item.facts ? { ...item.facts } : {} }));
@@ -456,12 +512,13 @@ function localizeSemanticResult(result, requestedLocale) {
   const suitability = localizeSuitability(result.suitability_detail, locale);
   const longTerm = localizeLongTerm(result.long_term_detail, locale);
   const scores = localizeScores(result.scores, locale);
+  const scoreDetails = localizeValidationDetails(result.score_details, locale);
   const bPack = localizeBPack(result.b_pack, locale);
   const cookingNote = result.cooking_plan ? textFor(result.cooking_plan.note_code, locale, result.cooking_plan.note) : null;
   const cookingPlan = result.cooking_plan ? { ...result.cooking_plan, note: cookingNote.text } : null;
   const aiSummary = result.ai_summary ? { text: result.ai_summary, translation_status: locale === 'zh' ? 'source' : 'fallback', fallback_locale: locale === 'zh' ? null : 'zh' } : null;
   const aiMacro = result.ai_macro_assessment ? { ...result.ai_macro_assessment, translation_status: locale === 'zh' ? 'source' : 'fallback', fallback_locale: locale === 'zh' ? null : 'zh' } : null;
-  const presentation = { findings: localized.map(item => item.presentation), verdict, daily_need: dailyNeed.presentation, suitability_detail: suitability.presentation, long_term_detail: longTerm.presentation, scores, b_pack: bPack.presentation, cooking_plan: cookingPlan && { note: cookingNote }, ai_summary: aiSummary, ai_macro_assessment: aiMacro };
+  const presentation = { findings: localized.map(item => item.presentation), verdict, daily_need: dailyNeed.presentation, suitability_detail: suitability.presentation, long_term_detail: longTerm.presentation, scores, score_details: scoreDetails.presentation, b_pack: bPack.presentation, cooking_plan: cookingPlan && { note: cookingNote }, ai_summary: aiSummary, ai_macro_assessment: aiMacro };
   const translationStatus = statusFromPresentation(presentation, locale);
   return {
     ...result,
@@ -476,6 +533,7 @@ function localizeSemanticResult(result, requestedLocale) {
     suitability_detail: suitability.compatible,
     long_term_detail: longTerm.compatible,
     scores,
+    score_details: scoreDetails.compatible,
     b_pack: bPack.compatible,
     cooking_plan: cookingPlan,
     ai_summary: aiSummary?.text,
@@ -621,5 +679,8 @@ module.exports = {
   aiNutritionPresentationIsValid,
   buildAiNutritionFallback,
   cachedAiNutritionAnalysis,
+  validationDetailsTranslationStatus,
+  FINDING_TEMPLATE_CODES: Object.freeze([...KNOWN_FINDING_CODES]),
+  VALIDATION_DETAIL_CODES: Object.freeze([...KNOWN_VALIDATION_DETAIL_CODES]),
   stripPresentation,
 };

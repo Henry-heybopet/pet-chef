@@ -1,7 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   SUPPORTED_LOCALES,
+  FINDING_TEMPLATE_CODES,
+  VALIDATION_DETAIL_CODES,
   normalizeLocale,
   localizeFinding,
   localizeSemanticResult,
@@ -9,9 +13,11 @@ const {
   aiNutritionPresentationIsValid,
   buildAiNutritionFallback,
   cachedAiNutritionAnalysis,
+  validationDetailsTranslationStatus,
 } = require('../src/services/localization');
 const { ingredientsDb } = require('../src/data/ingredients_db');
 const { _test: freshCheck } = require('../src/services/fresh_check');
+const { FRESH_CHECK_FINDING_TEMPLATES } = require('../src/services/fresh_check_finding_templates');
 
 const safetyFinding = {
   risk_code: 'FORBIDDEN',
@@ -123,6 +129,7 @@ test('missing templates visibly fall back to canonical Chinese without hiding a 
   assert.equal(mixed.fallback_locale, 'zh');
   assert.equal(fallback.translation_status, 'fallback');
   assert.equal(fallback.fallback_locale, 'zh');
+  assert.equal(fallback.localization_error_code, 'MISSING_FINDING_TEMPLATE');
   assert.equal(fallback.level, 'danger');
   assert.equal(fallback.risk_code, unknown.risk_code);
   assert.equal(fallback.title, unknown.title);
@@ -130,6 +137,138 @@ test('missing templates visibly fall back to canonical Chinese without hiding a 
   assert.equal(fallback.adjustment, unknown.adjustment);
   assert.equal(mixed.semantic.findings[1].risk_code, unknown.risk_code);
   assert.equal(mixed.semantic.findings[1].title, undefined);
+});
+
+test('every finding code emitted by Fresh Check has a dedicated eight-locale template', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../src/services/fresh_check.js'), 'utf8');
+  const emitted = new Map();
+  const findingCode = /'([A-Z][A-Z0-9_]+)'\s*,\s*'(safety|profile|structure|nutrition|energy|cooking)'/g;
+  let match;
+  while ((match = findingCode.exec(source))) emitted.set(match[1], match[2]);
+
+  assert.ok(emitted.size > 0);
+  for (const [riskCode, domain] of emitted) {
+    assert.ok(FINDING_TEMPLATE_CODES.includes(riskCode), `missing dedicated template: ${riskCode}`);
+    for (const locale of SUPPORTED_LOCALES) {
+      const output = localizeFinding({
+        risk_code: riskCode,
+        code: riskCode,
+        domain,
+        level: 'warning',
+        ingredient_id: 'grape',
+        facts: {
+          ingredient_id: 'grape',
+          ingredient_name: '葡萄',
+          allergen: 'grape',
+          basis: '',
+          actual_pct: 42,
+          minimum_pct: 40,
+          recommended_minimum_pct: 45,
+          high_range_minimum_pct: 65,
+          maximum_pct: 75,
+          low_threshold_pct: 10,
+          actual_g_per_1000kcal: 20,
+          minimum_g_per_1000kcal: 25,
+          coverage_weight_pct: 90,
+          lookup_attempts: 2,
+          grams_per_100g: 10,
+          ingredient_names: ['ingredient-a'],
+          total_weight_g: 20,
+          minimum_weight_g: 30,
+          current_weight_kg: 5.3,
+          target_weight_kg: 5.5,
+          daily_food_weight_g: 600,
+          daily_food_weight_pct_body_weight: 11.3,
+          grams_per_meal: 150,
+          reference_max_daily_grams: 400,
+          exceeds_reference_by_pct: 50,
+          total_kcal: 500,
+          min_kcal: 600,
+          max_kcal: 800,
+          gap_kcal: 200,
+          suggested_grams: 400,
+          meals_per_day: 4,
+        },
+        title: '源标题',
+        reason: '源原因',
+        adjustment: '源调整',
+      }, locale);
+      assert.ok(output.presentation.title, `${riskCode}/${locale} title`);
+      assert.ok(output.presentation.reason, `${riskCode}/${locale} reason`);
+      assert.ok(output.presentation.adjustment, `${riskCode}/${locale} adjustment`);
+      assert.equal(output.presentation.translation_status, locale === 'zh' ? 'source' : 'translated');
+      assert.equal(output.presentation.localization_error_code, undefined);
+    }
+  }
+});
+
+test('Fresh Check template placeholders stay identical across all eight locales', () => {
+  const placeholders = value => [...String(value).matchAll(/\{([a-z0-9_]+)\}/gi)]
+    .map(match => match[1])
+    .sort();
+
+  for (const [riskCode, localizedTemplates] of Object.entries(FRESH_CHECK_FINDING_TEMPLATES)) {
+    assert.deepEqual(Object.keys(localizedTemplates), SUPPORTED_LOCALES, `${riskCode} locale coverage`);
+    const sourceFields = localizedTemplates.zh;
+    assert.equal(sourceFields.length, 3, `${riskCode}/zh field count`);
+    for (const locale of SUPPORTED_LOCALES) {
+      const fields = localizedTemplates[locale];
+      assert.equal(fields.length, sourceFields.length, `${riskCode}/${locale} field count`);
+      fields.forEach((field, index) => {
+        assert.ok(String(field).trim(), `${riskCode}/${locale}/${index} is empty`);
+        assert.deepEqual(
+          placeholders(field),
+          placeholders(sourceFields[index]),
+          `${riskCode}/${locale}/${index} placeholder mismatch`,
+        );
+      });
+    }
+  }
+});
+
+test('daily nutrition guidance is professionally localized in all eight locales', () => {
+  const chineseGuidance = 'AI营养建议基于犬类能量需求模型（RER/MER）、体重、年龄及活动水平综合计算，为日常喂养提供科学参考。建议根据体况评分（BCS）和实际变化持续调整。如存在疾病、特殊生理阶段或特殊营养需求，请咨询兽医。';
+  const expected = {
+    zh: ['RER/MER', 'BCS', '兽医'],
+    en: ['RER/MER', 'BCS', 'veterinarian'],
+    de: ['RER/MER', 'BCS', 'Tierarzt'],
+    fr: ['RER/MER', 'BCS', 'vétérinaire'],
+    es: ['RER/MER', 'BCS', 'veterinario'],
+    it: ['RER/MER', 'BCS', 'veterinario'],
+    ja: ['RER/MER', 'BCS', '獣医師'],
+    ko: ['RER/MER', 'BCS', '수의사'],
+  };
+  for (const locale of SUPPORTED_LOCALES) {
+    const output = localizeSemanticResult({
+      daily_need: {
+        note_code: 'DAILY_NEED_NOT_VETERINARY_PRESCRIPTION',
+        note: chineseGuidance,
+      },
+      findings: [],
+    }, locale);
+    for (const term of expected[locale]) assert.match(output.daily_need.note, new RegExp(term));
+    if (locale === 'zh') assert.equal(output.daily_need.note, chineseGuidance);
+  }
+});
+
+test('validation details participate in translation status and unknown codes are explicit', () => {
+  const known = {
+    structure: {
+      deductions: VALIDATION_DETAIL_CODES.map(code => ({ code, facts: {} })),
+    },
+  };
+  assert.equal(validationDetailsTranslationStatus(known, 'en'), 'translated');
+
+  const output = localizeSemanticResult({
+    findings: [],
+    score_details: {
+      structure: { deductions: [{ code: 'FUTURE_STRUCTURE_RULE', facts: { actual_pct: 99 } }] },
+    },
+  }, 'en');
+  assert.equal(output.translation_status, 'fallback');
+  assert.equal(output.fallback_locale, 'zh');
+  assert.equal(output.score_details.structure.deductions[0].translation_status, 'fallback');
+  assert.equal(output.score_details.structure.deductions[0].localization_error_code, 'MISSING_VALIDATION_DETAIL_TEMPLATE');
 });
 
 test('Chinese Fresh Check findings preserve specific source conclusions instead of generic placeholders', () => {
@@ -154,7 +293,7 @@ test('Chinese Fresh Check findings preserve specific source conclusions instead 
     },
   ];
   const output = localizeSemanticResult({ findings }, 'zh');
-  assert.deepEqual(output.findings.map(item => item.title), ['动物蛋白比例过低', '每日能量偏低']);
+  assert.deepEqual(output.findings.map(item => item.title), ['动物性食材占比较低', '每日能量偏低']);
   assert.doesNotMatch(JSON.stringify(output.findings), /营养检查结果|能量检查结果|请以本项的结构化数值为准/);
 });
 

@@ -573,7 +573,7 @@ function intakeFeasibility({ pet, totalWeight, energy, need, waterPct }) {
     low_energy_density: kcalPerGram > 0 && kcalPerGram < 1.3,
     high_water: Number.isFinite(waterPct) && waterPct >= 75,
     score: volumeScore,
-    note: '每日营养需求估算不是兽医处方，应结合粪便、食欲、体重、BCS和生长曲线复核。',
+    note: 'AI营养建议基于犬类能量需求模型（RER/MER）、体重、年龄及活动水平综合计算，为日常喂养提供科学参考。建议根据体况评分（BCS）和实际变化持续调整。如存在疾病、特殊生理阶段或特殊营养需求，请咨询兽医。',
     note_code: 'DAILY_NEED_NOT_VETERINARY_PRESCRIPTION',
   };
 }
