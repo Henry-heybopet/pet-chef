@@ -2,7 +2,7 @@
 // index.js — 后端主入口（修复 CommonJS 兼容）
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
@@ -12,22 +12,27 @@ const { analyzeBreedNutrition, generateAIRecipe, compareRecipeSelection, compare
 const { evaluatePetBCS } = require('./services/deepseek');
 const { validateIngredientSafety, hasToxicIngredients, hasCautionIngredients, generateSafetyWarnings } = require('./services/safety_filter');
 const { startCooking, pauseCooking, stopCooking, getDeviceStatus } = require('./services/tuya');
-const { calcCookingParams, calcDailyIntake, calcIngredientGrams } = require('./services/cooking_engine');
+const { calcCookingParams, calcDailyIntake, calcRecipeFeedingPlan, calcIngredientGrams } = require('./services/cooking_engine');
+const { recommendationScoreFromValidation, referenceFeedingPlanForPet } = require('./services/nutrition_energy');
 const heyboRoutes = require('./routes/heybo');
 const { getCorsOrigins, printRegionSummary, getEnvironment } = require('./config/region_config');
-const { listRecipes, listAdminRecipes, getRecipeById, getRecipeNames, createRecipe, updateRecipe, buildRecipeIndexByName } = require('./services/nutrition_repository');
+const { listRecipes, listAdminRecipes, getRecipeById, getRecipeNames, createRecipe, updateRecipe, buildRecipeIndexByName, getIngredientMap } = require('./services/nutrition_repository');
+const { evaluateRecipe } = require('./services/fresh_check');
 const store = require('./services/heybo_store');
 const { generateToken, verifyToken } = require('./services/auth');
 const petRepository = require('./services/pet_repository');
 const userRepository = require('./services/user_repository');
 const adminAccounts = require('./services/admin_accounts');
+const { normalizeLocale, aiNutritionPresentationIsValid, buildAiNutritionFallback, cachedAiNutritionAnalysis, validationDetailsTranslationStatus } = require('./services/localization');
+const { attachCatalogPresentations } = require('./services/catalog_localization');
+const { localizeComparison } = require('./services/comparison_localization');
 
 const app = express();
 app.set('trust proxy', 1);
 const uploadsDir = path.resolve(__dirname, '../public/uploads');
 const recipeUploadsDir = path.join(uploadsDir, 'recipes');
 const runtimeDataDir = path.resolve(__dirname, '../.data');
-const AI_RECOMMENDATION_CACHE_VERSION = 8;
+const AI_RECOMMENDATION_CACHE_VERSION = 16;
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(recipeUploadsDir, { recursive: true });
 fs.mkdirSync(runtimeDataDir, { recursive: true });
@@ -56,10 +61,17 @@ app.use(express.json({
   },
 }));
 
-// 全局限流：15分钟最多 500 次
+const isRealtimeStatusPath = (req) => {
+  if (req.method === 'GET' && /^\/api\/v1\/(devices|pets|recipes|operations\/cooking)(\/|$)/.test(req.path)) return true;
+  if (req.method === 'POST' && /^\/api\/v1\/devices\/[^/]+\/dp-sync(\/|$)/.test(req.path)) return true;
+  return false;
+};
+
+// 全局限流：15分钟最多 500 次。设备运行页的实时读取/DP 缓存同步不占用通用配额。
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 500,
+  skip: isRealtimeStatusPath,
   message: { success: false, error: 'Too many requests from this IP, please try again after 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -141,7 +153,8 @@ app.get('/api/v1/recipes', async (req, res) => {
   };
 
   const { recipes, source } = await listRecipes(filterFn);
-  const result = all ? recipes : recipes.filter(filterFn);
+  const filtered = all ? recipes : recipes.filter(filterFn);
+  const result = await attachCatalogPresentations(filtered, req.query.locale || req.query.lang);
 
   res.json({ success: true, recipes: result, count: result.length, source });
 });
@@ -153,7 +166,8 @@ app.get('/api/v1/recipes/:id', async (req, res) => {
   const { recipe, source } = await getRecipeById(req.params.id);
 
   if (!recipe) return res.status(404).json({ success: false, error: 'Recipe not found' });
-  res.json({ success: true, recipe, source });
+  const [localizedRecipe] = await attachCatalogPresentations([recipe], req.query.locale || req.query.lang);
+  res.json({ success: true, recipe: localizedRecipe, source });
 });
 
 const ADMIN_ROUTE_MODULES = [
@@ -422,7 +436,7 @@ function hasRecipeAllergen(recipe, allergens = []) {
   });
 }
 
-function applyAllergenWarning(comparison, dogProfile, selection, recipeIndexByName = {}) {
+function applyAllergenWarning(comparison, dogProfile, selection, recipeIndexByName = {}, locale = 'zh') {
   const recipeName = selection?.a_recipe_name;
   const recipe = recipeIndexByName[recipeName];
   const matchedAllergen = (dogProfile.allergens || []).find(allergen => {
@@ -430,13 +444,22 @@ function applyAllergenWarning(comparison, dogProfile, selection, recipeIndexByNa
     return hasRecipeAllergen(recipe, [allergen]) || aliases.some(alias => String(recipeName || '').includes(alias));
   });
   if (!matchedAllergen) return comparison;
-  const allergens = matchedAllergen || '已登记过敏原';
-  return {
-    ...comparison,
+  if (comparison?.semantic?.warning_items?.some(item => item.code === 'ALLERGEN')) return comparison;
+  const semantic = comparison?.semantic || {
+    show_dialog: Boolean(comparison?.a_comparison),
+    detail_code: 'BALANCED_VARIETY',
+    facts: {
+      current_score: comparison?.a_comparison?.current_score,
+      proposed_score: comparison?.a_comparison?.proposed_score,
+    },
+    warning_items: [],
+  };
+  return localizeComparison({
+    ...semantic,
     has_warning: true,
     warning_level: 'warning',
-    warning_text: `该配方包含或疑似包含过敏原：${allergens}，不建议选择。`,
-  };
+    warning_items: [...(semantic.warning_items || []), { code: 'ALLERGEN', facts: { allergen: matchedAllergen } }],
+  }, locale);
 }
 
 // ============================================================
@@ -444,6 +467,7 @@ function applyAllergenWarning(comparison, dogProfile, selection, recipeIndexByNa
 // body: { pet_id }
 // ============================================================
 app.post('/api/v1/recommend', async (req, res) => {
+  const requestedLocale = normalizeLocale(req.body?.lang);
   const resolved = await resolveDogProfileFromRequest(req);
   const dogProfile = resolved.dogProfile;
   if (!dogProfile) {
@@ -463,11 +487,9 @@ app.post('/api/v1/recommend', async (req, res) => {
   if (weight < 10) size = '小型犬';
   else if (weight > 25) size = '大型犬';
 
-  // 计算食量
-  const intake = calcDailyIntake(breed, weight, age);
-
   // 评分推荐
   const { recipes } = await listRecipes();
+  const ingredientLibrary = await getIngredientMap();
   const scored = recipes.map(r => {
     let score = 0;
     if (r.life_stage === lifeStage) score += 40;
@@ -496,10 +518,15 @@ app.post('/api/v1/recommend', async (req, res) => {
   });
 
   const top = scored.filter(r => r.score > -500).sort((a, b) => b.score - a.score).slice(0, 6);
+  const recommendations = top.map(recipe => ({
+    ...recipe,
+    feeding_plan: buildRecipeFeedingPlan(resolved.pet || dogProfile, recipe, ingredientLibrary.ingredients, requestedLocale),
+  }));
+  const intake = recommendations[0]?.feeding_plan || calcDailyIntake(breed, weight, age);
 
   res.json({
     success: true,
-    recommendations: top,
+    recommendations,
     profile: { lifeStage, size, ...intake, breedName: breedName || breed?.name, pet_id: dogProfile.pet_id },
   });
 });
@@ -545,6 +572,64 @@ function compareCachePath(petCacheId) {
   return path.join(runtimeDataDir, `compare_cache_${petCacheId}.json`);
 }
 
+function buildRecipeFeedingPlan(pet, recipe, ingredientMap, locale = 'zh') {
+  const plan = calcRecipeFeedingPlan(pet, recipe, ingredientMap);
+  if (!plan.daily_grams) return plan;
+  const ingredients = calcIngredientGrams(recipe.ingredients, plan.daily_grams)
+    .filter(item => item.grams > 0)
+    .map(item => ({ name: item.name, grams: item.grams }));
+  const report = evaluateRecipe({
+    pet,
+    ingredients,
+    mealIntent: 'long_term',
+    ingredientMap,
+    selectedBPack: {
+      name: String(recipe.b_pack || '').split('：')[0] || 'AI推荐全价营养包B',
+      description: recipe.b_pack || '',
+      category: recipe.category,
+    },
+  });
+  const scoreByKey = Object.fromEntries(report.scores.map(item => [item.key, item.value]));
+  const dangerCodes = report.findings.filter(item => item.level === 'danger').map(item => item.code);
+  return {
+    ...plan,
+    validation_scores: scoreByKey,
+    validation_details: report.score_details,
+    validation_translation_status: validationDetailsTranslationStatus(report.score_details, locale),
+    long_term_score: scoreByKey.long_term,
+    recommendation_score: recommendationScoreFromValidation(scoreByKey, { hasDanger: dangerCodes.length > 0 }),
+    recommendation_score_model: 'fresh_check_weighted_v1',
+    danger_codes: dangerCodes,
+    warning_codes: report.findings.filter(item => item.level === 'warning' || item.level === 'danger').map(item => item.code),
+  };
+}
+
+function buildRecipeFeedingPlans(pet, recipes, ingredientMap, locale = 'zh') {
+  return Object.fromEntries(recipes.map(recipe => [recipe.id, buildRecipeFeedingPlan(pet, recipe, ingredientMap, locale)]));
+}
+
+function applyEnergyFeasibilityToComparisons(comparisons, recipes, plans) {
+  if (!comparisons) return comparisons;
+  const recipeByName = new Map(recipes.map(recipe => [recipe.name, recipe]));
+  return Object.fromEntries(Object.entries(comparisons).map(([name, comparison]) => {
+    const recipe = recipeByName.get(name);
+    const plan = recipe ? plans[recipe.id] : null;
+    if (!plan || !comparison?.a_comparison) return [name, comparison];
+    const proposedScore = Number(comparison.a_comparison.proposed_score);
+    const deterministicScore = Number.isFinite(Number(plan.recommendation_score)) ? Number(plan.recommendation_score) : plan.feasibility_score;
+    return [name, {
+      ...comparison,
+      energy_feasibility: plan,
+      a_comparison: {
+        ...comparison.a_comparison,
+        ai_proposed_score: Number.isFinite(proposedScore) ? proposedScore : null,
+        proposed_score: deterministicScore,
+        score_model: plan.recommendation_score_model || 'energy_feasibility',
+      },
+    }];
+  }));
+}
+
 function normalizeCacheTimestamp(value) {
   if (!value) return null;
   const date = new Date(value);
@@ -572,6 +657,7 @@ async function resolveDogProfileFromRequest(req) {
 // ============================================================
 app.post('/api/v1/recommend/compare', async (req, res) => {
   const { currentSelection, proposedSelection } = req.body;
+  const requestedLocale = normalizeLocale(req.body?.lang);
   const resolved = await resolveDogProfileFromRequest(req);
   const dogProfile = resolved.dogProfile;
   if (!dogProfile || !currentSelection || !proposedSelection) {
@@ -593,12 +679,13 @@ app.post('/api/v1/recommend/compare', async (req, res) => {
 
       if (!isExpired && !isDirty && !isOldVersion) {
         const proposedRecipeName = proposedSelection.a_recipe_name;
-        if (cacheData.comparisons && cacheData.comparisons[proposedRecipeName]) {
+        const localizedComparisons = cacheData.comparisons_by_locale?.[requestedLocale];
+        if (localizedComparisons && localizedComparisons[proposedRecipeName]) {
           console.log(`[Compare Cache Hit File] Served ${proposedRecipeName} from cache for ${petCacheId}`);
           const { recipes } = await listRecipes();
           return res.json({
             success: true,
-            comparison: applyAllergenWarning(cacheData.comparisons[proposedRecipeName], dogProfile, proposedSelection, buildRecipeIndexByName(recipes))
+            comparison: applyAllergenWarning(localizedComparisons[proposedRecipeName], dogProfile, proposedSelection, buildRecipeIndexByName(recipes), requestedLocale)
           });
         }
       }
@@ -613,8 +700,8 @@ app.post('/api/v1/recommend/compare', async (req, res) => {
     const comparison = await compareRecipeSelection({
       ...dogProfile,
       recipeIndexByName,
-    }, currentSelection, proposedSelection);
-    res.json({ success: true, comparison: applyAllergenWarning(comparison, dogProfile, proposedSelection, recipeIndexByName) });
+    }, currentSelection, proposedSelection, requestedLocale);
+    res.json({ success: true, comparison: applyAllergenWarning(comparison, dogProfile, proposedSelection, recipeIndexByName, requestedLocale) });
   } catch (err) {
     console.error('Comparison API error:', err.message);
     res.status(500).json({ success: false, error: err.message });
@@ -627,6 +714,7 @@ app.post('/api/v1/recommend/compare', async (req, res) => {
 // ============================================================
 app.post('/api/v1/recommend/compare/batch', async (req, res) => {
   const { currentSelection, proposedSelections } = req.body;
+  const requestedLocale = normalizeLocale(req.body?.lang);
   const resolved = await resolveDogProfileFromRequest(req);
   const dogProfile = resolved.dogProfile;
   if (!dogProfile || !currentSelection || !proposedSelections || !Array.isArray(proposedSelections)) {
@@ -639,11 +727,11 @@ app.post('/api/v1/recommend/compare/batch', async (req, res) => {
     const result = await compareRecipeSelectionBatch({
       ...dogProfile,
       recipeIndexByName,
-    }, currentSelection, proposedSelections);
+    }, currentSelection, proposedSelections, requestedLocale);
     const comparisons = { ...result.comparisons };
     proposedSelections.forEach(selection => {
       if (comparisons[selection.a_recipe_name]) {
-        comparisons[selection.a_recipe_name] = applyAllergenWarning(comparisons[selection.a_recipe_name], dogProfile, selection, recipeIndexByName);
+        comparisons[selection.a_recipe_name] = applyAllergenWarning(comparisons[selection.a_recipe_name], dogProfile, selection, recipeIndexByName, requestedLocale);
       }
     });
     res.json({ success: true, comparisons });
@@ -663,19 +751,32 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
     return res.status(404).json({ success: false, error: `Pet not found: ${resolved.missingPetId || ''}`.trim() });
   }
   const dogProfile = resolved.dogProfile;
+  const requestedLocale = normalizeLocale(req.body?.lang);
   const {
-    breedId, breedName, age = 3, weight = 15, customBreedName, lang,
+    breedId, breedName, age = 3, weight = 15, customBreedName,
     id, name, feedingGoal, goals = [], bcs, allergens = []
   } = dogProfile;
 
-  const breed = breedsDb.find(b => b.id === breedId);
-  const intake = calcDailyIntake(breed, weight, age);
+  const breed = breedsDb.find(b => b.id === breedId || b.name === breedName || breedName?.includes(b.name) || b.name.includes(breedName));
+  const { recipes } = await listRecipes();
+  const ingredientLibrary = await getIngredientMap();
+  const recipeFeedingPlans = buildRecipeFeedingPlans(resolved.pet || dogProfile, recipes, ingredientLibrary.ingredients, requestedLocale);
+  const referenceFeedingPlan = referenceFeedingPlanForPet(resolved.pet || dogProfile);
+  const profileLifeStage = dogProfile.lifeStage || (age < 1 ? 'puppy' : age >= 8 ? 'senior' : 'adult');
+  const targetCategory = profileLifeStage === 'puppy'
+    ? (weight >= 25 ? '控钙幼犬（大型幼犬）' : '幼犬通用')
+    : profileLifeStage === 'senior' ? '老年犬通用' : '成犬通用';
+  const categoryRecipes = recipes.filter(recipe => recipe.category === targetCategory);
+  const baselineRecipe = categoryRecipes[0] || recipes[0];
+  const intake = recipeFeedingPlans[baselineRecipe?.id] || calcDailyIntake(breed, weight, age);
 
   const petCacheId = safeCacheId(dogProfile.pet_id || id || name || 'default');
   const cacheFilePath = compareCachePath(petCacheId);
   let comparisons = null;
   let cacheValid = false;
   let cacheNeedsWrite = false;
+  let cachedAnalyses = {};
+  let cachedComparisonsByLocale = {};
 
   if (fs.existsSync(cacheFilePath)) {
     try {
@@ -688,13 +789,22 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
         : !isProfileEqual(cacheData.dogProfile, dogProfile);
 
       if (!isExpired && !isDirty && !isOldVersion) {
-        comparisons = cacheData.comparisons || null;
+        cachedComparisonsByLocale = cacheData.comparisons_by_locale || {};
+        comparisons = cachedComparisonsByLocale[requestedLocale] || null;
         cacheValid = true;
-        if (cacheData.analysis && comparisons) {
-          console.log(`[AI Analysis Cache Hit File] Served valid cache for pet ${petCacheId}`);
+        cachedAnalyses = cacheData.analyses_by_locale || {};
+        const cachedAnalysis = cachedAiNutritionAnalysis(cacheData, requestedLocale);
+        if (cachedAnalysis && comparisons) {
+          console.log(`[AI Analysis Cache Hit File] Served valid ${requestedLocale} cache for pet ${petCacheId}`);
           return res.json({
             success: true,
-            analysis: { ...cacheData.analysis, ...intake },
+            locale: requestedLocale,
+            analysis: {
+              ...cachedAnalysis,
+              ...intake,
+              reference_feeding_plan: referenceFeedingPlan,
+              locale: requestedLocale,
+            },
             comparisons,
             cache_hit: true
           });
@@ -719,50 +829,34 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       bcs,
       goals,
       allergens,
-      lang
+      requestedLocale
     );
   } catch (e) {
     console.error('AI analysis failed, using fallback:', e.message);
   }
 
-  if (!analysis) {
-    let lifeStage = '成年犬', nutritionNeeds = [];
-    if (age < 1) { lifeStage = '幼犬'; nutritionNeeds = ['高蛋白促进生长', 'DHA脑部发育', '适量钙质骨骼健康']; }
-    else if (age >= 8) { lifeStage = '老年犬'; nutritionNeeds = ['易消化低脂', '关节保护', '抗氧化护心']; }
-    else { nutritionNeeds = ['均衡蛋白质', '优质脂肪', '丰富蔬菜纤维']; }
-
-    if (breed?.nutrition_notes) nutritionNeeds.push(...breed.nutrition_notes.slice(0, 2));
-
-    const cautions = [];
-    if (breed && weight < breed.weight_avg * 0.7) {
-      nutritionNeeds.unshift('营养不良/体重偏瘦');
-      cautions.push(`⚠️ 您的宠物当前体重（${weight}kg）显著低于${breed.name}的平均体重（${breed.weight_avg}kg左右），属于明显偏瘦/营养不良状态，建议逐步增加喂食量，并配合全价高能营养包以促进体重恢复。`);
-    }
-
+  if (!analysis || !aiNutritionPresentationIsValid(analysis, requestedLocale)) {
+    if (analysis) console.warn('[AI Analysis] rejected response in wrong locale', { requested_locale: requestedLocale });
+    analysis = buildAiNutritionFallback({
+      requestedLocale,
+      age,
+      weight,
+      intake,
+      averageWeight: breed?.weight_avg,
+    });
+  } else {
     analysis = {
-      breed_intro: breed?.breed_desc || `${breedName || '您的爱犬'}是一种优秀的犬种。`,
-      life_stage: lifeStage,
-      activity_level: breed?.activity || 'medium',
-      key_nutrition_needs: nutritionNeeds,
-      cautions: cautions,
-      nutrition_analysis: `根据您的${breedName || '爱犬'}${age}岁、${weight}kg的信息，每日所需鲜食量约为${intake.daily_grams}克，建议每日分${intake.meals_per_day}次喂食，每次约${intake.per_meal_grams}克。`,
+      ...analysis,
+      locale: requestedLocale,
+      translation_status: requestedLocale === 'zh' ? 'source' : 'ai_translated',
+      life_stage_code: { 幼犬: 'puppy', 成年犬: 'adult', 老年犬: 'senior' }[analysis.life_stage] || analysis.life_stage_code || 'adult',
     };
   }
 
   const mergedAnalysis = { ...analysis, ...intake };
 
-  if (!cacheValid) {
+  if (!comparisons) {
     const lifeStage = mergedAnalysis.life_stage || '成年犬';
-    let targetCat = '成犬通用';
-    if (lifeStage === '幼犬') {
-      targetCat = weight >= 25 ? '控钙幼犬（大型幼犬）' : '幼犬通用';
-    } else if (lifeStage === '老年犬') {
-      targetCat = '老年犬通用';
-    }
-
-    const { recipes } = await listRecipes();
-    const categoryRecipes = recipes.filter(r => r.category === targetCat);
-    const baselineRecipe = categoryRecipes[0] || recipes[0];
 
     let recommendedBName = '成犬维护营养包B';
     if (lifeStage === '幼犬') {
@@ -816,7 +910,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
     };
 
     try {
-      const result = await compareRecipeSelectionBatch(scoringDogProfile, currentSelection, proposedSelections);
+      const result = await compareRecipeSelectionBatch(scoringDogProfile, currentSelection, proposedSelections, requestedLocale);
       comparisons = result.comparisons;
       cacheNeedsWrite = true;
     } catch (err) {
@@ -824,11 +918,31 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       comparisons = {};
       const { getLocalComparisonWarning } = require('./services/gemini');
       proposedSelections.forEach(p => {
-        comparisons[p.a_recipe_name] = getLocalComparisonWarning(scoringDogProfile, currentSelection, p);
+        comparisons[p.a_recipe_name] = getLocalComparisonWarning(scoringDogProfile, currentSelection, p, requestedLocale);
       });
       cacheNeedsWrite = true;
     }
   }
+
+  comparisons = applyEnergyFeasibilityToComparisons(comparisons, recipes, recipeFeedingPlans);
+  const mergedAnalysisWithPlans = {
+    ...mergedAnalysis,
+    translation_status: requestedLocale === 'zh'
+      ? 'source'
+      : Object.values(recipeFeedingPlans).every(plan => plan.validation_translation_status === 'translated')
+        ? mergedAnalysis.translation_status
+        : 'partial',
+    daily_energy: {
+      rer_kcal: intake.rer_kcal,
+      daily_kcal: intake.daily_kcal,
+      min_kcal: intake.min_kcal,
+      max_kcal: intake.max_kcal,
+      note: intake.note,
+      note_code: intake.note_code,
+    },
+    recipe_feeding_plans: recipeFeedingPlans,
+    reference_feeding_plan: referenceFeedingPlan,
+  };
 
   if (cacheNeedsWrite) {
     fs.writeFileSync(cacheFilePath, JSON.stringify({
@@ -837,15 +951,18 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       pet_id: dogProfile.pet_id || dogProfile.id,
       pet_updated_at: normalizeCacheTimestamp(dogProfile.pet_updated_at),
       dogProfile: dogProfile,
-      analysis: mergedAnalysis,
-      comparisons: comparisons
+      analyses_by_locale: { ...cachedAnalyses, [requestedLocale]: mergedAnalysisWithPlans },
+      analysis: mergedAnalysisWithPlans,
+      analysis_locale: requestedLocale,
+      comparisons_by_locale: { ...cachedComparisonsByLocale, [requestedLocale]: comparisons }
     }, null, 2), 'utf8');
     console.log(`[Cache Written File] Saved analysis cache for pet ${petCacheId}`);
   }
 
   res.json({
     success: true,
-    analysis: mergedAnalysis,
+    locale: requestedLocale,
+    analysis: mergedAnalysisWithPlans,
     comparisons: comparisons,
     cache_hit: false
   });
@@ -917,13 +1034,19 @@ app.post('/api/v1/ingredients/safety-check', async (req, res) => {
 // body: { recipeId, weight, age, breedId, mealType: 'daily'|'per_meal' }
 // ============================================================
 app.post('/api/v1/cook/params', async (req, res) => {
-  const { recipeId, weight = 15, age = 3, breedId, totalGrams } = req.body;
+  const {
+    recipeId, weight = 15, age = 3, ageMonths, breedId, totalGrams,
+    activityLevel, targetWeight, feedingGoal, neutered, lifeStage, lang,
+  } = req.body;
 
   const { recipe } = await getRecipeById(recipeId);
   if (!recipe) return res.status(404).json({ success: false, error: 'Recipe not found' });
 
   const breed = breedsDb.find(b => b.id === breedId);
-  const intake = calcDailyIntake(breed, weight, age);
+  const ingredientLibrary = await getIngredientMap();
+  const intake = buildRecipeFeedingPlan({
+    weight, age, ageMonths, activityLevel, targetWeight, feedingGoal, neutered, lifeStage,
+  }, recipe, ingredientLibrary.ingredients, normalizeLocale(lang));
 
   // 使用传入的克数（每餐），或自动计算
   const cookGrams = totalGrams || intake.per_meal_grams;
@@ -1067,11 +1190,13 @@ app.post('/api/v1/pets/evaluate-bcs', async (req, res) => {
 // 健康检查
 // ============================================================
 app.get('/api/v1/health', async (req, res) => {
-  const { recipes } = await listRecipes();
+  const { recipes, source } = await listRecipes();
   res.json({
     success: true,
     version: '3.0.0',
     recipes: recipes.length,
+    database: source === 'pg' ? 'available' : 'unavailable',
+    recipeSource: source,
     breeds: breedsDb.length,
     regionalized: true,
   });

@@ -78,6 +78,39 @@ VITE_API_URL=http://192.168.1.20:3001
 - 正式发布必须使用 HTTPS。
 - Gemini、Tuya 等 API Key 仍然只能放在后端，不能放进 App 前端包。
 
+## Android 版本升级与签名
+
+Android 正式包名固定为 `com.heybopet.petchef`。覆盖升级必须同时满足：包名不变、签名证书一致、`versionCode` 递增。V2.0 起使用长期 Release 证书，证书及密码必须离线或放入密码管理器，不能提交 Git。
+
+```bash
+cd frontend
+npm run app:build
+cd android
+ANDROID_RELEASE_STORE_FILE=/绝对路径/petchef-release.jks \
+ANDROID_RELEASE_STORE_PASSWORD=*** \
+ANDROID_RELEASE_KEY_ALIAS=*** \
+ANDROID_RELEASE_KEY_PASSWORD=*** \
+./gradlew bundleRelease assembleRelease
+```
+
+`bundleRelease` 生成供 Google Play 等应用市场使用的 AAB，`assembleRelease` 生成正式签名 APK。发布前必须用 `apksigner verify --print-certs` 检查 APK 证书指纹，并用 `aapt dump badging` 确认包名、`versionCode` 和 `versionName`。首次 V2.0 Release 证书确定后，后续版本必须保持同一证书。
+
+App 启动时请求 `GET /api/v1/app-releases/android`。后端通过以下环境变量控制升级策略：
+
+- `ANDROID_LATEST_VERSION_CODE`
+- `ANDROID_MINIMUM_VERSION_CODE`
+- `ANDROID_LATEST_VERSION_NAME`
+- `ANDROID_UPDATE_URL`（华为应用市场、Google Play 或官方 HTTPS 发布页）
+- `ANDROID_RELEASE_NOTES`（用 `|` 分隔多条）
+
+升级门禁从 V2.0（`versionCode=2`）开始生效。已安装的 V1 客户端没有版本检查代码，服务器无法强制它显示升级页，必须通过原有分发渠道引导用户先安装 V2.0。若 V1 使用 Debug 证书而 V2.0 改用正式 Release 证书，Android 不允许直接覆盖安装；用户需要卸载 V1 后从应用市场安装 V2.0，并提前处理只保存在本机的数据。V2.0 发布过渡期保持 `latest=2, minimum=1`；未来发布 V3 时可将 `minimum` 提高到 2。先验证应用市场地址，再提高最低版本；紧急回滚时降低最低版本号即可解除 V2 及以后客户端的门禁。
+
+华为应用市场与 Google Play 的同一包名发布必须分别保持各自升级链路的签名连续性；如果希望用户跨市场覆盖升级，还需要确保最终 App 签名证书兼容。签名策略一经正式发布不能随意更换。
+
+版本接口超时、断网或响应异常时，V2.0 不得锁死启动：页面应提示网络异常，并允许用户继续使用无需联网的本地功能。联网功能仍可能因网络不可用而失败。
+
+客户端只打开应用市场或官方 HTTPS 发布页，不在 App 内下载 APK，因此不返回或宣称客户端已校验 APK SHA-256。应用市场分发应优先使用 AAB；Web 资源热更新只能覆盖 HTML/JS/CSS，不能替代包含 Java、SDK 或权限变更的正式版本升级。
+
 ## 当前未完成项
 
 - Tuya App SDK 配网。
