@@ -1047,4 +1047,4 @@ const recipesDb = rawRecipes.map(r => {
   };
 });
 
-module.exports = { recipesDb };
+module.exports = { recipesDb, imgByRecipeId };

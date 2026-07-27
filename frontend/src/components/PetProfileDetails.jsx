@@ -14,11 +14,11 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Extract metadata values
-  const name = profile?.name || '爱宠';
+  const name = profile?.name || t('petDefaultName');
   const sex = profile?.sex || 'male';
   const breed = profile?.breed;
   const avatar = getPetAvatarUrl(profile || {}, breed ? [breed] : []);
-  const breedName = profile?.breedName || '未知犬种';
+  const breedName = profile?.breedName || t('unknownBreed');
   const bodySize = profile?.bodySize || 'medium';
   const activityLevel = profile?.activityLevel || 'medium';
   const environment = profile?.environment || 'indoor';
@@ -38,57 +38,28 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
   const specialPeriod = profile?.specialPeriod || profile?.special_period || '';
 
   // Mapped labels
-  const genderLabels = { male: '公 ♂', female: '母 ♀', unknown: '保密 🔒' };
-  const sizeLabels = { mini: '迷你型', small: '小型', medium: '中型', large: '大型', giant: '巨型' };
-  const activityLabels = { low: '低度活跃', medium: '中度活跃', high: '高度活跃', working: '工作犬 🐕‍🦺' };
-  const envLabels = { indoor: '室内喂养', outdoor: '室外喂养', mixed: '混合喂养' };
+  const genderLabels = { male: t('male'), female: t('female'), unknown: t('genderPrivate') };
+  const sizeLabels = { mini: t('sizeMini'), small: t('sizeSmall'), medium: t('sizeMedium'), large: t('sizeLarge'), giant: t('sizeGiant') };
+  const activityLabels = { low: t('activityLowFull'), medium: t('activityMediumFull'), high: t('activityHighFull'), working: t('activityWorkingFull') };
+  const envLabels = { indoor: t('environmentIndoor'), outdoor: t('environmentOutdoor'), mixed: t('environmentMixed') };
   const goalLabels = {
-    maintenance: '维持体态',
-    weight_loss: '减重控体',
-    muscle_gain: '增肌强壮',
-    post_surgery_recovery: '术后恢复',
-    coat_care: '美毛亮毛',
-    gastrointestinal_care: '调理肠胃'
+    maintenance: t('goalMaintenance'), weight_loss: t('goalWeightLoss'), muscle_gain: t('goalMuscleGain'),
+    post_surgery_recovery: t('goalPostSurgery'), coat_care: t('goalCoatCare'), gastrointestinal_care: t('goalGastrointestinal')
   };
 
   const healthIssues = {
-    obesity: '肥胖问题',
-    cardiac: '心脏问题',
-    kidney: '肾脏问题',
-    liver: '肝脏问题',
-    gastrointestinal: '肠胃敏感',
-    urinary: '泌尿问题',
-    dermatological: '皮肤问题',
-    joint: '关节问题',
-    gallbladder: '胆囊问题',
-    pancreatitis: '胰腺问题',
-    diabetes: '糖尿病',
-    thyroid: '甲状腺问题',
-    oral: '口腔问题',
-    dental: '牙齿问题',
-    immunity: '免疫力差'
-  };
-
-  const symptomLabels = {
-    itching: '皮肤瘙痒',
-    loose_stool: '拉稀软便',
-    vomiting: '肠胃呕吐',
-    ear_infection: '耳朵发炎',
-    tear_stain: '眼部泪痕',
-    other: '其它表现'
+    obesity: t('healthObesity'), cardiac: t('healthCardiac'), kidney: t('healthKidney'), liver: t('healthLiver'),
+    gastrointestinal: t('healthGastrointestinal'), urinary: t('healthUrinary'), dermatological: t('healthDermatological'),
+    joint: t('healthJoint'), gallbladder: t('healthGallbladder'), pancreatitis: t('healthPancreatitis'), diabetes: t('healthDiabetes'),
+    thyroid: t('healthThyroid'), oral: t('healthOral'), dental: t('healthDental'), immunity: t('healthImmunity')
   };
 
   const severityLabels = {
-    mild: '轻微',
-    moderate: '中等',
-    severe: '严重'
+    mild: t('severityMild'), moderate: t('severityModerate'), severe: t('severitySevere')
   };
 
   const periodLabels = {
-    pregnancy: '妊娠期 🤰',
-    lactation: '哺乳期 🍼',
-    post_op_rest: '术后休养 🏥',
-    illness_recovery: '病后恢复 ❤️'
+    pregnancy: t('statusPregnancy'), lactation: t('statusLactation'), post_op_rest: t('statusPostOp'), illness_recovery: t('statusIllnessRecovery')
   };
 
   // 1. Dynamic Energy & Feed Intake calculation incorporating Activity, Environment, and Goals
@@ -121,23 +92,23 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
 
   // 2. Nutrition Needs Rules
   const getNutritionNeeds = () => {
-    let needs = ['均衡蛋白质', '优质脂肪', '丰富蔬菜纤维'];
+    let needs = ['needBalancedProtein', 'needQualityFat', 'needVegetableFiber'];
     if (age < 1) {
-      needs = ['高蛋白促进生长', 'DHA脑部发育', '适量钙质骨骼健康', '免疫增强'];
+      needs = ['needGrowthProtein', 'needDha', 'needCalcium', 'needImmunity'];
     } else if (age >= 8) {
-      needs = ['易消化低脂', '关节保护', '抗氧化护心', '视力支持'];
+      needs = ['needDigestibleLowFat', 'needJoint', 'needHeart', 'needVision'];
     }
     
     if (activityLevel === 'working' || activityLevel === 'high') {
-      needs.push('极高能量储备');
+      needs.push('needHighEnergy');
     }
     if (bodySize === 'large' || bodySize === 'giant') {
-      needs.push('大型犬骨骼负荷保护');
+      needs.push('needLargeBreedBones');
     }
     if (feedingGoal === 'coat_care') {
-      needs.push('Omega-3/生物素加倍');
+      needs.push('needOmegaBiotin');
     } else if (feedingGoal === 'gastrointestinal_care') {
-      needs.push('益生元活性肠胃调理');
+      needs.push('needPrebiotics');
     }
     return needs;
   };
@@ -192,29 +163,11 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
       7: 'bcs-color-7-9', 8: 'bcs-color-7-9', 9: 'bcs-color-7-9'
     };
 
-    const bcsLabels = {
-      1: '极度消瘦', 2: '偏瘦', 3: '稍瘦',
-      4: '偏苗条', 5: '理想体态', 6: '偏丰满',
-      7: '超重', 8: '肥胖', 9: '极度肥胖'
-    };
-
-    const bcsDesc = {
-      1: '极度消瘦。发育明显滞后或营养极度匮乏，建议增加日粮供给并检查寄生虫与兽医问诊。',
-      2: '偏瘦。发育稍显迟缓，建议添加高消化率的蛋白质补充发育能量。',
-      3: '稍瘦。皮下脂肪偏薄，建议增加15%的日常粮食喂养量。',
-      4: '偏苗条。生长体型保持匀称，骨骼负荷小，状态良好。',
-      5: '理想体态。该月龄生长发育完全符合标准指标，继续保持即可！',
-      6: '偏丰满。生长速度稍快于标准曲线，可微调减小零食摄入。',
-      7: '超重。体重已显著高于同龄均线，应增加活动量以防关节负荷过大。',
-      8: '肥胖。处于肥胖状态，需要适当调低日均配给并控制碳水结构。',
-      9: '极度肥胖。严重超出发育常态，骨骼和心肺负担极大，建议由兽医协助配方减重。'
-    };
-
     return {
       bcs: activeBcs,
-      label: bcsLabels[activeBcs] || bcsLabels[calculatedBcs],
+      label: t(`bcsLabel${activeBcs || calculatedBcs}`),
       colorClass: bcsColors[activeBcs] || bcsColors[calculatedBcs],
-      desc: bcsDesc[activeBcs] || bcsDesc[calculatedBcs],
+      desc: t(`bcsDesc${activeBcs || calculatedBcs}`),
       standardWeight: standardWeightRef,
       adultWeight: adultWeightRef
     };
@@ -239,23 +192,23 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
     } else {
       // Determine category to filter recipes
       let ageKey = 'adult';
-      let label = '成宠维持型';
+      let label = t('categoryAdultGeneral');
       let query = { custom_category: 'adult' };
 
       if (age < 1) {
         ageKey = 'puppy';
-        label = 'B1 幼宠成长型';
+        label = t('categoryPuppyGeneral');
         query = { custom_category: 'puppy' };
       } else if (age >= 8) {
         ageKey = 'senior';
-        label = '老年支持型';
+        label = t('categorySeniorGeneral');
         query = { custom_category: 'senior' };
       }
 
       // Weight loss overrides
       if (feedingGoal === 'weight_loss') {
         ageKey = 'weight';
-        label = '体重控制型';
+        label = t('goalWeightLoss');
         query = { custom_category: 'weight' };
       }
 
@@ -287,11 +240,11 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
                 <span style={styles.dogName}>{name}</span>
                 <span style={styles.genderTag}>{genderLabels[sex]}</span>
                 <span style={{ ...styles.genderTag, background: neutered ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)', color: neutered ? '#34d399' : '#f87171' }}>
-                  {neutered ? '已绝育 ✂️' : '未绝育'}
+                  {neutered ? t('statusNeutered') : t('statusNotNeutered')}
                 </span>
               </div>
               <div style={styles.dogMeta}>
-                {breedName} · {age}岁 ({ageMonths}个月)
+                {tData(breedName, lang)} · {t('ageSummary', { age, months: ageMonths })}
               </div>
               <div style={{ fontSize: 11, color: 'var(--primary)', marginTop: 4, fontWeight: 700 }}>
                 {sizeLabels[bodySize]} · {envLabels[environment]}
@@ -302,15 +255,15 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
           
           <div style={styles.detailAttributesGrid}>
             <div style={styles.detailAttrItem}>
-              <div style={styles.detailAttrLabel}>活动水平</div>
+              <div style={styles.detailAttrLabel}>{t('activityLevelLabel')}</div>
               <div style={styles.detailAttrValue}>{activityLabels[activityLevel]}</div>
             </div>
             <div style={styles.detailAttrItem}>
-              <div style={styles.detailAttrLabel}>喂养目标</div>
+              <div style={styles.detailAttrLabel}>{t('feedingGoalLabel')}</div>
               <div style={styles.detailAttrValue}>{goalLabels[feedingGoal]}</div>
             </div>
             <div style={styles.detailAttrItem}>
-              <div style={styles.detailAttrLabel}>目标体重</div>
+              <div style={styles.detailAttrLabel}>{t('targetWeight')}</div>
               <div style={styles.detailAttrValue}>{targetWeight} kg</div>
             </div>
           </div>
@@ -326,13 +279,13 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
         <div style={{ marginBottom: 24 }}>
           <div style={styles.sectionHeader}>
             <span style={styles.sectionIcon}>⚖️</span>
-            <span style={styles.sectionTitle}>体况与评分 (BCS)</span>
+            <span style={styles.sectionTitle}>{t('bcsSectionTitle')}</span>
           </div>
           <div className="card glass" style={{ padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <div style={{ fontSize: 13, color: 'var(--gray)', fontWeight: 600 }}>当前：{weight} kg</div>
+              <div style={{ fontSize: 13, color: 'var(--gray)', fontWeight: 600 }}>{t('currentWeightValue', { weight })}</div>
               <span className={`bcs-scale-label ${bcsDetails.colorClass}`}>
-                {bcsDetails.bcs} 分 - {bcsDetails.label}
+                {t('bcsScoreValue', { score: bcsDetails.bcs, label: bcsDetails.label })}
               </span>
             </div>
             <div className="bcs-scale-bar-bg" style={{ marginBottom: 12 }}>
@@ -348,7 +301,7 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
               {bcsDetails.desc}
               {breed?.weight_avg && (
                 <div style={{ marginTop: 6, color: 'var(--gray)', fontSize: 11 }}>
-                  月龄发育标准体重参考：{bcsDetails.standardWeight} kg (成年标准均重：{bcsDetails.adultWeight} kg)
+                  {t('growthWeightReference', { standard: bcsDetails.standardWeight, adult: bcsDetails.adultWeight })}
                 </div>
               )}
             </div>
@@ -367,7 +320,7 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
               <div style={styles.statLabel}>{t('dailyTotalLabel')}</div>
             </div>
             <div className="card glass" style={styles.statCard}>
-              <div style={styles.statVal}>{intake.meals}次</div>
+              <div style={styles.statVal}>{t('timesValue', { value: intake.meals })}</div>
               <div style={styles.statLabel}>{t('mealsCount')}</div>
             </div>
             <div className="card glass" style={styles.statCard}>
@@ -384,8 +337,8 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
             <span style={styles.sectionTitle}>{t('coreNeeds')}</span>
           </div>
           <div style={styles.tagWrap}>
-            {needs.map((n, idx) => (
-              <span key={idx} style={styles.needTag}>{n}</span>
+            {needs.map((key) => (
+              <span key={key} style={styles.needTag}>{t(key)}</span>
             ))}
           </div>
         </div>
@@ -394,7 +347,7 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
         <div style={{ marginBottom: 24 }}>
           <div style={styles.sectionHeader}>
             <span style={styles.sectionIcon}>🩺</span>
-            <span style={styles.sectionTitle}>宠物健康与过敏档案</span>
+            <span style={styles.sectionTitle}>{t('petHealthAllergyProfile')}</span>
             {!isEditingHealth ? (
               <button onClick={() => setIsEditingHealth(true)} style={styles.healthEditLink}>{t('editNotes')}</button>
             ) : (
@@ -409,10 +362,10 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
             
             {/* 1. Health Problems List */}
             <div style={styles.healthRow}>
-              <div style={styles.healthLabel}>🏥 罹患健康问题：</div>
+              <div style={styles.healthLabel}>{t('healthConditionsLabel')}</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4, width: '100%' }}>
                 {healthTags.length === 0 ? (
-                  <span style={{ fontSize: 12, color: 'var(--gray)' }}>无重大健康问题记录</span>
+                  <span style={{ fontSize: 12, color: 'var(--gray)' }}>{t('noMajorHealthIssues')}</span>
                 ) : (
                   healthTags.map(tag => (
                     <span key={tag} style={{ fontSize: 11, background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)', padding: '2px 8px', borderRadius: 4 }}>
@@ -425,17 +378,17 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
 
             {/* 2. Allergy Info */}
             <div style={{ ...styles.healthRow, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12, marginTop: 12, width: '100%' }}>
-              <div style={styles.healthLabel}>⚠️ 过敏与过敏反应：</div>
+              <div style={styles.healthLabel}>{t('allergyProfileLabel')}</div>
               <div style={{ fontSize: 12, color: 'white', marginTop: 4, lineHeight: 1.6, width: '100%' }}>
-                <div><strong>过敏源：</strong>{allergensText || '暂无过敏源记录'}</div>
+                <div><strong>{t('allergenField')}</strong>{allergensText || t('noAllergenRecord')}</div>
                 {allergensText && (
                   <>
                     <div style={{ marginTop: 2 }}>
-                      <strong>过敏表现：</strong>
-                      {allergySymptomsText || '无明显表现'}
+                      <strong>{t('allergySymptomsField')}</strong>
+                      {allergySymptomsText || t('noObviousSymptoms')}
                     </div>
                     <div style={{ marginTop: 2 }}>
-                      <strong>过敏严重程度：</strong>
+                      <strong>{t('allergySeverityField')}</strong>
                       <span style={{ color: allergySeverity === 'severe' ? '#f87171' : allergySeverity === 'moderate' ? '#fbbf24' : '#60a5fa', fontWeight: '700', marginLeft: 4 }}>
                         {severityLabels[allergySeverity] || allergySeverity}
                       </span>
@@ -448,7 +401,7 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
             {/* 3. Special Period */}
             {specialPeriod && (
               <div style={{ ...styles.healthRow, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12, marginTop: 12, width: '100%' }}>
-                <div style={styles.healthLabel}>🕒 当前特殊时期：</div>
+                <div style={styles.healthLabel}>{t('currentSpecialPeriod')}</div>
                 <div style={{ marginTop: 6 }}>
                   <span style={{ fontSize: 11, background: 'rgba(0,230,255,0.1)', color: 'var(--primary)', border: '1px solid rgba(0,230,255,0.2)', padding: '3px 10px', borderRadius: 12, fontWeight: '700' }}>
                     {periodLabels[specialPeriod] || specialPeriod}
@@ -459,11 +412,11 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
 
             {/* 4. Text Notes (Allergies and Diseases details) */}
             <div style={{ ...styles.healthRow, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12, marginTop: 12, width: '100%' }}>
-              <div style={styles.healthLabel}>📝 详细历史备注：</div>
+              <div style={styles.healthLabel}>{t('detailedHistoryNotes')}</div>
               {isEditingHealth ? (
                 <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 6 }}>
                   <div>
-                    <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 4 }}>过敏史详细说明</div>
+                    <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 4 }}>{t('allergyDetails')}</div>
                     <textarea
                       value={allergies}
                       onChange={e => setAllergies(e.target.value)}
@@ -472,7 +425,7 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
                     />
                   </div>
                   <div>
-                    <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 4 }}>疾病史详细说明</div>
+                    <div style={{ fontSize: 10, color: 'var(--gray)', marginBottom: 4 }}>{t('diseaseDetails')}</div>
                     <textarea
                       value={diseases}
                       onChange={e => setDiseases(e.target.value)}
@@ -483,9 +436,9 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
                 </div>
               ) : (
                 <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4, lineHeight: 1.4, width: '100%' }}>
-                  {profile?.allergies && <div style={{ marginBottom: 4 }}>• <strong>过敏备注：</strong>{profile.allergies}</div>}
-                  {profile?.diseases && <div>• <strong>疾病备注：</strong>{profile.diseases}</div>}
-                  {!profile?.allergies && !profile?.diseases && <span>无额外健康病史备注</span>}
+                  {profile?.allergies && <div style={{ marginBottom: 4 }}>• <strong>{t('allergyNote')}</strong>{profile.allergies}</div>}
+                  {profile?.diseases && <div>• <strong>{t('diseaseNote')}</strong>{profile.diseases}</div>}
+                  {!profile?.allergies && !profile?.diseases && <span>{t('noExtraHealthNotes')}</span>}
                 </div>
               )}
             </div>
