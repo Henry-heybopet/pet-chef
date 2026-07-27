@@ -1,12 +1,13 @@
 {/* Pet Chef Ver B1.00 — 2026-06-22 */}
 // App.jsx — HeyboPet Feeding OS v2.0 with i18n
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useDogProfile } from './hooks/useDogProfile';
 import { LanguageProvider, useLanguage, LANGS } from './i18n/LanguageContext';
 import { useTranslation } from './i18n/translations';
 import { api } from './api/index';
 import { HeyboTuya } from './native/heyboTuya';
 import { AppUpdate, isNativeAndroid } from './native/appUpdate';
+import { applyTheme, readStoredTheme } from './theme';
 
 import DogSetup from './components/DogSetup';
 import PetManagementScreen from './components/PetManagementScreen';
@@ -63,31 +64,17 @@ function LangSelector() {
   const [open, setOpen] = useState(false);
   const current = LANGS.find(l => l.code === lang) || LANGS[0];
   return (
-    <div style={{ position: 'absolute', top: 'var(--control-top)', right: 20, zIndex: 50 }}>
-      <button onClick={() => setOpen(!open)} style={{
-        background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border)',
-        borderRadius: 20, padding: '6px 14px', cursor: 'pointer', color: 'white',
-        fontSize: 14, display: 'flex', alignItems: 'center', gap: 6,
-      }}>
+    <div className="language-selector">
+      <button className="language-selector-button" onClick={() => setOpen(!open)}>
         <span>{current.flag}</span>
         <span style={{ fontSize: 12 }}>{current.label}</span>
         <span style={{ fontSize: 10 }}>▼</span>
       </button>
       {open && (
-        <div style={{
-          position: 'absolute', top: 42, right: 0, background: 'rgba(20,23,30,0.98)',
-          border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.6)', minWidth: 150,
-        }}>
+        <div className="language-selector-menu">
           {LANGS.map(l => (
             <button key={l.code} onClick={() => { setLang(l.code); setOpen(false); }}
-              style={{
-                width: '100%', padding: '10px 16px', border: 'none', cursor: 'pointer',
-                background: l.code === lang ? 'rgba(0,230,255,0.12)' : 'transparent',
-                color: l.code === lang ? 'var(--primary)' : 'white',
-                fontSize: 14, textAlign: 'left', display: 'flex', alignItems: 'center', gap: 10,
-                borderBottom: '1px solid rgba(255,255,255,0.05)',
-              }}>
+              className={`language-selector-option ${l.code === lang ? 'is-active' : ''}`}>
               <span style={{ fontSize: 18 }}>{l.flag}</span>
               <span>{l.label}</span>
               {l.code === lang && <span style={{ marginLeft: 'auto', fontSize: 12 }}>✓</span>}
@@ -96,6 +83,24 @@ function LangSelector() {
         </div>
       )}
     </div>
+  );
+}
+
+function ThemeToggle({ theme, onToggle }) {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
+  const label = theme === 'light' ? t('switchToDarkTheme') : t('switchToLightTheme');
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      aria-label={label}
+      title={label}
+      aria-pressed={theme === 'dark'}
+      onClick={onToggle}
+    >
+      <img src="/theme-toggle.png" alt="" aria-hidden="true" />
+    </button>
   );
 }
 
@@ -303,13 +308,14 @@ function AiWaitingModal() {
 }
 
 // ——— HomeScreen ———
-function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken, authPrompt, authPromptMessage, onLogin, onLogout }) {
+function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken, authPrompt, authPromptMessage, onLogin, onLogout, theme, onToggleTheme }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
 
   return (
     <div className="animate-fade home-screen">
       <AuthWidget user={authUser} token={authToken} authPrompt={authPrompt} authPromptMessage={authPromptMessage} onLogin={onLogin} onLogout={onLogout} />
+      <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       <LangSelector />
       <div className="home-hero">
         <div className="home-logo-wrap">
@@ -326,7 +332,7 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken,
       <div className="home-machine-section">
         <div className="home-machine-card">
           <img src="/machine.jpg" onError={e => { e.target.src = '/machine.png'; e.target.onerror = null; }} alt="Machine" className="home-machine-img" />
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'linear-gradient(to top, var(--dark) 0%, transparent 40%)' }} />
+          <div className="home-machine-overlay" />
         </div>
       </div>
       <div className="home-actions">
@@ -341,18 +347,18 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken,
         <button onClick={onAIEntry} className={`home-action-button home-action-ai ${authToken ? '' : 'is-locked'}`}>
           <img className="home-action-icon-image" src="/fresh-check-icon.png" alt={t('aiRecipe')} />
           <div>
-            <div className="home-action-title" style={{ color: 'var(--secondary)' }}>{t('aiRecipe')}</div>
+            <div className="home-action-title" style={{ color: 'var(--theme-fresh)' }}>{t('aiRecipe')}</div>
             <div className="home-action-desc">{t('aiRecipeDesc')}</div>
           </div>
-          <div style={{ marginLeft: 'auto', color: 'var(--secondary)', fontSize: 20 }}>→</div>
+          <div style={{ marginLeft: 'auto', color: 'var(--theme-fresh)', fontSize: 20 }}>→</div>
         </button>
         <button onClick={onDeviceEntry} className={`home-action-button home-action-device ${authToken ? '' : 'is-locked'}`}>
           <div className="home-action-icon">🍲</div>
           <div>
-            <div className="home-action-title" style={{ color: '#7CFFB2' }}>{t('homeCookTitle')}</div>
+            <div className="home-action-title" style={{ color: 'var(--theme-recipe)' }}>{t('homeCookTitle')}</div>
             <div className="home-action-desc">{t('homeCookDesc')}</div>
           </div>
-          <div style={{ marginLeft: 'auto', color: '#7CFFB2', fontSize: 20 }}>→</div>
+          <div style={{ marginLeft: 'auto', color: 'var(--theme-recipe)', fontSize: 20 }}>→</div>
         </button>
       </div>
     </div>
@@ -360,7 +366,7 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken,
 }
 
 // ——— Main App Router ———
-function AppInner() {
+function AppInner({ theme, onToggleTheme }) {
   const { profiles, profile, setActiveId, addProfile, updateProfile, deleteProfile, replaceProfiles, hasProfile } = useDogProfile();
   const { lang } = useLanguage();
   const t = useTranslation(lang);
@@ -942,6 +948,8 @@ function AppInner() {
           authPromptMessage={authPromptMessage}
           onLogin={handleAuthLogin}
           onLogout={handleAuthLogout}
+          theme={theme}
+          onToggleTheme={onToggleTheme}
         />
       )}
       {screen === 'recipe_catalog' && (
@@ -1019,5 +1027,15 @@ function AppInner() {
 }
 
 export default function App() {
-  return <LanguageProvider><AppInner /></LanguageProvider>;
+  const [theme, setTheme] = useState(readStoredTheme);
+
+  useLayoutEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  return (
+    <LanguageProvider>
+      <AppInner theme={theme} onToggleTheme={() => setTheme(current => current === 'light' ? 'dark' : 'light')} />
+    </LanguageProvider>
+  );
 }

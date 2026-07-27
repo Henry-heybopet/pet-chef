@@ -6,7 +6,7 @@ import { useTranslation } from '../i18n/translations';
 /**
  * BottomTabBar - Fixed bottom tab bar with glass morphism
  * Props: { tabs, activeTab, onSelect }
- * Default tabs: 🏠 首页, 🍲 食谱, 🐶 宠物, 🤖 烹饪, 📊 数据
+ * Default tabs: 🏠 首页, 🍲 食谱, 🐶 宠物, 鲜食机 烹饪, 🛒 商城
  */
 export default function BottomTabBar({ tabs, activeTab, onSelect }) {
   const { lang } = useLanguage();
@@ -15,7 +15,7 @@ export default function BottomTabBar({ tabs, activeTab, onSelect }) {
     { key: 'home', label: t('navHome'), emoji: '🏠' },
     { key: 'recipes', label: t('navRecipes'), emoji: '🍲' },
     { key: 'pet', label: t('navPet'), emoji: '🐶' },
-    { key: 'cook', label: t('navCook'), emoji: '🤖' },
+    { key: 'cook', label: t('navCook'), iconSrc: '/fresh-food-machine-nav.png' },
     { key: 'mall', label: t('navMall'), emoji: '🛒' },
   ];
 
@@ -36,7 +36,11 @@ export default function BottomTabBar({ tabs, activeTab, onSelect }) {
               ...(isActive ? styles.tabActive : {}),
             }}
           >
-            <span style={styles.emoji}>{tab.emoji}</span>
+            {tab.iconSrc ? (
+              <img src={tab.iconSrc} alt="" aria-hidden="true" style={styles.icon} />
+            ) : (
+              <span style={styles.emoji}>{tab.emoji}</span>
+            )}
             <span style={styles.label}>{tab.label}</span>
           </button>
         );
@@ -58,7 +62,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-around',
     paddingBottom: 'var(--safe-bottom, 0px)',
-    background: 'rgba(10,13,20,0.85)',
+    background: 'var(--theme-nav-bg)',
     backdropFilter: 'blur(var(--glass-blur))',
     WebkitBackdropFilter: 'blur(var(--glass-blur))',
     borderTop: '1px solid var(--glass-border)',
@@ -72,7 +76,7 @@ const styles = {
     padding: '6px 12px',
     background: 'transparent',
     border: 'none',
-    color: 'rgba(255,255,255,0.4)',
+    color: 'var(--theme-caption)',
     cursor: 'pointer',
     flex: 1,
     transition: 'all 0.2s ease',
@@ -83,6 +87,12 @@ const styles = {
   emoji: {
     fontSize: '22px',
     lineHeight: 1,
+  },
+  icon: {
+    display: 'block',
+    width: '26px',
+    height: '26px',
+    objectFit: 'contain',
   },
   label: {
     fontSize: '10px',

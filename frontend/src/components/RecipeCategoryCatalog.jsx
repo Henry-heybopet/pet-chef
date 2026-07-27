@@ -59,7 +59,7 @@ export default function RecipeCategoryCatalog({ onBack, onSelectCategory, lang }
 
   return (
     <div className="animate-fade flex-col" style={{ flex: 1, paddingBottom: 80 }}>
-      <TopBar onBack={onBack} title={t('recipeCatalogTitle')} />
+      <TopBar onBack={onBack} title={t('recipeCatalogTitle')} tone="recipe" />
 
       <div style={{ padding: '0 20px' }}>
         <p style={{ color: 'var(--gray)', fontSize: 13, marginBottom: 24, textAlign: 'center', padding: '0 10px' }}>
@@ -117,7 +117,7 @@ const styles = {
     alignItems: 'center',
     gap: '8px',
     marginBottom: '14px',
-    borderBottom: '1px solid rgba(255,255,255,0.06)',
+    borderBottom: '1px solid var(--theme-divider)',
     paddingBottom: '8px',
   },
   sectionIcon: {
@@ -126,7 +126,7 @@ const styles = {
   sectionTitle: {
     fontSize: '15px',
     fontWeight: '800',
-    color: '#00e6ff',
+    color: 'var(--theme-nutrition)',
     letterSpacing: '0.5px',
   },
   gridOneCol: {
@@ -141,8 +141,8 @@ const styles = {
   },
   card: {
     padding: '16px',
-    background: 'rgba(20,27,45,0.6)',
-    border: '1px solid rgba(255,255,255,0.06)',
+    background: 'var(--theme-card)',
+    border: '1px solid var(--theme-border)',
     borderRadius: '12px',
     cursor: 'pointer',
     transition: 'all 0.2s ease',
@@ -165,18 +165,18 @@ const styles = {
   cardTitle: {
     fontSize: '14px',
     fontWeight: '800',
-    color: '#ffffff',
+    color: 'var(--theme-text-primary)',
   },
   cardDesc: {
     fontSize: '11px',
-    color: '#94a3b8',
+    color: 'var(--theme-text-secondary)',
     marginTop: '4px',
     lineHeight: '1.4',
   },
   cardMini: {
     padding: '14px',
-    background: 'rgba(20,27,45,0.6)',
-    border: '1px solid rgba(255,255,255,0.06)',
+    background: 'var(--theme-card)',
+    border: '1px solid var(--theme-border)',
     borderRadius: '12px',
     cursor: 'pointer',
     display: 'flex',
@@ -187,11 +187,11 @@ const styles = {
   miniTitle: {
     fontSize: '13px',
     fontWeight: '800',
-    color: '#ffffff',
+    color: 'var(--theme-text-primary)',
   },
   miniDesc: {
     fontSize: '10px',
-    color: '#94a3b8',
+    color: 'var(--theme-text-secondary)',
     lineHeight: '1.4',
     textAlign: 'left',
   },

@@ -24,7 +24,7 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
           borderRadius: '16px',
           cursor: 'pointer',
           marginBottom: '28px',
-          background: 'rgba(0, 230, 255, 0.02)',
+          background: 'var(--theme-nutrition-soft)',
           transition: 'all 0.2s ease',
           gap: 12
         }}
@@ -74,7 +74,7 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                 style={{
                   display: 'flex',
                   padding: '16px 18px',
-                  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(10, 13, 20, 0.8))',
+                  background: 'var(--theme-card)',
                   border: '1px solid var(--border)',
                   borderRadius: '16px',
                   cursor: 'pointer',
@@ -90,8 +90,8 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                     height: '56px',
                     borderRadius: '50%',
                     overflow: 'hidden',
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'var(--theme-surface-soft)',
+                    border: '1px solid var(--theme-border)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -111,8 +111,8 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                       onEditPet && onEditPet(pet);
                     }}
                     style={{
-                      background: 'rgba(255,255,255,0.04)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      background: 'var(--theme-surface-soft)',
+                      border: '1px solid var(--theme-border)',
                       borderRadius: '8px',
                       color: 'var(--gray)',
                       fontSize: '11px',
@@ -121,11 +121,11 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                       transition: 'all 0.2s'
                     }}
                     onMouseEnter={e => {
-                      e.target.style.background = 'rgba(255,255,255,0.08)';
-                      e.target.style.color = '#fff';
+                      e.target.style.background = 'var(--theme-nutrition-soft)';
+                      e.target.style.color = 'var(--theme-text-primary)';
                     }}
                     onMouseLeave={e => {
-                      e.target.style.background = 'rgba(255,255,255,0.04)';
+                      e.target.style.background = 'var(--theme-surface-soft)';
                       e.target.style.color = 'var(--gray)';
                     }}
                   >
@@ -137,7 +137,7 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {/* Row 1: Name, Sex, Age */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: '800', fontSize: '15px', color: '#fff' }}>{pet.name}</span>
+                    <span style={{ fontWeight: '800', fontSize: '15px', color: 'var(--theme-text-primary)' }}>{pet.name}</span>
                     <span style={{ 
                       fontSize: '11px', 
                       background: sex === 'female' ? 'rgba(255,0,163,0.1)' : 'rgba(0,230,255,0.1)',
@@ -159,8 +159,8 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                     {pet.bcs && (
                       <span style={{ 
                         fontSize: '10px', 
-                        background: 'rgba(124, 255, 178, 0.1)', 
-                        color: '#7CFFB2', 
+                        background: 'var(--theme-nutrition-soft)',
+                        color: 'var(--theme-nutrition)',
                         padding: '1px 6px', 
                         borderRadius: '4px',
                         fontWeight: '600'
@@ -176,7 +176,7 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                       <span style={{ color: 'var(--secondary)', fontWeight: 'bold' }}>
                         {t('goalLabel')}:
                       </span>
-                      <span style={{ color: 'var(--text)' }}>
+                      <span style={{ color: 'var(--theme-text-primary)' }}>
                         {goalKey ? t(goalKey) : (pet.feedingGoal || t('maintainBody'))}
                       </span>
                     </div>
@@ -184,7 +184,7 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                       <span style={{ color: '#FF9600', fontWeight: 'bold' }}>
                         {t('allergensLabel')}:
                       </span>
-                      <span style={{ color: 'var(--text)' }}>
+                      <span style={{ color: 'var(--theme-text-primary)' }}>
                         {allergensList}
                       </span>
                     </div>
