@@ -1349,7 +1349,7 @@ export default function TuyaDeviceFlow({ onBack }) {
 
               <div className="tuya-cook-actions" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginTop: '10px' }}>
                 <button onClick={() => handleControlCommand('start')} disabled={!isOnline} style={{ background: 'rgba(32,242,155,0.1)', border: '1px solid rgba(32,242,155,0.3)', color: '#20f29b', cursor: 'pointer', borderRadius: '10px', fontWeight: '800', padding: '10px' }}>启动 (start)</button>
-                <button onClick={() => handleControlCommand('pause')} disabled={!isOnline} style={{ background: 'rgba(255,211,124,0.1)', border: '1px solid rgba(255,211,124,0.3)', color: '#FFD37C', cursor: 'pointer', borderRadius: '10px', fontWeight: '800', padding: '10px' }}>暂停 (pause)</button>
+                <button onClick={() => handleControlCommand('pause')} disabled={!isOnline} style={{ background: 'var(--theme-warning-soft)', border: '1px solid var(--theme-warning)', color: 'var(--theme-warning)', cursor: 'pointer', borderRadius: '10px', fontWeight: '800', padding: '10px' }}>暂停 (pause)</button>
                 <button onClick={() => handleControlCommand('reset')} disabled={!isOnline} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', cursor: 'pointer', borderRadius: '10px', fontWeight: '800', padding: '10px' }}>复位 (reset)</button>
               </div>
             </section>
