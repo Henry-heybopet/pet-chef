@@ -12,11 +12,7 @@ async function run() {
   try {
     console.log("Database connected. Syncing active recipes to table 'recipes'...");
     
-    // 1. 清理数据库中旧的活跃食谱
-    await query("DELETE FROM recipes WHERE status = $1 OR status IS NULL", ['active']);
-    console.log("Cleaned existing active recipes from database.");
-
-    // 2. 插入刷新的40套新食谱数据，适配真实的 recipes 表结构
+    // Upsert canonical data without deleting rows or overwriting administrator-uploaded images.
     for (const r of recipesDb) {
       const sql = `
         INSERT INTO recipes (
@@ -28,6 +24,22 @@ async function run() {
           $5, $6, $7, $8, $9,
           'active', 1, NOW(), NOW()
         )
+        ON CONFLICT (id) DO UPDATE SET
+          name = EXCLUDED.name,
+          species = EXCLUDED.species,
+          category = EXCLUDED.category,
+          life_stage = EXCLUDED.life_stage,
+          health_tags = EXCLUDED.health_tags,
+          ingredients = EXCLUDED.ingredients,
+          cooking_profile = EXCLUDED.cooking_profile,
+          nutrition_snapshot = EXCLUDED.nutrition_snapshot,
+          img = CASE
+            WHEN recipes.img IS NULL OR BTRIM(recipes.img) = '' THEN EXCLUDED.img
+            ELSE recipes.img
+          END,
+          status = EXCLUDED.status,
+          version = EXCLUDED.version,
+          updated_at = NOW()
       `;
       const nutritionSnapshot = {
         protein_pct: r.protein_pct,
