@@ -101,6 +101,28 @@ async function getRecipeNames() {
   return recipes.map(recipe => recipe.name);
 }
 
+async function listBPackOptions() {
+  const { recipes, source } = await listRecipes();
+  const grouped = new Map();
+  for (const recipe of recipes) {
+    if (!recipe.category || !recipe.b_pack || recipe.b_pack === '无') continue;
+    if (!grouped.has(recipe.category)) grouped.set(recipe.category, new Map());
+    grouped.get(recipe.category).set(recipe.b_pack, recipe.life_stage || null);
+  }
+  return {
+    source,
+    options: [...grouped.entries()].map(([category, variants]) => {
+      const entries = [...variants.entries()];
+      return {
+        category,
+        b_pack: entries[0]?.[0] || '',
+        life_stage: entries[0]?.[1] || null,
+        data_conflict: entries.length > 1,
+      };
+    }),
+  };
+}
+
 async function updateRecipe(id, patch = {}) {
   if (!(await isAvailable())) {
     const error = new Error('recipes table unavailable');
@@ -203,12 +225,30 @@ function buildRecipeIndexByName(recipes) {
   return Object.fromEntries((recipes || []).map(recipe => [recipe.name, recipe]));
 }
 
+function mergeIngredientRows(seedIngredients, rows) {
+  const merged = Object.fromEntries(
+    Object.entries(seedIngredients || {}).map(([name, record]) => [name, { ...record }])
+  );
+  for (const row of rows || []) {
+    const name = String(row?.name || '').trim();
+    if (!name) continue;
+    const definedFields = Object.fromEntries(
+      Object.entries(row).filter(([, value]) => value !== null && value !== undefined && value !== '')
+    );
+    if (definedFields.category === 'catalog' && merged[name]?.category && merged[name].category !== 'catalog') {
+      delete definedFields.category;
+    }
+    merged[name] = { ...(merged[name] || {}), ...definedFields };
+  }
+  return merged;
+}
+
 async function getIngredientMap() {
   try {
     if (await isAvailable()) {
       const result = await query('SELECT * FROM ingredient_library', []);
       return {
-        ingredients: Object.fromEntries(result.rows.map(row => [row.name, row])),
+        ingredients: mergeIngredientRows(ingredientsDb, result.rows),
         source: 'pg',
       };
     }
@@ -224,8 +264,10 @@ module.exports = {
   listAdminRecipes,
   getRecipeById,
   getRecipeNames,
+  listBPackOptions,
   createRecipe,
   updateRecipe,
   getIngredientMap,
   buildRecipeIndexByName,
+  _test: { mergeIngredientRows },
 };

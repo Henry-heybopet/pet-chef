@@ -76,9 +76,9 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
         if (profile?.breedId) {
           const selected = d.breeds.find(b => b.id === profile.breedId);
           if (selected) {
-            setBreedSearch(selected.name);
+            setBreedSearch(tData(selected.name, lang));
           } else if (profile.breedId === 'custom') {
-            setBreedSearch('其他（自定义）');
+            setBreedSearch(t('otherCustom'));
           }
         }
       }
@@ -158,19 +158,17 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
     const ratio = weight / standardWeight;
 
     let score = 5;
-    let label = '理想体态';
-    let description = '理想体态。该成长阶段发育标准符合标准指标。';
-    if (ratio <= 0.65) { score = 1; label = '极度消瘦'; description = '极度消瘦。发育受阻，请咨询兽医。'; }
-    else if (ratio <= 0.75) { score = 2; label = '偏瘦'; description = '偏瘦。建议逐渐补充营养。'; }
-    else if (ratio <= 0.85) { score = 3; label = '稍瘦'; description = '稍瘦。可适当增加日粮供给。'; }
-    else if (ratio <= 0.95) { score = 4; label = '偏苗条'; description = '偏苗条。体态匀称，状态较好。'; }
-    else if (ratio <= 1.05) { score = 5; label = '理想体态'; description = '理想体态。该成长阶段发育标准符合标准指标。'; }
-    else if (ratio <= 1.15) { score = 6; label = '偏丰满'; description = '偏丰满。生长稍微有些圆润。'; }
-    else if (ratio <= 1.25) { score = 7; label = '超重'; description = '超重。建议适当增加活动量并控卡。'; }
-    else if (ratio <= 1.40) { score = 8; label = '肥胖'; description = '肥胖。建议制定科学的减重饮食。'; }
-    else { score = 9; label = '极度肥胖'; description = '极度肥胖。骨骼和内脏负荷大，建议寻求医疗减重。'; }
+    if (ratio <= 0.65) score = 1;
+    else if (ratio <= 0.75) score = 2;
+    else if (ratio <= 0.85) score = 3;
+    else if (ratio <= 0.95) score = 4;
+    else if (ratio <= 1.05) score = 5;
+    else if (ratio <= 1.15) score = 6;
+    else if (ratio <= 1.25) score = 7;
+    else if (ratio <= 1.40) score = 8;
+    else score = 9;
 
-    return { score, label, description, standardWeight, adultWeight };
+    return { score, label: t(`bcsLabel${score}`), description: t(`bcsDesc${score}`), standardWeight, adultWeight };
   };
 
   const localBcs = bcsLocalFallback();
@@ -179,8 +177,8 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
   useEffect(() => {
     if (!breedId || !weight || dateError) return;
     const breed = breeds.find(b => b.id === breedId);
-    const breedName = breedId === 'custom' ? customBreed : (breed?.name || '未知犬种');
-    if (!breedName || breedName === '未知犬种') return;
+    const breedName = breedId === 'custom' ? customBreed : (breed?.name || '');
+    if (!breedName) return;
 
     const ageDetails = calculateAgeDetails(birthDate);
 
@@ -231,12 +229,12 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
   const handleDateChange = (val) => {
     setBirthDate(val);
     if (!val) {
-      setDateError('请输入出生日期');
+      setDateError(t('dateRequired'));
       return;
     }
     const parts = val.split('-');
     if (parts.length !== 3) {
-      setDateError('日期格式不正确');
+      setDateError(t('dateInvalid'));
       return;
     }
     const year = parseInt(parts[0], 10);
@@ -246,13 +244,13 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
     const now = new Date();
     
     if (isNaN(d.getTime())) {
-      setDateError('无效日期');
+      setDateError(t('dateInvalid'));
     } else if (d.getFullYear() !== year || (d.getMonth() + 1) !== month || d.getDate() !== day) {
-      setDateError('该日期在日历中不存在（例如2月无31天）');
+      setDateError(t('dateInvalid'));
     } else if (d > now) {
-      setDateError('出生日期不能晚于今天');
+      setDateError(t('dateFuture'));
     } else if (year < now.getFullYear() - 30) {
-      setDateError('日期超出合理范围');
+      setDateError(t('dateOutOfRange'));
     } else {
       setDateError('');
     }
@@ -298,7 +296,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
 
   const handleBreedSelect = (b) => {
     setBreedId(b.id);
-    setBreedSearch(b.name);
+    setBreedSearch(tData(b.name, lang));
     setShowBreedDropdown(false);
 
     if (b.size && b.id !== 'custom') {
@@ -308,7 +306,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
 
   const handleCustomBreedSelect = () => {
     setBreedId('custom');
-    setBreedSearch('其他（自定义）');
+    setBreedSearch(t('otherCustom'));
     setShowBreedDropdown(false);
   };
 
@@ -344,12 +342,12 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
     const finalBcs = aiBcsData?.bcs_score || localBcs.score;
 
     const profileData = {
-      name: name.trim() || '爱宠',
+      name: name.trim() || t('petDefaultName'),
       sex,
       avatar,
       birthDate,
       breedId,
-      breedName: breedId === 'custom' ? customBreed : (breed?.name || '未知犬种'),
+      breedName: breedId === 'custom' ? customBreed : (breed?.name || t('unknownBreed')),
       customBreed: breedId === 'custom' ? customBreed : '',
       bodySize,
       activityLevel,
@@ -383,22 +381,22 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
         onShowAnalysis(profileData);
       } else {
         let ageKey = 'adult';
-        let label = '成宠维持型';
+        let label = t('categoryAdultGeneral');
         let query = { custom_category: 'adult' };
 
         if (ageDetails.age < 1) {
           ageKey = 'puppy';
-          label = 'B1 幼宠成长型';
+          label = t('categoryPuppyGeneral');
           query = { custom_category: 'puppy' };
         } else if (ageDetails.age >= 8) {
           ageKey = 'senior';
-          label = '老年支持型';
+          label = t('categorySeniorGeneral');
           query = { custom_category: 'senior' };
         }
 
         if (feedingGoal === 'weight_loss') {
           ageKey = 'weight';
-          label = '体重控制型';
+          label = t('goalWeightLoss');
           query = { custom_category: 'weight' };
         }
 
@@ -411,45 +409,29 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
 
   // Mapped options dictionary
   const goalLabels = {
-    maintenance: '维持体态',
-    weight_loss: '减重控体',
-    muscle_gain: '增肌强壮',
-    post_surgery_recovery: '术后恢复',
-    coat_care: '美毛亮毛',
-    gastrointestinal_care: '调理肠胃'
+    maintenance: t('goalMaintenance'),
+    weight_loss: t('goalWeightLoss'),
+    muscle_gain: t('goalMuscleGain'),
+    post_surgery_recovery: t('goalPostSurgery'),
+    coat_care: t('goalCoatCare'),
+    gastrointestinal_care: t('goalGastrointestinal')
   };
 
   const healthIssues = {
-    obesity: '肥胖问题',
-    cardiac: '心脏问题',
-    kidney: '肾脏问题',
-    liver: '肝脏问题',
-    gastrointestinal: '肠胃敏感',
-    urinary: '泌尿问题',
-    dermatological: '皮肤问题',
-    joint: '关节问题',
-    gallbladder: '胆囊问题',
-    pancreatitis: '胰腺问题',
-    diabetes: '糖尿病',
-    thyroid: '甲状腺问题',
-    oral: '口腔问题',
-    dental: '牙齿问题',
-    immunity: '免疫力差'
+    obesity: t('healthObesity'), cardiac: t('healthCardiac'), kidney: t('healthKidney'),
+    liver: t('healthLiver'), gastrointestinal: t('healthGastrointestinal'), urinary: t('healthUrinary'),
+    dermatological: t('healthDermatological'), joint: t('healthJoint'), gallbladder: t('healthGallbladder'),
+    pancreatitis: t('healthPancreatitis'), diabetes: t('healthDiabetes'), thyroid: t('healthThyroid'),
+    oral: t('healthOral'), dental: t('healthDental'), immunity: t('healthImmunity')
   };
 
   const severityLabels = {
-    mild: '轻微',
-    moderate: '中等',
-    severe: '严重'
+    mild: t('severityMild'), moderate: t('severityModerate'), severe: t('severitySevere')
   };
 
   const periodOptions = {
-    neutered: '已经绝育 ✂️',
-    pregnancy: '妊娠期 🤰',
-    lactation: '哺乳期 🍼',
-    post_op_rest: '术后休养 🏥',
-    illness_recovery: '病后恢复 ❤️',
-    none: '无特殊情况'
+    neutered: t('statusNeutered'), pregnancy: t('statusPregnancy'), lactation: t('statusLactation'),
+    post_op_rest: t('statusPostOp'), illness_recovery: t('statusIllnessRecovery'), none: t('statusNone')
   };
 
   const filteredBreeds = breeds.filter(b => 
@@ -460,13 +442,13 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
 
   // Determine current display values (AI first, fallback local next)
   const displayBcsScore = aiBcsData?.bcs_score || localBcs.score;
-  const displayBcsLabel = aiBcsData?.bcs_label || localBcs.label;
-  const displayBcsDescription = aiBcsData?.bcs_description || localBcs.description;
+  const displayBcsLabel = t(`bcsLabel${displayBcsScore}`);
+  const displayBcsDescription = t(`bcsDesc${displayBcsScore}`);
   const displayStandardWeight = aiBcsData?.standard_weight || localBcs.standardWeight;
 
   return (
     <div className="animate-fade flex-col" style={{ flex: 1, paddingBottom: 100 }}>
-      <TopBar onBack={onBack} title="我的爱犬" />
+      <TopBar onBack={onBack} title={t('myPetTitle')} />
       
       <div style={{ padding: '0 20px' }}>
         
@@ -477,9 +459,9 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
             style={{ cursor: 'pointer' }}
             onClick={() => setActiveTab(1)}
           >
-            <span>① 基础档案</span>
+            <span>{t('basicProfile')}</span>
           </div>
-          <div style={{ color: 'rgba(255,255,255,0.1)' }}>——</div>
+          <div style={{ color: 'var(--theme-caption)' }}>——</div>
           <div 
             className={`form-step-item ${activeTab === 2 ? 'active' : ''}`}
             style={{ cursor: 'pointer' }}
@@ -487,7 +469,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
               if (!dateError) setActiveTab(2);
             }}
           >
-            <span>② 健康档案</span>
+            <span>{t('healthProfile')}</span>
           </div>
         </div>
 
@@ -514,23 +496,23 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
                       className="avatar-upload-preview"
                       onError={(event) => handlePetAvatarError(event, profile || { species: 'dog' }, 'pet-edit')}
                     />
-                    <div className="avatar-upload-overlay" style={{ fontSize: 8, padding: '2px 0' }}>换照片</div>
+                    <div className="avatar-upload-overlay" style={{ fontSize: 8, padding: '2px 0' }}>{t('changePhoto')}</div>
                   </>
                 ) : (
                   <>
                     <span className="avatar-upload-icon" style={{ fontSize: 18, marginBottom: 2 }}>📸</span>
-                    <span className="avatar-upload-label" style={{ fontSize: 8 }}>上传</span>
+                    <span className="avatar-upload-label" style={{ fontSize: 8 }}>{t('uploadPhoto')}</span>
                   </>
                 )}
               </div>
               <div style={{ flex: 1 }}>
                 <label className="form-field-label" style={{ marginBottom: 6 }}>
                   <span className="form-field-icon">🏷️</span>
-                  <span>宠物姓名</span>
+                  <span>{t('petNameLabel')}</span>
                 </label>
                 <input 
                   type="text" 
-                  placeholder="爱宠姓名" 
+                  placeholder={t('petNamePlaceholder')}
                   value={name} 
                   onChange={e => setName(e.target.value)} 
                   className="text-input-field"
@@ -543,7 +525,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
               <div className="form-field-card" style={{ margin: 0 }}>
                 <label className="form-field-label" style={{ marginBottom: 6 }}>
                   <span className="form-field-icon">⚧️</span>
-                  <span>宠物性别</span>
+                  <span>{t('petGender')}</span>
                 </label>
                 <select 
                   value={sex} 
@@ -551,16 +533,16 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
                   className="text-input-field"
                   style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)' }}
                 >
-                  <option value="male">公 ♂</option>
-                  <option value="female">母 ♀</option>
-                  <option value="unknown">保密 🔒</option>
+                  <option value="male">{t('male')}</option>
+                  <option value="female">{t('female')}</option>
+                  <option value="unknown">{t('genderPrivate')}</option>
                 </select>
               </div>
               
               <div className="form-field-card" style={{ margin: 0 }}>
                 <label className="form-field-label" style={{ marginBottom: 6 }}>
                   <span className="form-field-icon">📅</span>
-                  <span>出生日期</span>
+                  <span>{t('birthDate')}</span>
                 </label>
                 <input 
                   type="date" 
@@ -584,11 +566,11 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
               <div className="form-field-card" style={{ margin: 0, position: 'relative' }} ref={dropdownRef}>
                 <label className="form-field-label" style={{ marginBottom: 6 }}>
                   <span className="form-field-icon">🐶</span>
-                  <span>品种</span>
+                  <span>{t('breedLabel')}</span>
                 </label>
                 <input 
                   type="text" 
-                  placeholder="搜索品种" 
+                  placeholder={t('searchBreed')}
                   value={breedSearch} 
                   onChange={e => { setBreedSearch(e.target.value); setShowBreedDropdown(true); }}
                   onFocus={() => setShowBreedDropdown(true)}
@@ -603,7 +585,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
                         onClick={() => handleBreedSelect(b)}
                       >
                         <img src={b.img || 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?q=80&w=100'} alt="" />
-                        <span>{b.name}</span>
+                        <span>{tData(b.name, lang)}</span>
                       </div>
                     ))}
                     <div 
@@ -611,13 +593,13 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
                       style={{ fontWeight: 600, color: 'var(--primary)', borderTop: '1px solid rgba(255,255,255,0.06)' }}
                       onClick={handleCustomBreedSelect}
                     >
-                      <span>✨ 其它（自定义）</span>
+                      <span>{t('customBreed')}</span>
                     </div>
                   </div>
                 )}
                 {breedId === 'custom' && (
                   <input 
-                    placeholder="名称..." 
+                    placeholder={t('customNamePlaceholder')}
                     value={customBreed} 
                     onChange={e => setCustomBreed(e.target.value)}
                     className="text-input-field" 
@@ -629,7 +611,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
               <div className="form-field-card" style={{ margin: 0 }}>
                 <label className="form-field-label" style={{ marginBottom: 6 }}>
                   <span className="form-field-icon">📐</span>
-                  <span>体型</span>
+                  <span>{t('bodySize')}</span>
                 </label>
                 <select 
                   value={bodySize} 
@@ -637,11 +619,11 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
                   className="text-input-field"
                   style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)' }}
                 >
-                  <option value="mini" disabled={isSizeDisabled('mini')}>迷你型</option>
-                  <option value="small" disabled={isSizeDisabled('small')}>小型</option>
-                  <option value="medium" disabled={isSizeDisabled('medium')}>中型</option>
-                  <option value="large" disabled={isSizeDisabled('large')}>大型</option>
-                  <option value="giant" disabled={isSizeDisabled('giant')}>巨型</option>
+                  <option value="mini" disabled={isSizeDisabled('mini')}>{t('sizeMini')}</option>
+                  <option value="small" disabled={isSizeDisabled('small')}>{t('sizeSmall')}</option>
+                  <option value="medium" disabled={isSizeDisabled('medium')}>{t('sizeMedium')}</option>
+                  <option value="large" disabled={isSizeDisabled('large')}>{t('sizeLarge')}</option>
+                  <option value="giant" disabled={isSizeDisabled('giant')}>{t('sizeGiant')}</option>
                 </select>
               </div>
             </div>
@@ -651,7 +633,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
               <div className="form-field-card" style={{ margin: 0 }}>
                 <label className="form-field-label" style={{ marginBottom: 6 }}>
                   <span className="form-field-icon">⚡</span>
-                  <span>活动水平</span>
+                  <span>{t('activityLevelLabel')}</span>
                 </label>
                 <select 
                   value={activityLevel} 
@@ -659,17 +641,17 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
                   className="text-input-field"
                   style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)' }}
                 >
-                  <option value="low">低度活跃</option>
-                  <option value="medium">中度活跃</option>
-                  <option value="high">高度活跃</option>
-                  <option value="working">工作犬 🐕‍🦺</option>
+                  <option value="low">{t('activityLowFull')}</option>
+                  <option value="medium">{t('activityMediumFull')}</option>
+                  <option value="high">{t('activityHighFull')}</option>
+                  <option value="working">{t('activityWorkingFull')}</option>
                 </select>
               </div>
 
               <div className="form-field-card" style={{ margin: 0 }}>
                 <label className="form-field-label" style={{ marginBottom: 6 }}>
                   <span className="form-field-icon">🏠</span>
-                  <span>喂养环境</span>
+                  <span>{t('feedingEnvironment')}</span>
                 </label>
                 <select 
                   value={environment} 
@@ -677,9 +659,9 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
                   className="text-input-field"
                   style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)' }}
                 >
-                  <option value="indoor">室内喂养</option>
-                  <option value="outdoor">室外喂养</option>
-                  <option value="mixed">混合喂养</option>
+                  <option value="indoor">{t('environmentIndoor')}</option>
+                  <option value="outdoor">{t('environmentOutdoor')}</option>
+                  <option value="mixed">{t('environmentMixed')}</option>
                 </select>
               </div>
             </div>
@@ -688,12 +670,12 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
             <div className="form-field-card">
               <label className="form-field-label">
                 <span className="form-field-icon">⚖️</span>
-                <span>体重指标与 BCS 评分</span>
+                <span>{t('weightBcsTitle')}</span>
               </label>
               
               <div className="weight-row-grid">
                 <div>
-                  <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>当前体重 (kg)</div>
+                  <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>{t('currentWeightKg')}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <button onClick={() => setWeight(Math.max(0.5, parseFloat((weight - 0.5).toFixed(1))))} style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(0,230,255,0.12)', border: 'none', color: 'var(--primary)', cursor: 'pointer' }}>−</button>
                     <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--primary)', minWidth: 40, textAlign: 'center' }}>{weight}</span>
@@ -701,7 +683,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>目标体重 (kg)</div>
+                  <div style={{ fontSize: 12, color: 'var(--gray)', marginBottom: 6 }}>{t('targetWeightKg')}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <button onClick={() => setTargetWeight(Math.max(0.5, parseFloat((targetWeight - 0.5).toFixed(1))))} style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(157,0,255,0.12)', border: 'none', color: 'var(--secondary)', cursor: 'pointer' }}>−</button>
                     <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--secondary)', minWidth: 40, textAlign: 'center' }}>{targetWeight}</span>
@@ -713,10 +695,10 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
               <div className="bcs-scale-card">
                 <div className="bcs-scale-header">
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>
-                    {bcsLoading ? '🤖 AI 评估中...' : '体况评分 (BCS)'}
+                    {bcsLoading ? t('bcsEvaluating') : t('bcsTitle')}
                   </div>
                   <span className={`bcs-scale-label ${displayBcsScore <= 3 ? 'bcs-color-1-3' : displayBcsScore === 4 ? 'bcs-color-4' : displayBcsScore === 5 ? 'bcs-color-5' : displayBcsScore === 6 ? 'bcs-color-6' : 'bcs-color-7-9'}`}>
-                    {displayBcsScore} 分 - {displayBcsLabel}
+                    {t('bcsScoreValue', { score: displayBcsScore, label: displayBcsLabel })}
                   </span>
                 </div>
                 
@@ -734,7 +716,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
                   {displayBcsDescription} 
                   {selectedBreed && selectedBreed.id !== 'custom' && (
                     <span style={{ color: 'var(--primary)', marginLeft: 4 }}>
-                      (当前标准重参考：{displayStandardWeight}kg，成年：{selectedBreed.weight_avg}kg)
+                      ({t('standardWeightReference', { standard: displayStandardWeight, adult: selectedBreed.weight_avg })})
                     </span>
                   )}
                 </div>
@@ -745,7 +727,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
             <div className="form-field-card">
               <label className="form-field-label">
                 <span className="form-field-icon">🎯</span>
-                <span>喂养目标</span>
+                <span>{t('feedingGoalLabel')}</span>
               </label>
               <div className="selector-chip-grid">
                 {Object.entries(goalLabels).map(([key, label]) => (
@@ -770,7 +752,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
                 opacity: (dateError || !breedId || (breedId === 'custom' && !customBreed)) ? 0.4 : 1 
               }}
             >
-              下一步：健康档案录入 →
+              {t('nextHealthProfile')}
             </button>
           </div>
         )}
@@ -785,7 +767,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
             <div className="form-field-card">
               <label className="form-field-label">
                 <span className="form-field-icon">🕒</span>
-                <span>宠物特殊时期与绝育状态 (单选)</span>
+                <span>{t('specialStatus')}</span>
               </label>
               <div className="selector-grid-three" style={{ gap: 8 }}>
                 {Object.entries(periodOptions).map(([key, label]) => {
@@ -806,7 +788,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
               </div>
               {sex === 'male' && (
                 <div style={{ marginTop: 8, fontSize: 11, color: '#f87171', lineHeight: 1.4 }}>
-                  * 公 ♂ 宠物已自动禁用“妊娠期”及“哺乳期”选项。
+                  * {t('malePeriodDisabled')}
                 </div>
               )}
             </div>
@@ -816,11 +798,11 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
               <div className="form-field-card" style={{ margin: 0 }}>
                 <label className="form-field-label" style={{ marginBottom: 6 }}>
                   <span className="form-field-icon">🦠</span>
-                  <span>过敏源类型</span>
+                  <span>{t('allergenType')}</span>
                 </label>
                 <input 
                   type="text" 
-                  placeholder="如：牛肉、避开谷物" 
+                  placeholder={t('allergenExample')}
                   value={allergensText} 
                   onChange={e => setAllergensText(e.target.value)} 
                   className="text-input-field" 
@@ -830,11 +812,11 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
               <div className="form-field-card" style={{ margin: 0 }}>
                 <label className="form-field-label" style={{ marginBottom: 6 }}>
                   <span className="form-field-icon">🤢</span>
-                  <span>过敏表现</span>
+                  <span>{t('allergySymptoms')}</span>
                 </label>
                 <input 
                   type="text" 
-                  placeholder="如：红斑、软便脱水" 
+                  placeholder={t('allergySymptomsExample')}
                   value={allergySymptomsText} 
                   onChange={e => setAllergySymptomsText(e.target.value)} 
                   className="text-input-field" 
@@ -846,7 +828,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
             <div className="form-field-card">
               <label className="form-field-label">
                 <span className="form-field-icon">⚠️</span>
-                <span>过敏反应程度</span>
+                <span>{t('allergySeverity')}</span>
               </label>
               <div className="selector-grid-three">
                 {Object.entries(severityLabels).map(([key, label]) => (
@@ -865,7 +847,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
             <div className="form-field-card">
               <label className="form-field-label">
                 <span className="form-field-icon">🩺</span>
-                <span>宠物健康历史 (可多选)</span>
+                <span>{t('petHealthHistory')}</span>
               </label>
               <div className="selector-chip-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
                 {Object.entries(healthIssues).map(([key, label]) => {
@@ -897,14 +879,14 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
                 style={{ width: '30%', padding: '14px 0' }}
                 onClick={() => handleSave(false)}
               >
-                保存
+                {t('saveBtn')}
               </button>
               <button 
                 className="btn-primary" 
                 style={{ flex: 1, margin: 0 }}
                 onClick={() => handleSave(true)}
               >
-                保存并进行AI分析 →
+                {t('saveAndAnalyze')}
               </button>
             </div>
 

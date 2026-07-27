@@ -1,5 +1,15 @@
 const axios = require('axios');
 
+function protectPuppyTargetWeight(data, ageMonths, weight) {
+  const currentWeight = Number(weight);
+  const suggestedWeight = Number(data.standard_weight);
+  const hasSuggestedWeight = data.standard_weight !== null && data.standard_weight !== '';
+  if (Number(ageMonths) > 0 && Number(ageMonths) < 12 && hasSuggestedWeight && Number.isFinite(currentWeight) && Number.isFinite(suggestedWeight) && suggestedWeight < currentWeight) {
+    return { ...data, standard_weight: null, target_weight_requires_review: true, target_weight_conflict: '幼犬参考体重低于当前体重，不能据此设置减重目标；请结合BCS与生长曲线复核。' };
+  }
+  return data;
+}
+
 async function evaluatePetBCS({ breedName, ageMonths, weight }) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
@@ -12,18 +22,19 @@ async function evaluatePetBCS({ breedName, ageMonths, weight }) {
   // Create prompt
   const systemPrompt = `你是一个非常资深且专业的宠物执业兽医师与宠物营养学专家。请基于犬只（或猫咪）的品种、年龄（月龄或天数）以及当前的实际体重，推算出该宠物在此成长阶段对应的“标准体重范围下限 (standard_weight_range_min)”与“标准体重范围上限 (standard_weight_range_max)”。如果是未成年的幼犬，请根据其品种的成年平均重和该月龄的幼犬生长发育曲线进行科学测算；如果是成犬，则给出该品种的理想均重范围。
 
-请计算这两个上下限的平均值作为“标准参考体重 (standard_weight)”，并将此平均值作为首选推荐目标体重。
+请计算这两个上下限的平均值作为“标准参考体重 (standard_weight)”。幼犬仍处于生长阶段，标准参考体重不能直接等同于减重目标；如果估算值低于幼犬当前实际体重，standard_weight 必须返回 null，并将 target_weight_requires_review 返回 true，交由兽医结合 BCS 和生长曲线复核。
 
 然后，计算体况评分（Body Condition Score, BCS 1-9分制），并给出一个适合该评分的状态评估词（如：极度消瘦、偏瘦、稍瘦、偏苗条、理想体态、偏丰满、超重、肥胖、极度肥胖）和详细、温暖但又科学的诊断分析以及喂养改进建议。
 
-必须以 JSON 格式输出，且不要包含任何 markdown 块或其它无关字符，格式如下：
+必须以 JSON 格式输出，且不要包含任何 markdown 块或其它无关字符。返回以下字段，体重字段单位均为 kg 且使用数字类型；无法可靠估算时使用 null，不要套用示例数字：
 {
-  "standard_weight_range_min": 2.5,
-  "standard_weight_range_max": 4.0,
-  "standard_weight": 3.25,
-  "bcs_score": 5,
-  "bcs_label": "理想体态",
-  "bcs_description": "当前体况非常健康！对于55天的史宾格幼犬，其标准体重应在2.5-4.0公斤左右，现在的4.0公斤处于合理范围的上限。请继续保持规律的幼犬高消化率蛋白质喂食。"
+  "standard_weight_range_min": null,
+  "standard_weight_range_max": null,
+  "standard_weight": null,
+  "target_weight_requires_review": false,
+  "bcs_score": null,
+  "bcs_label": "",
+  "bcs_description": ""
 }`;
 
   const userPrompt = `宠物信息：
@@ -60,8 +71,7 @@ async function evaluatePetBCS({ breedName, ageMonths, weight }) {
     if (cleanContent.endsWith('```')) {
       cleanContent = cleanContent.slice(0, -3);
     }
-    const data = JSON.parse(cleanContent.trim());
-    return data;
+    return protectPuppyTargetWeight(JSON.parse(cleanContent.trim()), ageMonths, weight);
   } catch (error) {
     console.error('DeepSeek BCS evaluation error:', error.message);
     throw new Error(error.message);
@@ -201,4 +211,63 @@ async function classifyFreshMatchIngredients({ ingredients }) {
   return JSON.parse(String(content).replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
 }
 
-module.exports = { evaluatePetBCS, analyzeFreshMatch, classifyFreshMatchIngredients };
+async function freshCheckCompletion(system, user) {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not configured');
+  const response = await axios.post(`${process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1'}/chat/completions`, {
+    model: process.env.DEEPSEEK_MODEL || 'deepseek-chat', messages: [{ role: 'system', content: system }, { role: 'user', content: user }], temperature: 0, response_format: { type: 'json_object' },
+  }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 18000 });
+  return JSON.parse(String(response.data.choices?.[0]?.message?.content || '{}').replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
+}
+
+async function translatePresentationFields({ locale, items }) {
+  const languageNames = { en: 'English', de: 'German', fr: 'French', es: 'Spanish', it: 'Italian', ja: 'Japanese', ko: 'Korean' };
+  const targetLanguage = languageNames[locale];
+  if (!targetLanguage || !Array.isArray(items) || !items.length) return { items: [] };
+  const allowed = items.filter(item => item?.risk_code === 'AI_PRESENTATION_TEXT' && /^(ai_summary|ai_macro_reasoning|ai_macro_adjustment:\d+)$/.test(item.item_id));
+  if (allowed.length !== items.length) throw new Error('Only whitelisted AI presentation fields may be translated');
+  return freshCheckCompletion(
+    `You localize non-critical Pet Chef AI presentation text into ${targetLanguage}. Only item_id values ai_summary, ai_macro_reasoning, and ai_macro_adjustment:<index> are allowed. Translate only the reason field. Keep item_id, risk_code, title, adjustment, placeholders, numbers, units, codes, and enum values byte-for-byte unchanged. Never add diagnoses, ingredients, numbers, warnings, recommendations, or safety conclusions. Return JSON only: {"items":[{"item_id":"...","risk_code":"AI_PRESENTATION_TEXT","title":"...","reason":"...","adjustment":"..."}]}.`,
+    JSON.stringify({ items: allowed })
+  );
+}
+
+async function recognizeFreshCheckRecipe({ text }) {
+  const content = `识别以下宠物鲜食食谱的食材和克重，仅返回 JSON：{"ingredients":[{"name":"鸡胸肉","grams":200}]}。文本：${text || ''}`;
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not configured');
+  const response = await axios.post(`${process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1'}/chat/completions`, {
+    model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+    messages: [{ role: 'system', content: '你是宠物鲜食食谱识别助手。只识别文本中明确出现的食材与克重；不确定时不要猜测。只返回 JSON。' }, { role: 'user', content }],
+    temperature: 0, response_format: { type: 'json_object' },
+  }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 18000 });
+  return JSON.parse(String(response.data.choices?.[0]?.message?.content || '{}').replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
+}
+
+async function analyzeFreshCheck({ pet, report }) {
+  return freshCheckCompletion(
+    `你是 HeyboPet Agent 的犬用鲜食营养复核助手。只能基于报告中已计算的食材重量比例、估算蛋白质/脂肪/碳水克数、每1000kcal指标及FEDIAF阶段阈值进行复核。
+本地确定性规则是最终评分依据，你不能修改评分、删除风险或声称营养包能修复宏量结构。数据覆盖不足时必须标记 uncertain，不作医疗诊断。
+summary 只写一条具体可执行的食材调整建议，不要重复页面已有的克数、比例、每1000kcal数值或“达到/低于标准”等结论。
+只返回 JSON：{"summary":"一句具体调整建议","macro_assessment":{"protein_status":"adequate|low|uncertain","fat_status":"adequate|low|uncertain","carb_structure_status":"reasonable|high|uncertain","reasoning":"后台复核依据","adjustments":["建议"]}}。`,
+    JSON.stringify({ pet: { name: pet.name, health_tags: pet.health_tags || [], allergens: pet.allergens || [] }, report })
+  );
+}
+
+async function lookupFreshCheckIngredientFacts({ ingredients, retry = false }) {
+  return freshCheckCompletion(
+    `你是犬类鲜食安全与食物成分核验助手。对每个输入项独立判断，并只返回 JSON。
+${retry ? '这是第一次未返回有效营养值后的唯一一次复核。请优先核对常见别名、具体部位与常见生熟状态；仍无法可靠确认时必须继续返回 null，禁止猜测。' : ''}
+规则：
+1. name 必须原样返回。
+2. is_food 表示它是否为真实可食用原料；石头、铁钉、塑料、玻璃、清洁剂等必须为 false。
+3. dog_safety 只能是 safe、unsafe、uncertain；犬类禁食或非食物必须为 unsafe。
+4. 对可食用原料给出常见可食部、生/熟状态下合理的 kcal_per_100g、protein_pct、fat_pct、carb_pct；无法可靠估计的字段返回 null，禁止编造精确值。
+5. confidence 只能是 high、medium、low，并用 basis 简述估算依据和默认生熟状态。
+6. category 只能是 protein、organ、carb、vegetable、fruit、fat、addition、unknown。水果归为 fruit，非淀粉蔬菜归为 vegetable。
+7. JSON 格式：{"ingredients":[{"name":"鸡头","is_food":true,"dog_safety":"safe","category":"protein","kcal_per_100g":180,"protein_pct":16,"fat_pct":12,"carb_pct":0,"confidence":"medium","basis":"按生鲜鸡头可食部估算"}]}`,
+    JSON.stringify({ ingredients })
+  );
+}
+
+module.exports = { evaluatePetBCS, analyzeFreshMatch, classifyFreshMatchIngredients, recognizeFreshCheckRecipe, analyzeFreshCheck, lookupFreshCheckIngredientFacts, translatePresentationFields, _test: { protectPuppyTargetWeight } };
