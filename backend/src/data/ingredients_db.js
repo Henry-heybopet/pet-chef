@@ -240,7 +240,13 @@ const ingredientsDb = {
   '鱼油': {
     category: 'addition', water_pct: 0.00,
     benefits: 'EPA和DHA的高度浓缩来源，促进大脑发育、减少炎症、改善毛发光泽和皮肤健康，心脏保护。',
-    calories_per_100g: 900,
+    calories_per_100g: 900, fat_pct: 100,
+    safety_level: 'safe', safety_note: null,
+  },
+  '三文鱼油': {
+    category: 'addition', water_pct: 0.00,
+    benefits: '三文鱼来源的EPA和DHA浓缩油脂，用于补充必需脂肪酸；用量应按产品标注或专业建议确认。',
+    calories_per_100g: 900, fat_pct: 100,
     safety_level: 'safe', safety_note: null,
   },
   '亚麻籽油': {

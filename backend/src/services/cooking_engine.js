@@ -2,6 +2,7 @@
 // 基于3组实测数据推导的计算模型
 
 const { ingredientsDb } = require('../data/ingredients_db');
+const { feedingPlanForRecipe } = require('./nutrition_energy');
 
 /**
  * 计算食谱的平均含水量
@@ -26,6 +27,12 @@ function stirDelayMinutes(totalGrams) {
   return 4;
 }
 
+function cookingDurationMultiplier(totalGrams) {
+  if (totalGrams <= 200) return 1;
+  if (totalGrams <= 400) return 1.6;
+  return 2.4;
+}
+
 function calcCookingParams(recipe, totalGrams) {
   const { cooking_base, ingredients, water_content_pct } = recipe;
   
@@ -34,8 +41,10 @@ function calcCookingParams(recipe, totalGrams) {
   
   const preheat_minutes = stirDelayMinutes(totalGrams);
   const preheat_seconds = preheat_minutes * 60;
-  const cook_minutes = Number(cooking_base.cook_minutes || 10);
-  const cook_seconds = cook_minutes * 60;
+  const base_cook_minutes = Number(cooking_base.cook_minutes || 10);
+  const cook_time_multiplier = cookingDurationMultiplier(totalGrams);
+  const cook_seconds = Math.ceil(base_cook_minutes * cook_time_multiplier * 60);
+  const cook_minutes = Math.ceil(cook_seconds / 60);
   const total_seconds = preheat_seconds + cook_seconds;
   
   // ——— 阶段时间分配 ———
@@ -77,6 +86,8 @@ function calcCookingParams(recipe, totalGrams) {
     temperature: cooking_base.temperature,
     power: cooking_base.power,
     speed: cooking_base.speed,
+    base_cook_minutes,
+    cook_time_multiplier,
     cook_minutes,
     preheat_minutes,
     preheat_seconds,
@@ -126,6 +137,10 @@ function calcDailyIntake(breedInfo, weight, age) {
   };
 }
 
+function calcRecipeFeedingPlan(pet, recipe, ingredientMap = ingredientsDb) {
+  return feedingPlanForRecipe(pet, recipe, ingredientMap);
+}
+
 /**
  * 将食谱百分比配比转为实际克数
  * @param {Object} ingredients - { 食材名: 百分比 }
@@ -133,21 +148,32 @@ function calcDailyIntake(breedInfo, weight, age) {
  * @returns {Array} [{ name, pct, grams }]
  */
 function calcIngredientGrams(ingredients, totalGrams) {
-  const result = [];
-  const totalPct = Object.values(ingredients).reduce((s, v) => s + (typeof v === 'number' ? v : 0), 0);
-  
-  Object.entries(ingredients).forEach(([name, pct]) => {
-    if (typeof pct !== 'number') {
-      result.push({ name, pct: null, grams: null, note: '微量' });
-      return;
-    }
-    result.push({
+  const entries = Object.entries(ingredients);
+  const numericEntries = entries.filter(([, pct]) => typeof pct === 'number' && pct > 0);
+  const totalPct = numericEntries.reduce((sum, [, pct]) => sum + pct, 0);
+  const roundedTotal = Math.max(0, Math.round(totalGrams));
+  const allocations = numericEntries.map(([name, pct], index) => {
+    const rawGrams = totalPct ? pct / totalPct * roundedTotal : 0;
+    return { name, index, pct, rawGrams, grams: Math.floor(rawGrams) };
+  });
+  let remainder = roundedTotal - allocations.reduce((sum, item) => sum + item.grams, 0);
+  [...allocations]
+    .sort((a, b) => (b.rawGrams - b.grams) - (a.rawGrams - a.grams) || a.index - b.index)
+    .forEach(item => {
+      if (remainder <= 0) return;
+      item.grams += 1;
+      remainder -= 1;
+    });
+  const byName = new Map(allocations.map(item => [item.name, item]));
+  return entries.map(([name, pct]) => {
+    const allocation = byName.get(name);
+    if (!allocation) return { name, pct: null, grams: null, note: '微量' };
+    return {
       name,
       pct: Math.round((pct / totalPct) * 100),
-      grams: Math.round((pct / totalPct) * totalGrams),
-    });
+      grams: allocation.grams,
+    };
   });
-  return result;
 }
 
-module.exports = { calcCookingParams, calcDailyIntake, calcIngredientGrams, calcWaterContent };
+module.exports = { calcCookingParams, calcDailyIntake, calcRecipeFeedingPlan, calcIngredientGrams, calcWaterContent };
