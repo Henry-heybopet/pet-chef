@@ -12,10 +12,12 @@ const LANGS = [
 ];
 
 const LanguageContext = createContext();
+const normalizeLang = value => LANGS.some(item => item.code === value) ? value : 'zh';
 
 export function LanguageProvider({ children }) {
-  const [lang, setLangState] = useState(() => localStorage.getItem('heybo_lang') || 'zh');
-  const setLang = (l) => { setLangState(l); localStorage.setItem('heybo_lang', l); };
+  const [lang, setLangState] = useState(() => normalizeLang(localStorage.getItem('heybo_lang')));
+  const setLang = (value) => { const next = normalizeLang(value); setLangState(next); localStorage.setItem('heybo_lang', next); };
+  useEffect(() => { document.documentElement.lang = lang === 'zh' ? 'zh-CN' : lang; }, [lang]);
   return <LanguageContext.Provider value={{ lang, setLang, LANGS }}>{children}</LanguageContext.Provider>;
 }
 
