@@ -83,8 +83,8 @@ export default function CookingScreen({ onBack, cookingData, lang }) {
             {[
               { label: t('temperature'), value: `${cookParams.temperature}℃`, color: '#FF6B35', icon: '🌡' },
               { label: t('speed'), value: '60 rpm', color: 'var(--primary)', icon: '🔄' },
-              { label: t('powerLevel'), value: `${cookParams.power} ${t('level')}`, color: '#FFB800', icon: '⚡' },
-              { label: t('waterAmount'), value: `${waterGrams}g`, color: '#00FFA3', icon: '💧' },
+              { label: t('powerLevel'), value: `${cookParams.power} ${t('level')}`, color: 'var(--theme-warning)', icon: '⚡' },
+              { label: t('waterAmount'), value: `${waterGrams}g`, color: 'var(--theme-nutrition)', icon: '💧' },
             ].map(p => (
               <div key={p.label} className="card glass" style={{ padding: '10px 12px', flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 18 }}>{p.icon}</span>
@@ -127,7 +127,7 @@ export default function CookingScreen({ onBack, cookingData, lang }) {
         </div>
         {stage === 0 && !started && (
           <div style={{ marginBottom: 16, padding: '12px 16px', background: 'rgba(255,183,0,0.08)', borderRadius: 12, border: '1px solid rgba(255,183,0,0.2)' }}>
-            <div style={{ fontWeight: 700, color: '#FFB800', marginBottom: 4 }}>{t('prepSteps')}</div>
+            <div style={{ fontWeight: 700, color: 'var(--theme-warning)', marginBottom: 4 }}>{t('prepSteps')}</div>
             <div style={{ fontSize: 13, color: 'var(--gray)', lineHeight: 1.6 }}>
               1. {t('prep1')}<br />
               2. {t('prep2')}<br />
@@ -153,7 +153,7 @@ export default function CookingScreen({ onBack, cookingData, lang }) {
           {!started ? (
             <button className="btn-primary" style={{ flex: 2, boxShadow: '0 0 30px rgba(0,230,255,0.4)' }} onClick={handleStart}>{t('btnStart')}</button>
           ) : stage < 3 ? (
-            <button onClick={handleStop} style={{ flex: 2, padding: '14px 24px', borderRadius: 'var(--radius-sm)', background: 'linear-gradient(135deg, rgba(255,60,60,0.2), rgba(255,100,60,0.15))', border: '1px solid rgba(255,60,60,0.4)', color: '#FF4444', fontWeight: 700, fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>{t('btnStop')}</button>
+            <button onClick={handleStop} style={{ flex: 2, padding: '14px 24px', borderRadius: 'var(--radius-sm)', background: 'var(--theme-danger-soft)', border: '1px solid var(--theme-danger)', color: 'var(--theme-danger)', fontWeight: 700, fontSize: 15, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>{t('btnStop')}</button>
           ) : (
             <button className="btn-primary" style={{ flex: 2 }} onClick={onBack}>{t('btnHome')}</button>
           )}

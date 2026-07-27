@@ -461,7 +461,7 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
           >
             <span>{t('basicProfile')}</span>
           </div>
-          <div style={{ color: 'rgba(255,255,255,0.1)' }}>——</div>
+          <div style={{ color: 'var(--theme-caption)' }}>——</div>
           <div 
             className={`form-step-item ${activeTab === 2 ? 'active' : ''}`}
             style={{ cursor: 'pointer' }}

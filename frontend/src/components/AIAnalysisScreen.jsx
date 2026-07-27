@@ -6,6 +6,11 @@ import { tData, tTag, tBreedDesc, tBenefit, tPack } from '../i18n/dataTranslatio
 import { api } from '../api';
 import { demoRecipes } from '../data/demoRecipes';
 import { resolveRecipeImageUrl } from '../utils/recipeImage';
+import { sortRecipeIngredientEntries } from '../utils/recipeIngredients';
+import {
+  getDefaultCPackName,
+  splitTopItems,
+} from '../utils/recommendationDisplay';
 import FreshCheckRadar from './FreshCheckRadar';
 
 // Nutrition needs translation map for rule-engine fallback
@@ -164,7 +169,7 @@ function RecipeDetailPage({ recipe, analysis, feedingPlan, recommendedEnergyDens
   const score = Number(comparison?.proposed_score);
   const hasScore = Number.isFinite(score);
   const tags = recipe.tags || [];
-  const ingredients = Object.entries(recipe.ingredients || {});
+  const ingredients = sortRecipeIngredientEntries(Object.entries(recipe.ingredients || {}));
   const totalIngredientRatio = ingredients.reduce((sum, [, ratio]) => sum + (Number(ratio) || 0), 0) || 100;
   const benefits = Object.entries(recipe.ingredient_benefits || {});
   const displayName = recipe.presentation?.name || tData(recipe.name, lang);
@@ -183,7 +188,7 @@ function RecipeDetailPage({ recipe, analysis, feedingPlan, recommendedEnergyDens
 
   return (
     <div className="animate-fade flex-col" style={{ flex: 1, minHeight: 0 }}>
-      <TopBar onBack={onBack} title={t('recipeDetailTitle')} />
+      <TopBar onBack={onBack} title={t('recipeDetailTitle')} tone="recipe" />
       <div
         style={{
           flex: 1,
@@ -236,7 +241,7 @@ function RecipeDetailPage({ recipe, analysis, feedingPlan, recommendedEnergyDens
                 </span>
               )}
               {isRecommended && (
-                <span style={{ fontSize: 12, color: '#00FFA3', background: 'rgba(0,255,163,0.10)', border: '1px solid rgba(0,255,163,0.24)', borderRadius: 999, padding: '5px 10px', fontWeight: 800 }}>
+                <span style={{ fontSize: 12, color: 'var(--theme-nutrition)', background: 'var(--theme-nutrition-soft)', border: '1px solid color-mix(in srgb, var(--theme-nutrition) 28%, var(--theme-border))', borderRadius: 999, padding: '5px 10px', fontWeight: 800 }}>
                   {t('recommended')}
                 </span>
               )}
@@ -524,14 +529,6 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     return recipes;
   }, [analysis, weight, catalogRecipes]);
 
-  // 默认推荐前 3 个
-  const defaultRecommendedA = React.useMemo(() => {
-    const plans = analysis?.recipe_feeding_plans || {};
-    return categoryRecipes
-      .filter(recipe => plans[recipe.id]?.feasible !== false && (plans[recipe.id]?.long_term_score ?? 100) >= 50)
-      .slice(0, 3);
-  }, [analysis?.recipe_feeding_plans, categoryRecipes]);
-
   const defaultSelectedAId = React.useMemo(() => {
     return getBestScoredRecipeId(categoryRecipes, profile?.comparisons);
   }, [categoryRecipes, profile?.comparisons]);
@@ -580,8 +577,8 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
   const [aComparisonData, setAComparisonData] = React.useState(null);
   const [hoveredCard, setHoveredCard] = React.useState(null);
   const [isComparing, setIsComparing] = React.useState(false);
-  const [showLowScoreRecipes, setShowLowScoreRecipes] = React.useState(false);
-  const [showUnavailableCPacks, setShowUnavailableCPacks] = React.useState(false);
+  const [showOtherARecipes, setShowOtherARecipes] = React.useState(false);
+  const [showOtherCPacks, setShowOtherCPacks] = React.useState(false);
 
   // B包定义
   const bPacks = [
@@ -837,16 +834,21 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
       });
   }, [categoryRecipes, comparisonsCache]);
 
-  const recommendedARecipes = React.useMemo(() => {
-    return scoredCategoryRecipes.filter(item => item.score === null || item.score >= 50);
-  }, [scoredCategoryRecipes]);
+  const {
+    primary: primaryARecipes,
+    folded: foldedARecipes,
+  } = splitTopItems(scoredCategoryRecipes);
+  const defaultCPackName = getDefaultCPackName(analysis?.life_stage);
+  const defaultCPack = cPacks.find(pack => pack.name === defaultCPackName);
+  const otherCPacks = cPacks.filter(pack => pack.name !== defaultCPackName);
 
-  const lowScoreARecipes = React.useMemo(() => {
-    return scoredCategoryRecipes.filter(item => item.score !== null && item.score < 50);
-  }, [scoredCategoryRecipes]);
+  React.useEffect(() => {
+    setShowOtherARecipes(false);
+  }, [analysis?.life_stage]);
 
-  const availableCPacks = cPacks.filter(pack => !checkCPackAllergen(pack));
-  const unavailableCPacks = cPacks.filter(pack => checkCPackAllergen(pack));
+  React.useEffect(() => {
+    setShowOtherCPacks(false);
+  }, [defaultCPackName]);
 
   const renderARecipeCard = (r) => {
     const isSelected = selectedAId === r.id;
@@ -866,7 +868,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
             {matchedAllergen ? (
               <span style={{ fontSize: 9, background: 'rgba(239,68,68,0.15)', color: '#f87171', padding: '1px 5px', borderRadius: 4, border: '1px solid rgba(239,68,68,0.3)', fontWeight: 700 }}>{t('containsAllergen', { name: tData(matchedAllergen, lang) })}</span>
             ) : (
-              defaultRecommendedA.map(x => x.id).includes(r.id) && (
+              primaryARecipes.some(item => item.recipe.id === r.id) && (
                 <span style={{ fontSize: 9, background: 'rgba(0,230,255,0.15)', color: 'var(--primary)', padding: '1px 5px', borderRadius: 4 }}>{t('recommended')}</span>
               )
             )}
@@ -897,12 +899,12 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
           padding: '12px 16px',
           gap: 12,
           cursor: disabled ? 'not-allowed' : 'pointer',
-          border: disabled ? '1px solid rgba(255,80,80,0.35)' : isChecked ? '1px solid #00FFA3' : '1px solid var(--border)',
+          border: disabled ? '1px solid rgba(255,80,80,0.35)' : isChecked ? '1px solid var(--theme-nutrition)' : '1px solid var(--border)',
           opacity: disabled ? 0.48 : 1
         }}
         onClick={() => handleToggleC(name)}
       >
-        <div style={{ width: 18, height: 18, border: disabled ? '2px solid rgba(255,80,80,0.8)' : '2px solid #00FFA3', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isChecked ? '#00FFA3' : 'transparent' }}>
+        <div style={{ width: 18, height: 18, border: disabled ? '2px solid rgba(255,80,80,0.8)' : '2px solid var(--theme-nutrition)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isChecked ? 'var(--theme-nutrition)' : 'transparent' }}>
           {isChecked && <span style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>✓</span>}
         </div>
 
@@ -940,7 +942,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
         feedingPlan={detailFeedingPlan}
         recommendedEnergyDensity={referenceFeedingPlan?.kcal_per_gram}
         comparison={comparisonsCache[showDetailRecipe.name]?.a_comparison}
-        isRecommended={Boolean(defaultRecommendedA.some(item => item.id === showDetailRecipe.id))}
+        isRecommended={Boolean(primaryARecipes.some(item => item.recipe.id === showDetailRecipe.id))}
         onBack={() => setShowDetailRecipe(null)}
         t={t}
         lang={lang}
@@ -970,7 +972,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
             {[
               { label: t('dailyTotal'), value: `${referenceFeedingPlan?.daily_grams || '--'}g`, color: 'var(--primary)' },
               { label: t('mealsPerDay'), value: `${referenceFeedingPlan?.meals_per_day || 2}`, color: 'var(--secondary)' },
-              { label: t('perMeal'), value: `${referenceFeedingPlan?.per_meal_grams || '--'}g`, color: '#00FFA3' },
+              { label: t('perMeal'), value: `${referenceFeedingPlan?.per_meal_grams || '--'}g`, color: 'var(--theme-nutrition)' },
             ].map(item => (
               <div key={item.label} className="card glass" style={{ flex: 1, textAlign: 'center', padding: '12px 8px' }}>
                 <div style={{ fontSize: 18, fontWeight: 800, color: item.color }}>{item.value}</div>
@@ -1031,18 +1033,18 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
                 <span style={{ fontSize: 11, color: 'var(--gray)' }}>{t('addRecipeHint')}</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {recommendedARecipes.map(item => renderARecipeCard(item.recipe))}
-                {lowScoreARecipes.length > 0 && (
+                {primaryARecipes.map(item => renderARecipeCard(item.recipe))}
+                {foldedARecipes.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      style={{ width: '100%', justifyContent: 'center', borderStyle: 'dashed', color: '#f87171' }}
-                      onClick={() => setShowLowScoreRecipes(value => !value)}
+                      style={{ width: '100%', justifyContent: 'center', borderStyle: 'dashed' }}
+                      onClick={() => setShowOtherARecipes(value => !value)}
                     >
-                      {showLowScoreRecipes ? t('collapseLowScore') : t('expandLowScore', { n: lowScoreARecipes.length })}
+                      {showOtherARecipes ? t('collapseOtherRecipes') : t('expandOtherRecipes', { n: foldedARecipes.length })}
                     </button>
-                    {showLowScoreRecipes && lowScoreARecipes.map(item => renderARecipeCard(item.recipe))}
+                    {showOtherARecipes && foldedARecipes.map(item => renderARecipeCard(item.recipe))}
                   </div>
                 )}
               </div>
@@ -1070,27 +1072,27 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
             {/* C 功能支持包 */}
             <div style={{ marginBottom: 28 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#00FFA3' }}>{t('packC')}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--theme-nutrition)' }}>{t('packC')}</span>
                 <span style={{ fontSize: 11, color: 'var(--gray)' }}>{t('optionalTargetSupport')}</span>
               </div>
               <div style={{ fontSize: 11, color: 'var(--gray)', lineHeight: 1.5, marginBottom: 10 }}>
                 {t('cPackGuidance')}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {availableCPacks.map(renderCPackCard)}
-                {unavailableCPacks.length > 0 && (
+                {defaultCPack && renderCPackCard(defaultCPack)}
+                {otherCPacks.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      style={{ width: '100%', justifyContent: 'center', borderStyle: 'dashed', color: '#f87171' }}
-                      onClick={() => setShowUnavailableCPacks(value => !value)}
+                      style={{ width: '100%', justifyContent: 'center', borderStyle: 'dashed' }}
+                      onClick={() => setShowOtherCPacks(value => !value)}
                     >
-                      {showUnavailableCPacks
-                        ? t('collapseUnavailableCPacks')
-                        : t('expandUnavailableCPacks', { n: unavailableCPacks.length })}
+                      {showOtherCPacks
+                        ? t('collapseOtherCPacks')
+                        : t('expandOtherCPacks', { n: otherCPacks.length })}
                     </button>
-                    {showUnavailableCPacks && unavailableCPacks.map(renderCPackCard)}
+                    {showOtherCPacks && otherCPacks.map(renderCPackCard)}
                   </div>
                 )}
               </div>
