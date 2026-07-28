@@ -89,8 +89,6 @@ services:
     image: postgres:15-alpine
     container_name: petchef-db
     restart: unless-stopped
-    ports:
-      - "5432:5432"
     environment:
       - POSTGRES_USER=petchef
       - POSTGRES_PASSWORD=petchef_secure_pass
