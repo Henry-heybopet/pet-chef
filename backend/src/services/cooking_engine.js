@@ -21,7 +21,7 @@ function calcWaterContent(ingredients, ingredientMap = ingredientsDb) {
   return totalWeight > 0 ? totalWater / totalWeight : 0.70;
 }
 
-function stirDelayMinutes(totalGrams) {
+function startupDurationMinutes(totalGrams) {
   if (totalGrams <= 100) return 2;
   if (totalGrams <= 200) return 3;
   return 4;
@@ -39,13 +39,14 @@ function calcCookingParams(recipe, totalGrams) {
   // 加水量（食材总量的15%）
   const waterGrams = Math.round(totalGrams * cooking_base.water_ratio);
   
-  const preheat_minutes = stirDelayMinutes(totalGrams);
-  const preheat_seconds = preheat_minutes * 60;
+  // Keep the validated total heating duration, but run it as one low-temperature
+  // cooking phase instead of delaying stirring behind a separate preheat phase.
+  const startup_seconds = startupDurationMinutes(totalGrams) * 60;
   const base_cook_minutes = Number(cooking_base.cook_minutes || 10);
   const cook_time_multiplier = cookingDurationMultiplier(totalGrams);
-  const cook_seconds = Math.ceil(base_cook_minutes * cook_time_multiplier * 60);
+  const cook_seconds = startup_seconds + Math.ceil(base_cook_minutes * cook_time_multiplier * 60);
   const cook_minutes = Math.ceil(cook_seconds / 60);
-  const total_seconds = preheat_seconds + cook_seconds;
+  const total_seconds = cook_seconds;
   
   // ——— 阶段时间分配 ———
   const stages = [
@@ -57,16 +58,9 @@ function calcCookingParams(recipe, totalGrams) {
       display: '用户操作',
     },
     {
-      id: 'preheat',
-      name: '预加热',
-      desc: `高火（${cooking_base.power}档）快速升温，约${preheat_minutes}分钟后启动搅拌`,
-      seconds: preheat_seconds,
-      display: `约${preheat_minutes}分钟`,
-    },
-    {
       id: 'cook',
       name: '低温烹饪',
-      desc: `恒温 ${cooking_base.temperature}℃，搅拌速度${cooking_base.speed}档（60转/分钟），低温慢炖`,
+      desc: `以 ${cooking_base.temperature}℃、${cooking_base.speed}档（60转/分钟）从启动开始同步加热搅拌`,
       seconds: cook_seconds,
       display: `约${cook_minutes}分钟`,
     },
@@ -89,8 +83,6 @@ function calcCookingParams(recipe, totalGrams) {
     base_cook_minutes,
     cook_time_multiplier,
     cook_minutes,
-    preheat_minutes,
-    preheat_seconds,
     cook_seconds,
     total_seconds,
     stages,

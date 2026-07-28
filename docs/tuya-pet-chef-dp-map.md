@@ -43,8 +43,8 @@ PID: ak2kofibhuvdtqip
 | 1 | `power` | 开关 | rw | bool | 开机/关机 |
 | 3 | `mode` | 烹饪模式 | rw | enum | 下发 `diy` |
 | 5 | `status` | 工作状态 | ro | enum | 监听待机、烹饪中、完成、暂停、加料 |
-| 7 | `cook_time` | 烹饪时间 | rw | value | 下发菜谱计算出的总秒数 |
-| 8 | `remain_time` | 剩余时间 | ro | value | 烹饪页倒计时 |
+| 7 | `cook_time` | 烹饪时间 | rw | value | 下发单一低温烹饪阶段的总秒数，不再拆分预加热 |
+| 8 | `remain_time` | 剩余时间 | ro | value | 优先驱动烹饪页倒计时和进度条 |
 | 9 | `cook_temperature` | 烹饪温度 | rw | value | 下发 85 摄氏度等低温烹饪温度 |
 | 10 | `temperature` | 实时温度 | ro | value | 展示机器实时温度 |
 | 12 | `fault` | 故障告警 | ro | fault | 展示/上报故障 |
@@ -91,3 +91,9 @@ PID: ak2kofibhuvdtqip
 8. 设备配网方式：EZ、AP、蓝牙辅助、扫码中支持哪些。
 9. 设备复位/进入配网模式的按键方式。
 
+## 低温烹饪流程
+
+- 每次烹饪开始前先下发 `DP107=reset`，等待设备退出上一状态后，再一次下发目标温度、功率、转速、总时间和 `start`；不再先以 0 档转速等待预加热。
+- 原升温时间保留在低温烹饪总时长内，避免在缺少新一轮熟化验证前缩短总烹饪时间。
+- 页面优先使用设备 `DP8 remain_time` 计算倒计时和进度；设备未上报时才使用本地计时回退。
+- 设备上报 `DP5=done` 后，App 只下发一次 `DP107=reset`；失败时进行一次幂等重试，并提示用户手动复位，避免完成回调重复触发 reset。

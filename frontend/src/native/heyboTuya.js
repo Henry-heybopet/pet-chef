@@ -180,6 +180,7 @@ class HeyboTuyaWeb extends WebPlugin {
 
       const isCooking = activeDev.dps[107] === 'start';
       if (isCooking) {
+        activeDev.dps[8] = Math.max(0, Number(activeDev.dps[8] ?? activeDev.dps[7] ?? 0) - 2);
         targetTemp = activeDev.dps[9] || 85;
         if (currentTemp < targetTemp) {
           currentTemp += Math.floor(Math.random() * 3) + 1; // heat up
@@ -189,14 +190,15 @@ class HeyboTuyaWeb extends WebPlugin {
           currentTemp = targetTemp + (Math.random() > 0.5 ? 1 : -1);
         }
         activeDev.dps[10] = currentTemp;
-        activeDev.dps[5] = 'cooking';
+        activeDev.dps[5] = activeDev.dps[8] === 0 ? 'done' : 'cooking';
+        if (activeDev.dps[8] === 0) activeDev.dps[107] = 'done';
       } else {
         // cool down to room temp
         if (currentTemp > 25) {
           currentTemp -= 1;
         }
         activeDev.dps[10] = currentTemp;
-        activeDev.dps[5] = activeDev.dps[107] === 'pause' ? 'pause' : 'standby';
+        activeDev.dps[5] = activeDev.dps[5] === 'done' ? 'done' : activeDev.dps[107] === 'pause' ? 'pause' : 'standby';
       }
 
       // Notify listeners of the updated DPs
@@ -240,6 +242,7 @@ class HeyboTuyaWeb extends WebPlugin {
     const device = this.devices.find(d => d.devId === devId);
     if (device) {
       device.dps = { ...device.dps, ...dps };
+      if (dps?.[107] === 'start' && dps?.[7] !== undefined) device.dps[8] = Number(dps[7]);
       // Echo back immediately
       setTimeout(() => {
         this.notifyListeners('dpUpdate', {

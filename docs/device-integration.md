@@ -80,7 +80,6 @@ actual_cook_time = standard_cook_time * time_factor * ingredient_adjustment
 ```text
 idle
 ingredient_prompt
-preheating
 low_temp_cooking
 stirring
 finishing
@@ -89,12 +88,16 @@ paused
 error
 ```
 
-UI 阶段可以简化为：
+UI 阶段统一为：
 
 1. 放入食材。
-2. 预加热。
-3. 低温烹饪。
-4. 烹饪完成。
+2. 低温烹饪：启动即按目标转速同步加热搅拌，使用设备剩余时间驱动单一进度条。
+3. 烹饪完成。
+
+控制边界：
+
+- 开始前下发一次 `DP107=reset`，确认退出上一次状态后再下发本次 `start`。
+- 设备上报完成后下发一次 `DP107=reset`，避免当前流程残留影响下一次任务；reset 允许一次幂等重试，但必须防止完成回调重复下发。
 
 ## Tuya 配网
 
