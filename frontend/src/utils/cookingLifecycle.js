@@ -7,8 +7,11 @@ export function isCompletedCookingDps(dps) {
 }
 
 export function shouldResetAfterCompletion(resetDevices, devId, dps) {
+  if (isCompletedCookingDps(dps)) {
+    if (resetDevices.has(devId)) return false;
+    resetDevices.add(devId);
+    return true;
+  }
   if (isActiveCookingDps(dps)) resetDevices.delete(devId);
-  if (!isCompletedCookingDps(dps) || resetDevices.has(devId)) return false;
-  resetDevices.add(devId);
-  return true;
+  return false;
 }
