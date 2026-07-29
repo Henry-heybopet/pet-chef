@@ -224,6 +224,7 @@ public class TuyaDeviceAdapterImpl implements TuyaDeviceAdapter {
                         updatedDevId,
                         old == null ? "鲜食机" : old.name,
                         old == null ? PET_CHEF_PID : old.productId,
+                        old == null ? "" : old.macAddress,
                         online,
                         dpsCache.getOrDefault(updatedDevId, old == null ? new HashMap<>() : old.dps)
                     );
@@ -335,7 +336,7 @@ public class TuyaDeviceAdapterImpl implements TuyaDeviceAdapter {
 
     private DeviceStatus toDeviceStatus(DeviceBean item) {
         Map<String, Object> dps = item.getDps() == null ? new HashMap<>() : item.getDps();
-        return new DeviceStatus(item.getDevId(), item.getName(), item.getProductId(), item.getIsOnline(), dps);
+        return new DeviceStatus(item.getDevId(), item.getName(), item.getProductId(), item.getMac(), item.getIsOnline(), dps);
     }
 
     private void remember(DeviceStatus status) {

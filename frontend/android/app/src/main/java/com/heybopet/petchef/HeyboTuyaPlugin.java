@@ -1004,6 +1004,7 @@ public class HeyboTuyaPlugin extends Plugin {
         item.put("devId", deviceBean.getDevId());
         item.put("name", deviceBean.getName());
         item.put("productId", deviceBean.getProductId());
+        item.put("macAddress", deviceBean.getMac());
         item.put("isOnline", deviceBean.getIsOnline());
         item.put("dps", deviceBean.getDps());
         item.put("isPetChef", PET_CHEF_PID.equals(deviceBean.getProductId()));

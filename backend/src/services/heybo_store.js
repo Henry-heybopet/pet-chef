@@ -153,6 +153,12 @@ function normalizeLogin(login) {
   return String(login || '').trim().toLowerCase();
 }
 
+function normalizeMacAddress(value) {
+  const compact = String(value || '').trim().replace(/[:-]/g, '').toUpperCase();
+  if (!/^[0-9A-F]{12}$/.test(compact)) return '';
+  return compact.match(/.{2}/g).join(':');
+}
+
 function hash(value) {
   return crypto.createHash('sha256').update(String(value || '')).digest('hex');
 }
@@ -462,6 +468,13 @@ function petToDogProfile(pet, extras = {}) {
 }
 
 function upsertDevice(userId, payload) {
+  const rawMacAddress = payload.mac_address ?? payload.macAddress ?? payload.mac;
+  const macAddress = normalizeMacAddress(rawMacAddress);
+  if (rawMacAddress != null && String(rawMacAddress).trim() && !macAddress) {
+    const error = new Error('Invalid MAC address');
+    error.status = 400;
+    throw error;
+  }
   const household = payload.household_id
     ? db.households.find(item => item.id === payload.household_id)
     : ensureDefaultHousehold(userId);
@@ -480,6 +493,7 @@ function upsertDevice(userId, payload) {
       tuya_device_id: payload.tuya_device_id,
       tuya_home_id: payload.tuya_home_id || '',
       tuya_pid: payload.tuya_pid || payload.productId || '',
+      mac_address: macAddress,
       product_type: payload.product_type || 'pet_chef',
       device_name: payload.device_name || payload.name || 'Pet Chef',
       status: payload.status || 'active',
@@ -494,6 +508,7 @@ function upsertDevice(userId, payload) {
     Object.assign(device, {
       tuya_home_id: payload.tuya_home_id || device.tuya_home_id,
       tuya_pid: payload.tuya_pid || payload.productId || device.tuya_pid,
+      ...(macAddress ? { mac_address: macAddress } : {}),
       device_name: payload.device_name || payload.name || device.device_name,
       status: payload.status || device.status,
       last_online_at: payload.last_online_at || now(),
@@ -743,6 +758,7 @@ module.exports = {
   db,
   id,
   now,
+  normalizeMacAddress,
   loginOrCreateUser,
   getUser,
   publicUser,

@@ -532,7 +532,11 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
       if (!result?.device) throw new Error('Pairing returned empty device');
       setSuccess(true);
       addScanLog(`pairing success：${maskId(result.device.devId)}`);
-      await onBound({ ...result.device, homeId: result.device.homeId || activeHomeId });
+      await onBound({
+        ...result.device,
+        macAddress: result.device.macAddress || result.device.mac || device.address,
+        homeId: result.device.homeId || activeHomeId,
+      });
       setTimeout(onClose, 900);
     } catch (error) {
       clearInterval(timer);
@@ -943,13 +947,14 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     }
   };
 
-  const registerBoundDevice = async (device) => {
+  const registerBoundDevice = async (device, refreshAfter = true) => {
     if (!authToken || !device?.devId) return refreshData();
     const homeId = device.homeId || tuyaHomeId;
     await api.registerDevice({
       tuya_device_id: device.devId,
       tuya_home_id: String(homeId || ''),
       tuya_pid: device.productId,
+      mac_address: device.macAddress || device.mac || device.address || '',
       product_type: device.productId === 'ak2kofibhuvdtqip' || device.isPetChef ? 'pet_chef' : 'other',
       device_name: device.name || t('defaultCookerName'),
       status: device.isOnline === false ? 'offline' : 'online',
@@ -960,7 +965,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       dps: parseDps(device),
       reported_at: new Date().toISOString(),
     }, authToken);
-    await refreshData();
+    if (refreshAfter) await refreshData();
   };
 
   useEffect(() => { refreshData(); }, [authToken]);
@@ -969,8 +974,16 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     if (!authToken) return undefined;
     let alive = true;
     HeyboTuya.ensureNativeSession()
-      .then(session => {
-        if (alive && session?.homeId) setTuyaHomeId(session.homeId);
+      .then(async session => {
+        if (!alive) return;
+        const homeId = session?.homeId;
+        if (homeId) setTuyaHomeId(homeId);
+        if (!homeId || session?.platform === 'web') return;
+        const nativeResult = await HeyboTuya.getDeviceList({ homeId });
+        await Promise.all((nativeResult.devices || []).map(device =>
+          registerBoundDevice({ ...device, homeId }, false)
+        ));
+        if (alive) await refreshData();
       })
       .catch(error => setLiveStatusError(lang === 'zh' && error?.message ? error.message : t('tuyaSessionInitFailed')));
     return () => { alive = false; };

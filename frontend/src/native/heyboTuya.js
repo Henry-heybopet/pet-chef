@@ -4,6 +4,7 @@ const DEMO_DEVICE = {
   devId: 'demo_pet_chef_001',
   name: 'Pet Chef Demo',
   productId: 'ak2kofibhuvdtqip',
+  macAddress: 'AA:BB:CC:DD:EE:FF',
   isOnline: true,
   isPetChef: true,
   dps: {

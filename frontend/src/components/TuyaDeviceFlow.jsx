@@ -239,6 +239,7 @@ export default function TuyaDeviceFlow({ onBack }) {
         tuya_device_id: device.devId,
         tuya_home_id: String(homeId || ''),
         tuya_pid: device.productId,
+        mac_address: device.macAddress || device.mac || device.address || '',
         product_type: (device.productId === 'ak2kofibhuvdtqip' || device.isPetChef) ? 'pet_chef' : 'other',
         device_name: device.name,
         status: device.isOnline ? 'online' : 'offline',

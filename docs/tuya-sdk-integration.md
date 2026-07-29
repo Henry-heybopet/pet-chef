@@ -61,6 +61,17 @@ TUYA_ANDROID_APP_SECRET=...
 
 `tuya.properties` 已加入 `.gitignore`，不要提交。
 
+本地 Android 构建还必须同时存在：
+
+```text
+frontend/android/tuya.properties
+frontend/android/app/libs/security-algorithm-1.0.0-beta.aar
+```
+
+这两个文件都包含本地或商业 SDK 配置，不提交到 Git。Gradle 在生成 APK/AAB
+前会检查 Tuya AppKey/AppSecret 和安全算法 AAR；缺少任意一项时构建必须失败，
+避免产出能够安装、但无法绑定或解绑设备的 APK。
+
 当前注册的 Android debug SHA256：
 
 ```text
@@ -231,6 +242,20 @@ APK 输出：
 
 ```text
 frontend/android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+打包后应确认 APK 同时包含两个 ABI 的安全算法库：
+
+```bash
+unzip -l app/build/outputs/apk/debug/app-debug.apk \
+  | grep 'libthing_security_algorithm.so'
+```
+
+预期包含：
+
+```text
+lib/arm64-v8a/libthing_security_algorithm.so
+lib/armeabi-v7a/libthing_security_algorithm.so
 ```
 
 真机测试顺序：

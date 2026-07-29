@@ -14,6 +14,12 @@ def escapeBuildConfig = { value ->
     return value.replace("\\", "\\\\").replace("\"", "\\\"")
 }
 
+def tuyaCredentialsReady = [
+    readSecret("TUYA_ANDROID_APP_KEY"),
+    readSecret("TUYA_ANDROID_APP_SECRET"),
+].every { !it.trim().isEmpty() }
+def tuyaSecurityAars = fileTree(dir: "libs", include: ["security-algorithm*.aar"])
+
 def releaseStoreFilePath = System.getenv("ANDROID_RELEASE_STORE_FILE") ?: ""
 def releaseStorePassword = System.getenv("ANDROID_RELEASE_STORE_PASSWORD") ?: ""
 def releaseKeyAlias = System.getenv("ANDROID_RELEASE_KEY_ALIAS") ?: ""
@@ -89,6 +95,16 @@ dependencies {
 apply from: 'capacitor.build.gradle'
 
 gradle.taskGraph.whenReady { graph ->
+    def packagesApp = graph.allTasks.any { task ->
+        task.path.startsWith(":app:") &&
+            ["assemble", "bundle", "install", "package"].any { task.name.toLowerCase().startsWith(it) }
+    }
+    if (packagesApp && !tuyaCredentialsReady) {
+        throw new GradleException("Tuya AppKey/AppSecret is required. Configure frontend/android/tuya.properties locally.")
+    }
+    if (packagesApp && tuyaSecurityAars.isEmpty()) {
+        throw new GradleException("Tuya security algorithm AAR is required in frontend/android/app/libs/.")
+    }
     if (graph.allTasks.any { it.name.toLowerCase().contains("release") } && !releaseSigningReady) {
         throw new GradleException("Release signing is required. Set ANDROID_RELEASE_STORE_FILE, ANDROID_RELEASE_STORE_PASSWORD, ANDROID_RELEASE_KEY_ALIAS and ANDROID_RELEASE_KEY_PASSWORD.")
     }

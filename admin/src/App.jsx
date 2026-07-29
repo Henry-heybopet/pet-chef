@@ -1272,6 +1272,7 @@ function App() {
                     <div>
                       <h4>{dev.device_name}</h4>
                       <span className="badge-id">{dev.id}</span>
+                      <span className="device-mac">MAC：{dev.mac_address || '未上报'}</span>
                     </div>
                     <span className={`dev-status ${dev.status} ${dev.telemetry?.online ? 'online' : 'offline'}`}>
                       {dev.telemetry?.online ? '在线' : '离线'}

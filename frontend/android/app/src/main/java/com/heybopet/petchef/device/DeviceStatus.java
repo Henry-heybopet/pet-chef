@@ -12,14 +12,20 @@ public class DeviceStatus {
     public final String devId;
     public final String name;
     public final String productId;
+    public final String macAddress;
     public final boolean online;
     public final String cookingStatus;
     public final Map<String, Object> dps;
 
     public DeviceStatus(String devId, String name, String productId, boolean online, Map<String, Object> dps) {
+        this(devId, name, productId, "", online, dps);
+    }
+
+    public DeviceStatus(String devId, String name, String productId, String macAddress, boolean online, Map<String, Object> dps) {
         this.devId = devId;
         this.name = name;
         this.productId = productId;
+        this.macAddress = macAddress == null ? "" : macAddress;
         this.online = online;
         this.dps = dps;
         this.cookingStatus = resolveCookingStatus(online, dps);
