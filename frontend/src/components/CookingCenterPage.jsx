@@ -4,7 +4,11 @@ import { HeyboTuya } from '../native/heyboTuya';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useTranslation } from '../i18n/translations';
 import { tData } from '../i18n/dataTranslations';
-import { isActiveCookingDps, shouldResetAfterCompletion } from '../utils/cookingLifecycle';
+import {
+  isActiveCookingDps,
+  resolveCookingRemainingSeconds,
+  shouldResetAfterCompletion,
+} from '../utils/cookingLifecycle';
 
 const PAIRING_STEPS = ['pairConnectDevice', 'pairSendWifi', 'pairConnectCloud', 'pairBindAccount'];
 const START_CHECKS = [
@@ -17,6 +21,14 @@ const COOKING_OPERATION_OUTBOX_KEY = 'petchef_cooking_operation_outbox';
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function withoutReportedRemaining(dps) {
+  const nextDps = { ...(dps || {}) };
+  delete nextDps[8];
+  delete nextDps.remain_time;
+  delete nextDps.remainTime;
+  return nextDps;
 }
 
 function readCookingRuntime() {
@@ -276,9 +288,8 @@ function getRecipeCookingParams(context) {
   const params = context?.cookParams || recipe?.cooking_profile || recipe?.cookingProfile || recipe?.cooking_base || recipe?.cookingBase || {};
   const temperature = params.temperature ?? params.cook_temperature ?? params.cooking_temperature ?? params.dp9;
   const cookMinutes = params.cook_minutes ?? params.cookMinutes;
-  const legacyPreheatMinutes = params.preheat_minutes ?? params.preheatMinutes ?? (params.preheat_seconds ? Math.ceil(Number(params.preheat_seconds) / 60) : undefined);
   const cookTime = params.total_seconds ?? params.cook_time ?? params.cookTime ?? params.time_seconds ?? params.duration_seconds ?? params.dp7
-    ?? (cookMinutes ? (Number(cookMinutes) + Number(legacyPreheatMinutes || 0)) * 60 : undefined);
+    ?? (cookMinutes ? Number(cookMinutes) * 60 : undefined);
   const speed = params.speed ?? params.cook_mode_speed ?? params.dp108;
   const power = params.power ?? params.cook_mode_power ?? params.dp102;
   const steps = params.steps ?? params.stages ?? params.cooking_steps ?? params.dp11;
@@ -811,10 +822,13 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
   const deviceDps = parseDps(device);
   const totalSeconds = Number(cooking.cookTime || 0);
   const reportedRemaining = Number(deviceDps[8] ?? deviceDps.remain_time ?? deviceDps.remainTime);
-  const fallbackRemaining = Math.max(0, totalSeconds - Math.floor(elapsedMs / 1000));
-  const remainingSeconds = isActive && Number.isFinite(reportedRemaining) && reportedRemaining > 0
-    ? reportedRemaining
-    : isActive ? fallbackRemaining : view.statusCode === 'done' ? 0 : totalSeconds;
+  const remainingSeconds = resolveCookingRemainingSeconds({
+    totalSeconds,
+    reportedRemaining,
+    elapsedSeconds: elapsedMs / 1000,
+    isActive,
+    isDone: view.statusCode === 'done',
+  });
   const progressPercent = view.statusCode === 'done'
     ? 100
     : isActive && totalSeconds > 0
@@ -937,6 +951,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const completionResetRef = useRef(new Set());
   const operationFlushRef = useRef(Promise.resolve());
   const cookingRef = useRef(null);
+  const selectedDeviceDpsRef = useRef({});
   const mountedRef = useRef(true);
   cookingRef.current = getRecipeCookingParams(recipeContext);
 
@@ -944,6 +959,9 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     const device = devices.find(item => item.devId === selectedDevId) || devices[0];
     return device || null;
   }, [devices, selectedDevId]);
+  useEffect(() => {
+    selectedDeviceDpsRef.current = parseDps(selectedDevice);
+  }, [selectedDevice]);
   const recipesById = useMemo(() => Object.fromEntries(recipes.map(recipe => [recipe.id, recipe])), [recipes]);
   const petsById = useMemo(() => Object.fromEntries(pets.map(pet => [pet.id, pet])), [pets]);
   const records = useMemo(() => {
@@ -1124,7 +1142,8 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       if (typeof nextDps === 'string') {
         try { nextDps = JSON.parse(nextDps || '{}'); } catch { nextDps = {}; }
       }
-      const mergedDps = { ...parseDps(selectedDevice), ...nextDps };
+      const mergedDps = { ...selectedDeviceDpsRef.current, ...nextDps };
+      selectedDeviceDpsRef.current = mergedDps;
       if (authToken) {
         api.syncDeviceDp(devId, {
           tuya_device_id: devId,
@@ -1226,6 +1245,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     const power = cooking.power ?? 8;
     const speed = String(cooking.speed ?? 1);
     const runtimeDps = { 1: true, 3: 'diy', 5: 'cooking', 7: cookTime, 9: temperature, 102: power, 107: 'start', 108: speed };
+    selectedDeviceDpsRef.current = { ...withoutReportedRemaining(currentDps), ...runtimeDps };
     const sessionId = uniqueEventId('session');
     const startedAtIso = new Date().toISOString();
     const operationContext = {
@@ -1289,7 +1309,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     setDevices(prev => prev.map(device => {
       const devId = device.devId || device.tuya_device_id;
       return devId === selectedDevice.devId
-        ? { ...device, dps: { ...parseDps(device), ...runtimeDps } }
+        ? { ...device, dps: { ...withoutReportedRemaining(parseDps(device)), ...runtimeDps } }
         : device;
     }));
     await reportCookingOperation({

@@ -21,16 +21,42 @@ function calcWaterContent(ingredients, ingredientMap = ingredientsDb) {
   return totalWeight > 0 ? totalWater / totalWeight : 0.70;
 }
 
-function startupDurationMinutes(totalGrams) {
-  if (totalGrams <= 100) return 2;
-  if (totalGrams <= 200) return 3;
-  return 4;
-}
+const COOK_MINUTES_BY_WEIGHT = Object.freeze({
+  200: 15,
+  300: 18,
+  400: 21,
+  500: 25,
+  600: 29,
+  700: 34,
+  800: 39,
+});
 
-function cookingDurationMultiplier(totalGrams) {
-  if (totalGrams <= 200) return 1;
-  if (totalGrams <= 400) return 1.6;
-  return 2.4;
+function cookingDuration(recipe, totalGrams) {
+  const grams = Number(totalGrams);
+  if (!Number.isFinite(grams) || grams <= 0 || grams > 800) {
+    const error = new Error('totalGrams must be between 1 and 800');
+    error.code = 'INVALID_COOK_WEIGHT';
+    throw error;
+  }
+
+  const weight_bucket_grams = Math.max(100, Math.ceil(grams / 100) * 100);
+  const configured100gMinutes = Number(recipe?.cooking_base?.cook_minutes);
+  const hasConfigured100gMinutes = Number.isFinite(configured100gMinutes) && configured100gMinutes > 0;
+  const base_cook_minutes = hasConfigured100gMinutes
+    ? configured100gMinutes
+    : 10;
+  const cook_minutes = weight_bucket_grams === 100
+    ? base_cook_minutes
+    : COOK_MINUTES_BY_WEIGHT[weight_bucket_grams];
+
+  return {
+    base_cook_minutes,
+    cook_minutes,
+    weight_bucket_grams,
+    duration_source: weight_bucket_grams === 100 && hasConfigured100gMinutes
+      ? 'recipe_100g'
+      : weight_bucket_grams === 100 ? 'fallback_100g' : 'standard_weight_table',
+  };
 }
 
 function calcCookingParams(recipe, totalGrams) {
@@ -39,13 +65,13 @@ function calcCookingParams(recipe, totalGrams) {
   // 加水量（食材总量的15%）
   const waterGrams = Math.round(totalGrams * cooking_base.water_ratio);
   
-  // Keep the validated total heating duration, but run it as one low-temperature
-  // cooking phase instead of delaying stirring behind a separate preheat phase.
-  const startup_seconds = startupDurationMinutes(totalGrams) * 60;
-  const base_cook_minutes = Number(cooking_base.cook_minutes || 10);
-  const cook_time_multiplier = cookingDurationMultiplier(totalGrams);
-  const cook_seconds = startup_seconds + Math.ceil(base_cook_minutes * cook_time_multiplier * 60);
-  const cook_minutes = Math.ceil(cook_seconds / 60);
+  const {
+    base_cook_minutes,
+    cook_minutes,
+    weight_bucket_grams,
+    duration_source,
+  } = cookingDuration(recipe, totalGrams);
+  const cook_seconds = Math.round(cook_minutes * 60);
   const total_seconds = cook_seconds;
   
   // ——— 阶段时间分配 ———
@@ -81,7 +107,8 @@ function calcCookingParams(recipe, totalGrams) {
     power: cooking_base.power,
     speed: cooking_base.speed,
     base_cook_minutes,
-    cook_time_multiplier,
+    weight_bucket_grams,
+    duration_source,
     cook_minutes,
     cook_seconds,
     total_seconds,

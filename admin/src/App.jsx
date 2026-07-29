@@ -73,7 +73,6 @@ const WATER_RATIO_OPTIONS = [
   { label: '15%', value: '15' },
   { label: '20%', value: '20' },
 ];
-const PACKAGE_WEIGHT_OPTIONS = [100, 200, 300, 400, 500].map(value => ({ label: `${value}克`, value: String(value) }));
 const TEXTURE_OPTIONS = [
   '原切块状 / 清晰颗粒感',
   '软烩饭 / 湿润软烂型',
@@ -308,9 +307,7 @@ function toRecipeDraft(recipe) {
       powerWatts: normalizePowerWatts(cookingProfile.power),
       speed: String(cookingProfile.speed ?? 1),
       waterRatioPercent: normalizeWaterRatioPercent(cookingProfile.water_ratio),
-      preheatMinutes: String(cookingProfile.preheat_minutes ?? 3),
-      cookMinutes: String(cookingProfile.cook_minutes ?? 8),
-      packageWeightGrams: String(cookingProfile.cook_weight_grams ?? cookingProfile.package_weight_grams ?? 200),
+      cookMinutes: String(cookingProfile.cook_minutes ?? 10),
       textureProfile: cookingProfile.texture_profile || TEXTURE_OPTIONS[0],
     },
   };
@@ -337,9 +334,9 @@ function buildRecipePayload(draft) {
     power: Math.round((Number(draft.cookingParams.powerWatts) || 0) / 100),
     speed: String(draft.cookingParams.speed ?? '1'),
     water_ratio: (Number(draft.cookingParams.waterRatioPercent) || 15) / 100,
-    preheat_minutes: Number(draft.cookingParams.preheatMinutes) || 0,
+    preheat_minutes: 0,
     cook_minutes: Number(draft.cookingParams.cookMinutes) || 0,
-    cook_weight_grams: Number(draft.cookingParams.packageWeightGrams) || 200,
+    cook_weight_grams: 100,
     texture_profile: draft.cookingParams.textureProfile || TEXTURE_OPTIONS[0],
   };
 
@@ -1777,27 +1774,11 @@ function App() {
                         </select>
                       </label>
                       <label>
-                        <span>预热时长：</span>
-                        <div className="unit-input"><input type="number" min="0" step="0.5" value={draft.cookingParams.preheatMinutes} onChange={e => updateRecipeDraft(recipe.id, current => ({
-                          ...current,
-                          cookingParams: { ...current.cookingParams, preheatMinutes: e.target.value },
-                        }))} /><em>分钟</em></div>
-                      </label>
-                      <label>
-                        <span>烹饪时长：</span>
+                        <span>100克标准烹饪时长：</span>
                         <div className="unit-input"><input type="number" min="0" step="0.5" value={draft.cookingParams.cookMinutes} onChange={e => updateRecipeDraft(recipe.id, current => ({
                           ...current,
                           cookingParams: { ...current.cookingParams, cookMinutes: e.target.value },
                         }))} /><em>分钟</em></div>
-                      </label>
-                      <label>
-                        <span>食材包克重：</span>
-                        <select value={draft.cookingParams.packageWeightGrams} onChange={e => updateRecipeDraft(recipe.id, current => ({
-                          ...current,
-                          cookingParams: { ...current.cookingParams, packageWeightGrams: e.target.value },
-                        }))}>
-                          {PACKAGE_WEIGHT_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </select>
                       </label>
                       <label>
                         <span>烹饪口感：</span>

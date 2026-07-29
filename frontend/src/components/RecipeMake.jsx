@@ -24,7 +24,7 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
   const [paramsLoading, setParamsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const displayGrams = packCount * 200;
+  const displayGrams = packCount * 100;
 
   useEffect(() => {
     if (!recipe || !profile) return;
@@ -70,7 +70,7 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
   if (!cookData) return null;
 
   const { intake, ingredientList, cookParams } = cookData;
-  const packOptions = [1, 2, 3];
+  const packOptions = Array.from({ length: 8 }, (_, index) => index + 1);
 
   const displayIngredients = sortRecipeIngredientList(ingredientList.map(ing => ({
     ...ing, grams: ing.pct ? Math.round((ing.pct / 100) * displayGrams) : null,
@@ -106,7 +106,7 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
             <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--theme-warning)' }}>{t('customAmount')}</span>
             <span style={{ fontSize: 12, color: 'var(--gray)' }}>{t('freshPackDesc')}</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
             {packOptions.map(count => {
               const active = packCount === count;
               return (
@@ -125,7 +125,7 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
                   }}
                 >
                   <div>{count}{t('packUnit')}</div>
-                  <div style={{ fontSize: 11, color: active ? 'var(--theme-warning)' : 'var(--gray)', marginTop: 2 }}>{count * 200}g</div>
+                  <div style={{ fontSize: 11, color: active ? 'var(--theme-warning)' : 'var(--gray)', marginTop: 2 }}>{count * 100}g</div>
                 </button>
               );
             })}
@@ -164,7 +164,7 @@ export default function RecipeMake({ onBack, recipe, profile, onStartCooking, la
       <div className="glass" style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, padding: '16px 24px', display: 'flex', gap: 12, zIndex: 100, background: 'rgba(10,13,20,0.95)', borderTop: '1px solid var(--border)' }}>
         <button className="btn-secondary" style={{ flex: 1 }} onClick={onBack}>{t('back')}</button>
         <button className="btn-primary" disabled={paramsLoading} style={{ flex: 2, boxShadow: '0 0 24px rgba(0,230,255,0.35)', opacity: paramsLoading ? 0.6 : 1 }}
-          onClick={() => onStartCooking({ recipe, profile, intake, cookParams, displayGrams, displayIngredients, packCount, packGrams: 200 })}>
+          onClick={() => onStartCooking({ recipe, profile, intake, cookParams, displayGrams, displayIngredients, packCount, packGrams: 100 })}>
           {paramsLoading ? t('calculatingParams') : t('startCook')}
         </button>
       </div>

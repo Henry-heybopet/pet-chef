@@ -9,6 +9,10 @@ const cookingSource = fs.readFileSync(
   path.join(frontendRoot, 'src/components/CookingCenterPage.jsx'),
   'utf8',
 );
+const recipeMakeSource = fs.readFileSync(
+  path.join(frontendRoot, 'src/components/RecipeMake.jsx'),
+  'utf8',
+);
 const translationsSource = fs.readFileSync(
   path.join(frontendRoot, 'src/i18n/translations.js'),
   'utf8',
@@ -61,4 +65,21 @@ test('浅色主题下 Wi-Fi 密码圆点、明文和光标使用可见颜色', (
     stylesSource,
     /\.cooking-password-row input\s*\{[^}]*caret-color:\s*var\(--theme-fresh\)/s,
   );
+});
+
+test('王牌优品宠物鲜食按每份100克提供1至8份', () => {
+  const titleLine = translationsSource.match(/'customAmount': \[([^\n]+)\]/)?.[1] || '';
+  const descriptionLine = translationsSource.match(/'freshPackDesc': \[([^\n]+)\]/)?.[1] || '';
+  assert.match(titleLine, /王牌优品宠物鲜食/);
+  assert.doesNotMatch(titleLine, /王牌优品鲜食包/);
+  assert.match(descriptionLine, /每份100克，可选1-8份/);
+  assert.match(recipeMakeSource, /packCount \* 100/);
+  assert.match(recipeMakeSource, /Array\.from\(\{ length: 8 \}/);
+  assert.match(recipeMakeSource, /count \* 100/);
+  assert.match(recipeMakeSource, /packGrams: 100/);
+});
+
+test('一键烹饪总时长不再叠加历史预热时间', () => {
+  assert.doesNotMatch(cookingSource, /legacyPreheatMinutes/);
+  assert.match(cookingSource, /Number\(cookMinutes\) \* 60/);
 });
