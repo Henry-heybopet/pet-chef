@@ -519,7 +519,7 @@ const T = {
   'stoolNormal': ['大便正常','Normal','Normal','Normales','Normales','Normali','正常','정상'],
   'stoolSoft': ['软便','Soft','Weich','Molles','Blandas','Molli','軟便','무른 변'],
   'stoolDiarrhea': ['拉肚子','Diarrhea','Durchfall','Diarrhée','Diarrea','Diarrea','下痢','설사'],
-  'deviceFaultLid': ['E01 盖子没有盖好','E01 Lid not closed','E01 Deckel nicht geschlossen','E01 Couvercle mal fermé','E01 Tapa mal cerrada','E01 Coperchio non chiuso','E01 蓋が閉まっていません','E01 뚜껑이 닫히지 않음'],
+  'deviceFaultLid': ['鲜食杯盖子没有盖好','Cup lid not closed','Becherdeckel nicht geschlossen','Couvercle du bol mal fermé','Tapa del vaso mal cerrada','Coperchio del bicchiere non chiuso','カップの蓋が閉まっていません','용기 뚜껑이 닫히지 않음'],
   'deviceFaultCup': ['鲜食杯没有安装好','Cup not installed','Becher nicht eingesetzt','Bol mal installé','Vaso mal instalado','Bicchiere non installato','カップが正しくありません','용기가 설치되지 않음'],
   'deviceFaultMotorBlocked': ['E03 马达堵转','E03 Motor blocked','E03 Motor blockiert','E03 Moteur bloqué','E03 Motor bloqueado','E03 Motore bloccato','E03 モーター停止','E03 모터 막힘'],
   'deviceFaultCupHot': ['E04 鲜食杯温度过高','E04 Cup overheated','E04 Becher überhitzt','E04 Bol surchauffé','E04 Vaso sobrecalentado','E04 Bicchiere surriscaldato','E04 カップ高温','E04 용기 과열'],

@@ -8,9 +8,6 @@ import { isActiveCookingDps, shouldResetAfterCompletion } from '../utils/cooking
 
 const PAIRING_STEPS = ['pairConnectDevice', 'pairSendWifi', 'pairConnectCloud', 'pairBindAccount'];
 const START_CHECKS = [
-  { code: 'ingredients', key: 'startCheckIngredients' },
-  { code: 'water', key: 'startCheckWater' },
-  { code: 'lid', key: 'startCheckLid' },
   { code: 'clear_area', key: 'startCheckClearArea' },
 ];
 const PET_CHEF_PID = 'ak2kofibhuvdtqip';
@@ -728,7 +725,6 @@ function SafetyStartModal({ lidOpen, onCancel, onConfirm }) {
             <label key={item.code} className="cooking-check-item">
               <input
                 type="checkbox"
-                disabled={lidOpen && item.code === 'lid'}
                 checked={Boolean(checked[item.code])}
                 onChange={event => setChecked({ ...checked, [item.code]: event.target.checked })}
               />
@@ -802,12 +798,6 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
         </div>
         <div className="cooking-lux-panel">
           <img src="/machine.jpg" alt={t('cookerImageAlt')} onError={event => { event.currentTarget.src = '/machine.png'; }} />
-          <div className="cooking-lux-metrics">
-            <div><span>🌡️ {t('currentTemperature')}</span><strong>{view.temperature}℃</strong></div>
-            <div><span>🔄 {t('currentSpeed')}</span><strong>{view.speed}</strong></div>
-            <div><span>⚡ {t('currentPower')}</span><strong>{view.power}</strong></div>
-            <div><span>💧 {t('currentStatus')}</span><strong>{view.status}</strong></div>
-          </div>
         </div>
         <div className="cooking-lux-progress">
           <div className={`cooking-lux-stage ${isActive || view.statusCode === 'done' ? 'is-complete' : 'is-active'}`}>
