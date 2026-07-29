@@ -97,6 +97,31 @@ const ADMIN_MODULES = [
   { key: 'subadmins', label: '🔐 子管理员管理' },
 ];
 
+const DEVICE_OPERATION_LABELS = {
+  start_cooking: '启动烹饪',
+  pause: '暂停烹饪',
+  resume: '恢复烹饪',
+  cancel: '取消烹饪',
+  stop: '停止烹饪',
+  complete: '烹饪完成',
+  simulate: '模拟操作',
+};
+
+const DEVICE_OPERATION_STATUS_LABELS = {
+  created: '已创建',
+  running: '进行中',
+  paused: '已暂停',
+  completed: '已完成',
+  failed: '失败',
+  cancelled: '已取消',
+};
+
+function formatAdminTime(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false });
+}
+
 const NUTRITION_FIELDS = [
   ['protein_pct', '粗蛋白：≥', '%'],
   ['fat_pct', '粗脂肪：≥', '%'],
@@ -349,6 +374,8 @@ function App() {
   const [devices, setDevices] = useState([]);
   const [deviceSource, setDeviceSource] = useState('loading');
   const [deviceError, setDeviceError] = useState('');
+  const [deviceOperations, setDeviceOperations] = useState([]);
+  const [deviceOperationError, setDeviceOperationError] = useState('');
 
   // 处方药品维护列表状态
   const [medicines, setMedicines] = useState(MEDICINE_REGISTRY);
@@ -451,6 +478,14 @@ function App() {
   const filteredDevices = useMemo(() => {
     return deviceSource === 'heybo_store' ? devices.filter(d => (d.region || 'CN') === activeRegion) : [];
   }, [activeRegion, devices, deviceSource]);
+
+  const selectedDeviceOperations = useMemo(() => {
+    if (!selectedDevice) return [];
+    return deviceOperations.filter(operation =>
+      operation.device_id === selectedDevice.id ||
+      operation.tuya_device_id === selectedDevice.tuya_device_id
+    );
+  }, [deviceOperations, selectedDevice]);
 
   const filteredProducts = useMemo(() => {
     // 料包做区域隔离，配件全局显示
@@ -565,6 +600,16 @@ function App() {
       setDevices([]);
       setDeviceSource('store_error');
       setDeviceError(error.message);
+    }
+    setDeviceOperationError('');
+    try {
+      const res = await adminFetch('/api/admin/devices/operations');
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '加载设备操作日志失败');
+      setDeviceOperations(data.operations || []);
+    } catch (error) {
+      setDeviceOperations([]);
+      setDeviceOperationError(error.message);
     }
   };
 
@@ -1400,6 +1445,49 @@ function App() {
                         </table>
                       </div>
                     </div>
+
+                    <section className="device-operation-log">
+                      <div className="device-operation-log-header">
+                        <div>
+                          <h5>设备操作日志</h5>
+                          <p>记录用户、宠物、食谱、操作结果及两项喂食反馈</p>
+                        </div>
+                        <span>{selectedDeviceOperations.length} 条</span>
+                      </div>
+                      {deviceOperationError && <p className="inline-error">日志加载失败：{deviceOperationError}</p>}
+                      {!deviceOperationError && selectedDeviceOperations.length === 0 && (
+                        <p className="muted-text">暂无设备操作记录。安装新版 APK 并完成一次操作后会显示在这里。</p>
+                      )}
+                      <div className="device-operation-timeline">
+                        {selectedDeviceOperations.map(operation => (
+                          <article className={`device-operation-event status-${operation.status || 'created'}`} key={operation.id}>
+                            <div className="device-operation-event-head">
+                              <strong>{DEVICE_OPERATION_LABELS[operation.operation_type] || operation.operation_type}</strong>
+                              <span>{DEVICE_OPERATION_STATUS_LABELS[operation.status] || operation.status}</span>
+                              <time>{formatAdminTime(operation.event_at || operation.created_at)}</time>
+                            </div>
+                            <p>
+                              用户：<strong>{operation.user_name || operation.user_id || '-'}</strong>
+                              {' · '}宠物：<strong>{operation.pet_name || '-'}</strong>
+                              {' · '}食谱：<strong>{operation.recipe_name || '-'}</strong>
+                            </p>
+                            <p>
+                              设备：{operation.device_name || selectedDevice.device_name}
+                              {' · '}指令结果：{operation.result === 'success' ? '成功' : '失败'}
+                              {operation.error_code ? ` · 原因：${operation.error_code}` : ''}
+                            </p>
+                            {(operation.feedback || []).map(feedback => (
+                              <div className="device-feeding-feedback" key={feedback.id}>
+                                <strong>喂食反馈</strong>
+                                <span>适口性：{feedback.palatability || '未填写'}</span>
+                                <span>大便状态：{feedback.stool_status || '未填写'}</span>
+                                <time>{formatAdminTime(feedback.fed_at || feedback.created_at)}</time>
+                              </div>
+                            ))}
+                          </article>
+                        ))}
+                      </div>
+                    </section>
                   </div>
                 </div>
               </div>

@@ -304,8 +304,15 @@ router.get('/operations/cooking', authMiddleware, asyncHandler(async (req, res) 
 
 router.post('/operations/cooking', authMiddleware, asyncHandler(async (req, res) => {
   const user = await requireUser(req);
-  const operation = store.createCookingOperation(user.id, req.body || {});
-  res.json({ success: true, operation });
+  const payload = req.body || {};
+  if (payload.pet_id) {
+    const pet = await petRepository.getPetForUser(user.id, payload.pet_id);
+    if (!pet) return res.status(404).json({ success: false, error: 'Pet not found' });
+  }
+  const operation = store.createCookingOperation(user.id, payload, {
+    petOwnershipVerified: Boolean(payload.pet_id),
+  });
+  res.status(201).json({ success: true, operation });
 }));
 
 router.get('/feeding-records', authMiddleware, asyncHandler(async (req, res) => {
@@ -316,8 +323,11 @@ router.get('/feeding-records', authMiddleware, asyncHandler(async (req, res) => 
 
 router.post('/feeding-records', authMiddleware, asyncHandler(async (req, res) => {
   const user = await requireUser(req);
-  const record = store.createRecord('feeding_records', user.id, req.body || {});
-  res.json({ success: true, record });
+  const payload = req.body || {};
+  const pet = await petRepository.getPetForUser(user.id, payload.pet_id);
+  if (!pet) return res.status(404).json({ success: false, error: 'Pet not found' });
+  const record = store.createFeedingRecord(user.id, payload, { petOwnershipVerified: true });
+  res.status(201).json({ success: true, record });
 }));
 
 router.get('/health-records', authMiddleware, asyncHandler(async (req, res) => {

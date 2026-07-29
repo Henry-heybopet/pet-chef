@@ -591,10 +591,10 @@ function createRecord(table, userId, payload) {
   if (!household || !userOwnsHousehold(userId, household.id)) throw new Error('Invalid household');
 
   const record = {
+    ...payload,
     id: id(table.slice(0, 3)),
     user_id: userId,
     household_id: household.id,
-    ...payload,
     created_at: now(),
   };
   db[table].push(record);
@@ -602,7 +602,7 @@ function createRecord(table, userId, payload) {
   return record;
 }
 
-function createCookingOperation(userId, payload = {}) {
+function createCookingOperation(userId, payload = {}, { petOwnershipVerified = false } = {}) {
   const {
     tuya_dp_payload,
     target_temperature_c,
@@ -612,6 +612,41 @@ function createCookingOperation(userId, payload = {}) {
     ...rest
   } = payload;
 
+  const operationTypes = new Set(['start_cooking', 'pause', 'resume', 'cancel', 'complete', 'stop', 'simulate']);
+  const operationType = rest.operation_type || 'start_cooking';
+  if (!operationTypes.has(operationType)) {
+    const error = new Error('Invalid cooking operation type');
+    error.status = 400;
+    throw error;
+  }
+
+  const clientEventId = String(rest.client_event_id || '').trim();
+  if (clientEventId) {
+    const existing = db.cooking_operations.find(item =>
+      item.user_id === userId && item.client_event_id === clientEventId
+    );
+    if (existing) return existing;
+  }
+
+  const deviceRef = rest.device_id || rest.tuya_device_id;
+  const device = deviceRef
+    ? db.devices.find(item =>
+        (item.id === deviceRef || item.tuya_device_id === deviceRef) &&
+        userOwnsHousehold(userId, item.household_id)
+      )
+    : null;
+  if (deviceRef && !device) {
+    const error = new Error('Device not found');
+    error.status = 404;
+    throw error;
+  }
+
+  if (rest.pet_id && !petOwnershipVerified && !getPetForUser(userId, rest.pet_id)) {
+    const error = new Error('Pet not found');
+    error.status = 404;
+    throw error;
+  }
+
   const cookingParams = rest.cooking_params_snapshot || {
     target_temperature_c,
     target_time_seconds,
@@ -619,12 +654,97 @@ function createCookingOperation(userId, payload = {}) {
     target_speed,
   };
 
+  const result = rest.result || 'success';
+  const defaultStatus = {
+    start_cooking: result === 'success' ? 'running' : 'failed',
+    pause: result === 'success' ? 'paused' : 'failed',
+    resume: result === 'success' ? 'running' : 'failed',
+    cancel: result === 'success' ? 'cancelled' : 'failed',
+    stop: result === 'success' ? 'cancelled' : 'failed',
+    complete: result === 'success' ? 'completed' : 'failed',
+    simulate: result === 'success' ? 'completed' : 'failed',
+  }[operationType];
+  const eventAt = rest.event_at || rest.completed_at || rest.started_at || now();
+
   return createRecord('cooking_operations', userId, {
-    operation_type: rest.operation_type || 'start_cooking',
-    status: rest.status || (rest.result === 'success' ? 'completed' : 'created'),
     ...rest,
+    client_event_id: clientEventId || id('cev'),
+    session_id: String(rest.session_id || clientEventId || id('cook')),
+    operation_type: operationType,
+    status: rest.status || defaultStatus,
+    result,
+    event_at: eventAt,
+    device_id: device?.id || rest.device_id || '',
+    tuya_device_id: device?.tuya_device_id || rest.tuya_device_id || '',
+    device_name: rest.device_name || device?.device_name || '',
+    total_weight_g: Number(rest.total_weight_g ?? rest.total_weight_gram ?? 0) || 0,
     cooking_params_snapshot: cookingParams,
     tuya_command_snapshot: rest.tuya_command_snapshot || tuya_dp_payload,
+    completed_at: rest.completed_at || (['cancel', 'stop', 'complete'].includes(operationType) ? eventAt : undefined),
+  });
+}
+
+function createFeedingRecord(userId, payload = {}, { petOwnershipVerified = false } = {}) {
+  if (!payload.pet_id || (!petOwnershipVerified && !getPetForUser(userId, payload.pet_id))) {
+    const error = new Error('Pet not found');
+    error.status = 404;
+    throw error;
+  }
+
+  const clientEventId = String(payload.client_event_id || '').trim();
+  if (clientEventId) {
+    const existing = db.feeding_records.find(item =>
+      item.user_id === userId && item.client_event_id === clientEventId
+    );
+    if (existing) return existing;
+  }
+
+  const sessionId = String(payload.session_id || payload.cooking_session_id || '').trim();
+  if (sessionId && !db.cooking_operations.some(item =>
+    item.user_id === userId && item.session_id === sessionId
+  )) {
+    const error = new Error('Cooking session not found');
+    error.status = 404;
+    throw error;
+  }
+
+  return createRecord('feeding_records', userId, {
+    ...payload,
+    client_event_id: clientEventId || id('fev'),
+    session_id: sessionId,
+    fed_at: payload.fed_at || payload.feeding_at || now(),
+    palatability: String(payload.palatability || '').trim(),
+    stool_status: String(payload.stool_status || '').trim(),
+  });
+}
+
+function listAdminCookingOperations({ deviceId = '', limit = 500 } = {}) {
+  const normalizedDeviceId = String(deviceId || '').trim();
+  const rows = db.cooking_operations
+    .filter(item => !normalizedDeviceId || item.device_id === normalizedDeviceId || item.tuya_device_id === normalizedDeviceId)
+    .sort((a, b) => new Date(b.event_at || b.created_at) - new Date(a.event_at || a.created_at))
+    .slice(0, Math.max(1, Math.min(Number(limit) || 500, 1000)));
+
+  return rows.map(operation => {
+    const user = db.users.find(item => item.id === operation.user_id);
+    const pet = db.pets.find(item => item.id === operation.pet_id);
+    const device = db.devices.find(item =>
+      item.id === operation.device_id || item.tuya_device_id === operation.tuya_device_id
+    );
+    const feedback = db.feeding_records
+      .filter(item =>
+        (operation.session_id && item.session_id === operation.session_id) ||
+        item.cooking_operation_id === operation.id
+      )
+      .sort((a, b) => new Date(b.fed_at || b.created_at) - new Date(a.fed_at || a.created_at));
+
+    return {
+      ...operation,
+      user_name: user?.display_name || user?.nickname || user?.login || operation.user_id,
+      pet_name: operation.pet_name || pet?.name || '',
+      device_name: operation.device_name || device?.device_name || '',
+      feedback: operation.operation_type === 'start_cooking' ? feedback : [],
+    };
   });
 }
 
@@ -776,6 +896,8 @@ module.exports = {
   bindDevicePet,
   createRecord,
   createCookingOperation,
+  createFeedingRecord,
+  listAdminCookingOperations,
   createOrder,
   getOrder,
   createPayment,

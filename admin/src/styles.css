@@ -2153,3 +2153,113 @@ a {
   background: #fff3d7;
   color: #b7791f;
 }
+
+.device-operation-log {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.device-operation-log-header,
+.device-operation-event-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.device-operation-log-header {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.device-operation-log-header h5,
+.device-operation-log-header p {
+  margin: 0;
+}
+
+.device-operation-log-header p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-operation-log-header > span {
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: var(--panel-soft);
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.device-operation-timeline {
+  display: grid;
+  gap: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.device-operation-event {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 4px solid #94a3b8;
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.device-operation-event.status-running {
+  border-left-color: #0ea5e9;
+}
+
+.device-operation-event.status-paused {
+  border-left-color: #f59e0b;
+}
+
+.device-operation-event.status-completed {
+  border-left-color: #10b981;
+}
+
+.device-operation-event.status-failed {
+  border-left-color: #ef4444;
+}
+
+.device-operation-event.status-cancelled {
+  border-left-color: #64748b;
+}
+
+.device-operation-event-head span {
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.device-operation-event-head time {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.device-operation-event p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-feeding-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: #eefbf4;
+  color: #166534;
+  font-size: 12px;
+}
+
+.device-feeding-feedback time {
+  margin-left: auto;
+}

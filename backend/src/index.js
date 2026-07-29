@@ -370,6 +370,34 @@ function tuyaRowsToDps(rows = []) {
   return Object.fromEntries(rows.map(item => [item.code ?? item.dpId ?? item.dp_id ?? item.dpCode, item.value]));
 }
 
+app.get('/api/v1/admin/devices/operations', async (req, res) => {
+  let operations = store.listAdminCookingOperations({
+    deviceId: req.query.device_id,
+    limit: req.query.limit,
+  });
+  try {
+    const [users, pets] = await Promise.all([
+      userRepository.listAdminUsers(),
+      petRepository.listAdminPets(),
+    ]);
+    const usersById = Object.fromEntries(users.map(user => [user.id, user]));
+    const petsById = Object.fromEntries(pets.map(pet => [pet.id, pet]));
+    operations = operations.map(operation => ({
+      ...operation,
+      user_name: usersById[operation.user_id]?.display_name || operation.user_name,
+      pet_name: operation.pet_name || petsById[operation.pet_id]?.name || '',
+    }));
+  } catch (error) {
+    console.warn('Admin device operation identity enrichment skipped:', error.message);
+  }
+  res.json({
+    success: true,
+    operations,
+    count: operations.length,
+    source: 'heybo_store',
+  });
+});
+
 app.get('/api/v1/admin/devices', async (req, res) => {
   const devices = await Promise.all((store.db.devices || [])
     .filter(device => !/^(demo_|web_)/.test(String(device.tuya_device_id || '')))
