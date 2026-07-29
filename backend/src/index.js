@@ -11,7 +11,7 @@ const { breedsDb } = require('./data/breeds_db');
 const { analyzeBreedNutrition, generateAIRecipe, compareRecipeSelection, compareRecipeSelectionBatch } = require('./services/gemini');
 const { evaluatePetBCS } = require('./services/deepseek');
 const { validateIngredientSafety, hasToxicIngredients, hasCautionIngredients, generateSafetyWarnings } = require('./services/safety_filter');
-const { startCooking, pauseCooking, stopCooking, getDeviceStatus } = require('./services/tuya');
+const { startCooking, pauseCooking, stopCooking, getDeviceStatus, getDeviceDetails } = require('./services/tuya');
 const { calcCookingParams, calcDailyIntake, calcRecipeFeedingPlan, calcIngredientGrams } = require('./services/cooking_engine');
 const { recommendationScoreFromValidation, referenceFeedingPlanForPet } = require('./services/nutrition_energy');
 const heyboRoutes = require('./routes/heybo');
@@ -375,16 +375,21 @@ app.get('/api/v1/admin/devices', async (req, res) => {
     .filter(device => !/^(demo_|web_)/.test(String(device.tuya_device_id || '')))
     .map(async device => {
       try {
-        const status = await getDeviceStatus(device.tuya_device_id);
-        const dps = tuyaRowsToDps(status.result || []);
+        const details = await getDeviceDetails(device.tuya_device_id);
+        const cloudDevice = details.result || {};
+        const dps = tuyaRowsToDps(cloudDevice.status || []);
+        const online = cloudDevice.online === true;
         const fault = petChefFault(dps.fault ?? dps[12]);
         return {
           ...device,
+          status: online ? 'online' : 'offline',
           region: 'CN',
           dps,
-          last_dp_reported_at: new Date().toISOString(),
+          last_dp_reported_at: cloudDevice.update_time
+            ? new Date(Number(cloudDevice.update_time) * 1000).toISOString()
+            : device.last_dp_reported_at,
           telemetry: {
-            online: true,
+            online,
             current_temp: dps.temperature ?? dps.cook_temperature ?? '-',
             motor_speed: petChefSpeed(dps.cook_mode_speed ?? dps[108]),
             motor_power: petChefPower(dps.cook_mode_power ?? dps[102]),
@@ -401,9 +406,10 @@ app.get('/api/v1/admin/devices', async (req, res) => {
       } catch (error) {
         return {
           ...device,
+          status: 'unknown',
           region: 'CN',
           telemetry: {
-            online: device.status !== 'offline',
+            online: null,
             current_temp: '-',
             motor_speed: '-',
             water_tank_level: '-',

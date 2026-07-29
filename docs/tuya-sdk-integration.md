@@ -78,6 +78,10 @@ frontend/android/app/libs/security-algorithm-1.0.0-beta.aar
 2D:D3:16:F0:FD:7B:E9:AD:FE:D0:EE:1C:C9:10:FA:17:92:3A:6C:00:54:84:52:A9:03:73:F8:11:86:DB:12:97
 ```
 
+管理后台设备列表每次加载时通过涂鸦 `GET /v1.0/devices/{device_id}`
+读取设备详情。页面在线状态必须使用响应中的布尔字段 `online`，不能因为
+`/status` 能返回最后一次 DP 值就判定设备在线；云端请求失败时显示“状态未知”。
+
 ## iOS
 
 iOS 开发版 SDK 已构建并下载。

@@ -144,6 +144,34 @@ async function getDeviceStatus(deviceId = DEVICE_ID) {
 }
 
 /**
+ * 获取设备详情（包含实时 online 状态和最新 DP 状态）
+ */
+async function getDeviceDetails(deviceId = DEVICE_ID) {
+  return requestWithRetry(async () => {
+    const token = await getToken();
+    const t = Date.now().toString();
+    const nonce = crypto.randomUUID();
+    const path = `/v1.0/devices/${deviceId}`;
+    const sign = generateSign(ACCESS_ID, SECRET, t, nonce, 'GET', path, '', token);
+
+    const res = await axios.get(`${BASE_URL}${path}`, {
+      headers: {
+        'client_id': ACCESS_ID,
+        'access_token': token,
+        'sign': sign,
+        'sign_method': 'HMAC-SHA256',
+        't': t,
+        'nonce': nonce,
+      },
+      timeout: REQUEST_TIMEOUT,
+    });
+
+    if (!res.data.success) throw new Error(`Tuya device details error: ${res.data.msg}`);
+    return res.data;
+  });
+}
+
+/**
  * 启动鲜食机烹饪
  * @param {Object} params - { temperature, power, speed, cook_time }
  */
@@ -181,4 +209,4 @@ async function stopCooking() {
   ]);
 }
 
-module.exports = { startCooking, pauseCooking, stopCooking, getDeviceStatus };
+module.exports = { startCooking, pauseCooking, stopCooking, getDeviceStatus, getDeviceDetails };
