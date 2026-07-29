@@ -25,6 +25,18 @@ const stylesSource = fs.readFileSync(
   path.join(frontendRoot, 'src/index.css'),
   'utf8',
 );
+const nativeBridgeSource = fs.readFileSync(
+  path.join(frontendRoot, 'src/native/heyboTuya.js'),
+  'utf8',
+);
+const androidAdapterSource = fs.readFileSync(
+  path.join(frontendRoot, 'android/app/src/main/java/com/heybopet/petchef/device/TuyaDeviceAdapterImpl.java'),
+  'utf8',
+);
+const androidCommandSource = fs.readFileSync(
+  path.join(frontendRoot, 'android/app/src/main/java/com/heybopet/petchef/device/DeviceCommand.java'),
+  'utf8',
+);
 
 test('启动前确认只保留幼童和宠物安全项', () => {
   const checksBlock = cookingSource.match(/const START_CHECKS = \[([\s\S]*?)\];/)?.[1] || '';
@@ -82,4 +94,17 @@ test('王牌优品宠物鲜食按每份100克提供1至8份', () => {
 test('一键烹饪总时长不再叠加历史预热时间', () => {
   assert.doesNotMatch(cookingSource, /legacyPreheatMinutes/);
   assert.match(cookingSource, /Number\(cookMinutes\) \* 60/);
+});
+
+test('实机使用DP7计划时长且App在计划截止时主动复位停机', () => {
+  assert.match(cookingSource, /runtimeDps = \{[^}]*7: cookTime[^}]*107: 'start'/);
+  assert.match(cookingSource, /HeyboTuya\.startDiyCooking\(/);
+  assert.match(cookingSource, /shouldAutoCompleteCooking\(/);
+  assert.match(cookingSource, /completionHandlerRef\.current\?\.\(\{ devId, dps \}\)/);
+  assert.match(cookingSource, /HeyboTuya\.resetCooking\(\{ devId \}\)/);
+  assert.match(cookingSource, /withoutReportedRemaining\(serverDps\)/);
+  assert.match(nativeBridgeSource, /await this\.publishDps\(\{ devId, dps \}\);\s*await this\.publishDps\(\{ devId, dps: \{ 107: 'start' \} \}\);/);
+  assert.match(androidCommandSource, /dps\.put\(DP_COOK_TIME, cookTime\)/);
+  assert.doesNotMatch(androidCommandSource, /dps\.put\(DP_COOK_START_PAUSE_RESET, "start"\)/);
+  assert.match(androidAdapterSource, /publishDps\(DeviceCommand\.diyCooking[\s\S]*?publishDps\(DeviceCommand\.cookingAction\(devId, "start"\), callback\)/);
 });

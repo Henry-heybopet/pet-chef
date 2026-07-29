@@ -294,7 +294,13 @@ public class TuyaDeviceAdapterImpl implements TuyaDeviceAdapter {
             callback.onResult(TuyaDeviceResult.fail(TuyaDeviceError.INVALID_ARGUMENT, "cookTime seconds is required."));
             return;
         }
-        publishDps(DeviceCommand.diyCooking(devId, temperature, cookTime, power, speed), callback);
+        publishDps(DeviceCommand.diyCooking(devId, temperature, cookTime, power, speed), parameterResult -> {
+            if (!parameterResult.success) {
+                callback.onResult(parameterResult);
+                return;
+            }
+            publishDps(DeviceCommand.cookingAction(devId, "start"), callback);
+        });
     }
 
     @Override

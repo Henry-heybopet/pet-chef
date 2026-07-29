@@ -243,7 +243,6 @@ class HeyboTuyaWeb extends WebPlugin {
     const device = this.devices.find(d => d.devId === devId);
     if (device) {
       device.dps = { ...device.dps, ...dps };
-      if (dps?.[107] === 'start' && dps?.[7] !== undefined) device.dps[8] = Number(dps[7]);
       // Echo back immediately
       setTimeout(() => {
         this.notifyListeners('dpUpdate', {
@@ -257,11 +256,14 @@ class HeyboTuyaWeb extends WebPlugin {
 
   async startDiyCooking({ devId, temperature = 85, cookTime = 1200, power = 8, speed = '1' }) {
     const dps = buildPetChefDiyDps({ temperature, cookTime, power, speed });
+    const device = this.devices.find(item => item.devId === devId);
+    if (device) device.dps[8] = Number(cookTime);
     await this.publishDps({ devId, dps });
+    await this.publishDps({ devId, dps: { 107: 'start' } });
     return {
       success: true,
       devId,
-      dps: JSON.stringify(dps),
+      dps: JSON.stringify({ ...dps, 107: 'start' }),
     };
   }
 
@@ -307,7 +309,6 @@ export function buildPetChefDiyDps({ temperature = 85, cookTime, power = 8, spee
     7: cookTime,
     9: temperature,
     102: power,
-    107: 'start',
     108: speed,
   };
 }

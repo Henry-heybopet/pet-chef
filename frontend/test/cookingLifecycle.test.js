@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  isCompletedCookingDps,
   resolveCookingRemainingSeconds,
+  shouldAutoCompleteCooking,
   shouldResetAfterCompletion,
 } from '../src/utils/cookingLifecycle.js';
 
@@ -16,14 +18,12 @@ test('完成状态每轮只触发一次复位，下一轮启动后允许再次�
   assert.equal(shouldResetAfterCompletion(resetDevices, devId, { status: 'complete' }), true);
 });
 
-test('设备剩余时间归零也会结束当前烹饪且只复位一次', () => {
-  const resetDevices = new Set();
-  const dps = { 5: 'cooking', 7: 900, 8: 0, 107: 'start' };
-  assert.equal(shouldResetAfterCompletion(resetDevices, 'device-1', dps), true);
-  assert.equal(shouldResetAfterCompletion(resetDevices, 'device-1', dps), false);
+test('不把实机长期为0的DP8误判为完成，只接受明确完成状态', () => {
+  assert.equal(isCompletedCookingDps({ 5: 'cooking', 7: 0, 8: 0, 107: 'start' }), false);
+  assert.equal(isCompletedCookingDps({ 5: 'done', 7: 0, 8: 0, 107: 'start' }), true);
 });
 
-test('倒计时拒绝超过本轮计划时长的旧DP8，并接受有效值和0', () => {
+test('倒计时拒绝超过计划时长及提前归零的旧DP8', () => {
   assert.equal(resolveCookingRemainingSeconds({
     totalSeconds: 900,
     reportedRemaining: 970,
@@ -39,7 +39,13 @@ test('倒计时拒绝超过本轮计划时长的旧DP8，并接受有效值和0'
   assert.equal(resolveCookingRemainingSeconds({
     totalSeconds: 900,
     reportedRemaining: 0,
-    elapsedSeconds: 900,
+    elapsedSeconds: 1,
     isActive: true,
-  }), 0);
+  }), 899);
+});
+
+test('只有运行中的本地截止时间到达后才触发自动完成', () => {
+  assert.equal(shouldAutoCompleteCooking({ totalSeconds: 780, elapsedMs: 779999, isRunning: true }), false);
+  assert.equal(shouldAutoCompleteCooking({ totalSeconds: 780, elapsedMs: 780000, isRunning: true }), true);
+  assert.equal(shouldAutoCompleteCooking({ totalSeconds: 780, elapsedMs: 900000, isRunning: false }), false);
 });

@@ -28,7 +28,6 @@ public class DeviceCommand {
         dps.put(DP_COOK_TIME, cookTime);
         dps.put(DP_COOK_MODE_POWER, power);
         dps.put(DP_COOK_MODE_SPEED, speed);
-        dps.put(DP_COOK_START_PAUSE_RESET, "start");
         return new DeviceCommand(devId, dps);
     }
 
