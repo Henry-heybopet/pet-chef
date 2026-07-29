@@ -1434,13 +1434,16 @@ function App() {
                             </tr>
                           </thead>
                           <tbody>
-                            {Object.entries(selectedDevice.telemetry).map(([key, val]) => (
-                              <tr key={key}>
-                                <td><code>{key}</code></td>
-                                <td>{key === 'online' ? '通信状态' : key === 'error_code' ? '故障自检码' : '传感器上报'}</td>
-                                <td><strong style={{ color: val.toString().includes('E') ? 'red' : 'inherit' }}>{val.toString()}</strong></td>
-                              </tr>
-                            ))}
+                            {Object.entries(selectedDevice.telemetry || {}).map(([key, val]) => {
+                              const displayValue = val === null || val === undefined || val === '' ? '-' : String(val);
+                              return (
+                                <tr key={key}>
+                                  <td><code>{key}</code></td>
+                                  <td>{key === 'online' ? '通信状态' : key === 'error_code' ? '故障自检码' : '传感器上报'}</td>
+                                  <td><strong style={{ color: displayValue.includes('E') ? 'red' : 'inherit' }}>{displayValue}</strong></td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
