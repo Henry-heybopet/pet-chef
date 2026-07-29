@@ -1164,6 +1164,11 @@ body {
   line-height: 1.15;
 }
 
+.cooking-hero-copy h1 {
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.72);
+}
+
 .cooking-hero-copy p,
 .cooking-center-page p,
 .cooking-center-card span,
@@ -1174,6 +1179,11 @@ body {
   color: var(--theme-text-secondary);
   font-size: 13px;
   line-height: 1.55;
+}
+
+.cooking-hero-copy p {
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.78);
 }
 
 .cooking-add-button {
@@ -1274,6 +1284,19 @@ body {
   display: block;
   font-size: 12px;
   line-height: 1.35;
+}
+
+.cooking-record-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.cooking-record-row .cooking-record-feedback {
+  display: block;
+  margin-top: 6px;
+  color: var(--theme-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .cooking-record-row .cooking-center-btn {

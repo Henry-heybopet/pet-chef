@@ -106,6 +106,12 @@ const STOOL_OPTIONS = [
   { code: 'soft', value: '软便', key: 'stoolSoft' },
   { code: 'diarrhea', value: '拉肚子', key: 'stoolDiarrhea' },
 ];
+
+function feedbackOptionLabel(value, options, t) {
+  const option = options.find(item => item.value === value || item.code === value);
+  return option ? t(option.key) : value;
+}
+
 const SPEED_RPM = { 0: 0, 1: 60, 2: 120, 3: 230, 4: 500, 5: 1200, 6: 2500, 7: 4000, 8: 5500, 9: 7500, 10: 9500 };
 const FAULT_KEYS = {
   1: 'deviceFaultLid',
@@ -712,17 +718,27 @@ function RecordRow({ record, onFeedback }) {
   const t = useTranslation(lang);
   const date = formatDate(record.operation?.started_at || record.operation?.created_at, lang);
   const recipeName = tData(record.recipeName, lang);
+  const feedback = record.feedback;
   return (
     <div className="cooking-record-row">
-      <div>
+      <div className="cooking-record-copy">
         <strong>{t('cookingRecordSentence', { date, device: record.operation?.device_name || t('defaultCookerName'), pet: record.petName, recipe: recipeName })}</strong>
+        {feedback && (
+          <span className="cooking-record-feedback">
+            {t('palatability')}：{feedbackOptionLabel(feedback.palatability, PALATABILITY_OPTIONS, t)}
+            {'｜'}
+            {t('stoolStatus')}：{feedbackOptionLabel(feedback.stool_status, STOOL_OPTIONS, t)}
+          </span>
+        )}
       </div>
-      <GhostButton onClick={() => onFeedback(record)}>{t('feedingFeedback')}</GhostButton>
+      <GhostButton disabled={Boolean(feedback)} onClick={() => onFeedback(record)}>
+        {feedback ? t('feedbackSubmitted') : t('feedingFeedback')}
+      </GhostButton>
     </div>
   );
 }
 
-function FeedbackModal({ record, onCancel, onConfirm }) {
+function FeedbackModal({ record, saving, onCancel, onConfirm }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
   const [palatability, setPalatability] = useState(null);
@@ -742,8 +758,8 @@ function FeedbackModal({ record, onCancel, onConfirm }) {
           {STOOL_OPTIONS.map(item => <button key={item.code} className={stool?.code === item.code ? 'is-active' : ''} onClick={() => setStool(item)}>{t(item.key)}</button>)}
         </div>
         <div className="cooking-feedback-actions">
-          <GhostButton onClick={onCancel}>{t('cancelBtn')}</GhostButton>
-          <PrimaryButton disabled={!palatability || !stool} onClick={() => onConfirm({ palatability: palatability.value, stool: stool.value })}>{t('confirm')}</PrimaryButton>
+          <GhostButton disabled={saving} onClick={onCancel}>{t('cancelBtn')}</GhostButton>
+          <PrimaryButton disabled={saving || !palatability || !stool} onClick={() => onConfirm({ palatability: palatability.value, stool: stool.value })}>{t('confirm')}</PrimaryButton>
         </div>
       </div>
     </div>
@@ -902,12 +918,14 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const [pets, setPets] = useState([]);
   const [recipes, setRecipes] = useState([]);
   const [operations, setOperations] = useState([]);
+  const [feedingRecords, setFeedingRecords] = useState([]);
   const [lastStatusAt, setLastStatusAt] = useState('');
   const [liveStatusError, setLiveStatusError] = useState('');
   const [selectedDevId, setSelectedDevId] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [detailDevice, setDetailDevice] = useState(null);
   const [feedbackRecord, setFeedbackRecord] = useState(null);
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [startConfirmOpen, setStartConfirmOpen] = useState(false);
   const [unbindTarget, setUnbindTarget] = useState(null);
   const [message, setMessage] = useState('');
@@ -930,6 +948,8 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const petsById = useMemo(() => Object.fromEntries(pets.map(pet => [pet.id, pet])), [pets]);
   const records = useMemo(() => {
     const latestBySession = {};
+    const latestFeedback = [...feedingRecords]
+      .sort((a, b) => new Date(b.fed_at || b.created_at || 0) - new Date(a.fed_at || a.created_at || 0));
     [...operations]
       .sort((a, b) => new Date(b.event_at || b.created_at || 0) - new Date(a.event_at || a.created_at || 0))
       .forEach(operation => {
@@ -938,13 +958,22 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       });
     return operations
       .filter(operation => operation.operation_type === 'start_cooking' || !operation.operation_type)
-      .map(operation => makeRecord({
-        ...operation,
-        status: latestBySession[operation.session_id || operation.id]?.status || operation.status,
-      }, recipesById, petsById, pets[0], lang, t))
+      .map(operation => {
+        const feedback = latestFeedback.find(item =>
+          (operation.session_id && item.session_id === operation.session_id)
+          || item.cooking_operation_id === operation.id
+        );
+        return {
+          ...makeRecord({
+            ...operation,
+            status: latestBySession[operation.session_id || operation.id]?.status || operation.status,
+          }, recipesById, petsById, pets[0], lang, t),
+          feedback,
+        };
+      })
       .sort((a, b) => new Date(b.operation?.created_at || 0) - new Date(a.operation?.created_at || 0));
   },
-    [operations, recipesById, petsById, pets, lang],
+    [operations, feedingRecords, recipesById, petsById, pets, lang],
   );
   const selectedDeviceRecords = useMemo(() => {
     const view = getDeviceView(selectedDevice, t);
@@ -987,11 +1016,12 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const refreshData = async () => {
     if (!authToken) return;
     try {
-      const [deviceResult, petResult, recipeResult, operationResult] = await Promise.all([
+      const [deviceResult, petResult, recipeResult, operationResult, feedingResult] = await Promise.all([
         api.listDevices(authToken),
         api.listPets(authToken),
         api.getRecipes({ all: 1 }),
         api.listCookingOperations(authToken),
+        api.listFeedingRecords(authToken),
       ]);
       const serverDevices = uniqueDevices((deviceResult.devices || []).map(device => ({ ...device, devId: device.tuya_device_id || device.devId })));
       setDevices(prev => {
@@ -1012,6 +1042,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       setPets(petResult.pets || []);
       setRecipes(recipeResult.recipes || []);
       setOperations(operationResult.operations || []);
+      setFeedingRecords(feedingResult.records || []);
       if (serverDevices[0]) setSelectedDevId(prev => prev || serverDevices[0].devId);
       setLastStatusAt(new Date().toISOString());
       setLiveStatusError('');
@@ -1462,22 +1493,42 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   };
 
   const handleFeedbackSave = async (feedback) => {
-    if (!feedbackRecord) return;
-    await api.createFeedingRecord({
-      pet_id: feedbackRecord.petId,
-      pet_name: feedbackRecord.petName,
-      recipe_id: feedbackRecord.recipeId,
-      recipe_name: feedbackRecord.recipeName,
-      fed_at: new Date().toISOString(),
-      palatability: feedback.palatability,
-      stool_status: feedback.stool,
-      cooking_operation_id: feedbackRecord.id,
-      session_id: feedbackRecord.operation?.session_id || '',
-      client_event_id: uniqueEventId('feedback'),
-      // TODO: 后端提供食谱优化画像字段后，把反馈聚合回 recipe 画像。
-    }, authToken);
-    setFeedbackRecord(null);
-    setMessage(t('feedingFeedbackSaved'));
+    if (!feedbackRecord || feedbackSaving) return;
+    setFeedbackSaving(true);
+    try {
+      const result = await api.createFeedingRecord({
+        pet_id: feedbackRecord.petId,
+        pet_name: feedbackRecord.petName,
+        recipe_id: feedbackRecord.recipeId,
+        recipe_name: feedbackRecord.recipeName,
+        fed_at: new Date().toISOString(),
+        palatability: feedback.palatability,
+        stool_status: feedback.stool,
+        cooking_operation_id: feedbackRecord.id,
+        session_id: feedbackRecord.operation?.session_id || '',
+        client_event_id: feedbackRecord.feedbackClientEventId,
+        // TODO: 后端提供食谱优化画像字段后，把反馈聚合回 recipe 画像。
+      }, authToken);
+      if (result.record) {
+        setFeedingRecords(prev => prev.some(item => item.id === result.record.id)
+          ? prev
+          : [result.record, ...prev]);
+      }
+      setFeedbackRecord(null);
+      setMessage(t('feedingFeedbackSaved'));
+    } catch (error) {
+      setMessage(error?.message || t('feedingFeedbackSaveFailed'));
+    } finally {
+      setFeedbackSaving(false);
+    }
+  };
+
+  const openFeedback = record => {
+    if (record.feedback) return;
+    setFeedbackRecord({
+      ...record,
+      feedbackClientEventId: uniqueEventId('feedback'),
+    });
   };
 
   const handleUnbind = async () => {
@@ -1536,7 +1587,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
 
       <section className="cooking-center-section cooking-records-section">
         <h2>{t('usageRecords')}</h2>
-        {records.length ? records.map(record => <RecordRow key={record.id} record={record} onFeedback={setFeedbackRecord} />) : <div className="cooking-center-card">{t('noUsageRecordsHelp')}</div>}
+        {records.length ? records.map(record => <RecordRow key={record.id} record={record} onFeedback={openFeedback} />) : <div className="cooking-center-card">{t('noUsageRecordsHelp')}</div>}
       </section>
 
       {message && <div className="cooking-toast">{message}</div>}
@@ -1565,7 +1616,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
           onStop={handleStopCooking}
         />
       )}
-      {feedbackRecord && <FeedbackModal record={feedbackRecord} onCancel={() => setFeedbackRecord(null)} onConfirm={handleFeedbackSave} />}
+      {feedbackRecord && <FeedbackModal record={feedbackRecord} saving={feedbackSaving} onCancel={() => setFeedbackRecord(null)} onConfirm={handleFeedbackSave} />}
       {startConfirmOpen && <SafetyStartModal lidOpen={isLidOpenFault(parseDps(selectedDevice))} onCancel={() => setStartConfirmOpen(false)} onConfirm={handleStartCooking} />}
 
       {unbindTarget && (

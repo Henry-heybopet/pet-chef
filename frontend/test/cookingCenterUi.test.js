@@ -13,6 +13,14 @@ const translationsSource = fs.readFileSync(
   path.join(frontendRoot, 'src/i18n/translations.js'),
   'utf8',
 );
+const apiSource = fs.readFileSync(
+  path.join(frontendRoot, 'src/api/index.js'),
+  'utf8',
+);
+const stylesSource = fs.readFileSync(
+  path.join(frontendRoot, 'src/index.css'),
+  'utf8',
+);
 
 test('启动前确认只保留幼童和宠物安全项', () => {
   const checksBlock = cookingSource.match(/const START_CHECKS = \[([\s\S]*?)\];/)?.[1] || '';
@@ -29,4 +37,17 @@ test('杯盖故障文案不显示 E01 代码', () => {
   const lidFaultLine = translationsSource.match(/'deviceFaultLid': \[([^\n]+)\]/)?.[1] || '';
   assert.match(lidFaultLine, /鲜食杯盖子没有盖好/);
   assert.doesNotMatch(lidFaultLine, /E01/);
+});
+
+test('喂食反馈保存后可读回并显示已反馈状态与反馈内容', () => {
+  assert.match(apiSource, /listFeedingRecords:.*\/api\/feeding-records/);
+  assert.match(cookingSource, /setFeedingRecords\(feedingResult\.records \|\| \[\]\)/);
+  assert.match(cookingSource, /feedback \? t\('feedbackSubmitted'\) : t\('feedingFeedback'\)/);
+  assert.match(cookingSource, /feedback\.palatability/);
+  assert.match(cookingSource, /feedback\.stool_status/);
+});
+
+test('烹饪中心主图文字使用高对比浅色', () => {
+  assert.match(stylesSource, /\.cooking-hero-copy h1\s*\{[^}]*color:\s*#fff/s);
+  assert.match(stylesSource, /\.cooking-hero-copy p\s*\{[^}]*color:\s*rgba\(255,\s*255,\s*255,\s*0\.9\)/s);
 });

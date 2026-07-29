@@ -104,6 +104,7 @@ export const api = {
   syncDeviceDp: (deviceId, body, token) => authedPost(`/api/devices/${encodeURIComponent(deviceId)}/dp-sync`, body, token),
   recordCookingOperation: (body, token) => authedPost('/api/operations/cooking', body, token),
   listCookingOperations: (token) => authedGet('/api/operations/cooking', token),
+  listFeedingRecords: (token) => authedGet('/api/feeding-records', token),
   createFeedingRecord: (body, token) => authedPost('/api/feeding-records', body, token),
   createHealthRecord: (body, token) => authedPost('/api/health-records', body, token),
   createMedicalRecord: (body, token) => authedPost('/api/medical-records', body, token),
