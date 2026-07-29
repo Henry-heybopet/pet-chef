@@ -54,13 +54,11 @@ test('200至800克使用统一固定时长表且不再叠加预热', () => {
   }
 });
 
-test('非整百克向上取档，超过800克拒绝计算', () => {
-  assert.deepEqual(
-    [calcCookingParams(recipe, 101).weight_bucket_grams, calcCookingParams(recipe, 101).cook_minutes],
-    [200, 15],
-  );
-  assert.throws(
-    () => calcCookingParams(recipe, 801),
-    error => error.code === 'INVALID_COOK_WEIGHT',
-  );
+test('只接受用户可选择的100至800克整百份数', () => {
+  for (const invalidGrams of [99, 101, 801]) {
+    assert.throws(
+      () => calcCookingParams(recipe, invalidGrams),
+      error => error.code === 'INVALID_COOK_WEIGHT',
+    );
+  }
 });

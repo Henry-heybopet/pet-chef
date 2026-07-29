@@ -1087,8 +1087,8 @@ app.post('/api/v1/cook/params', async (req, res) => {
 
   // 使用传入的克数（每餐），或自动计算；鲜食机单次最多加工 800g。
   const cookGrams = Number(totalGrams ?? intake.per_meal_grams);
-  if (!Number.isFinite(cookGrams) || cookGrams <= 0 || cookGrams > 800) {
-    return res.status(400).json({ success: false, error: 'totalGrams must be between 1 and 800' });
+  if (!Number.isFinite(cookGrams) || cookGrams < 100 || cookGrams > 800 || cookGrams % 100 !== 0) {
+    return res.status(400).json({ success: false, error: 'totalGrams must be one of 100, 200, 300, 400, 500, 600, 700, 800' });
   }
   const cookParams = calcCookingParams(recipe, cookGrams);
   const ingredientList = calcIngredientGrams(recipe.ingredients, cookGrams);

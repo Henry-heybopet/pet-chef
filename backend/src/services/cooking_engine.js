@@ -33,13 +33,13 @@ const COOK_MINUTES_BY_WEIGHT = Object.freeze({
 
 function cookingDuration(recipe, totalGrams) {
   const grams = Number(totalGrams);
-  if (!Number.isFinite(grams) || grams <= 0 || grams > 800) {
-    const error = new Error('totalGrams must be between 1 and 800');
+  if (!Number.isFinite(grams) || grams < 100 || grams > 800 || grams % 100 !== 0) {
+    const error = new Error('totalGrams must be one of 100, 200, 300, 400, 500, 600, 700, 800');
     error.code = 'INVALID_COOK_WEIGHT';
     throw error;
   }
 
-  const weight_bucket_grams = Math.max(100, Math.ceil(grams / 100) * 100);
+  const weight_bucket_grams = grams;
   const configured100gMinutes = Number(recipe?.cooking_base?.cook_minutes);
   const hasConfigured100gMinutes = Number.isFinite(configured100gMinutes) && configured100gMinutes > 0;
   const base_cook_minutes = hasConfigured100gMinutes
