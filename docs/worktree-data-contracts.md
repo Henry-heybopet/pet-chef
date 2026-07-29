@@ -55,6 +55,7 @@
 | `tuya_device_id` | Tuya 设备 ID | 工厂/涂鸦返回 | 外部设备 ID，不替代 `device_id` |
 | `tuya_pid` | Tuya 产品 PID | `ak2kofibhuvdtqip` | 标识硬件产品定义 |
 | `tuya_home_id` | Tuya 家庭 ID | Tuya 返回 | 只用于 Tuya SDK/Home 体系 |
+| `mac_address` | 设备 MAC 地址 | `AA:BB:CC:DD:EE:FF` | App 从 Tuya SDK `DeviceBean.getMac()` 上报，后端规范化为大写冒号格式 |
 | `recipe_id` | 食谱 ID | `rcp_xxx` | 标准食谱或审核后的 AI 食谱 |
 | `cooking_operation_id` | 一次烹饪操作 ID | `cop_xxx` | 连接宠物、食谱、设备和 DP 指令 |
 | `feeding_record_id` | 喂食记录 ID | `fee_xxx` | 可由烹饪完成自动生成 |

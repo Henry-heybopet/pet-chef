@@ -3,11 +3,58 @@ const assert = require('node:assert/strict');
 const { ingredientsDb } = require('../src/data/ingredients_db');
 const { _test } = require('../src/services/fresh_check');
 const { _test: nutritionRepository } = require('../src/services/nutrition_repository');
+const { analyzeRecipeIngredients } = require('../src/services/recipe_ingredient_analysis');
 
 const adult = { id: 'dog-1', name: '姐姐', species: 'dog', age_months: 24, current_weight_kg: 10, activity_level: 'medium', feeding_goal: 'maintenance' };
 const analyze = (ingredients, selectedBPack = null, pet = adult) => _test.localCheck({ pet, ingredients, mealIntent: 'long_term', selectedBPack, ingredientMap: ingredientsDb });
 const value = (report, key) => report.scores.find(item => item.key === key).value;
 const codes = report => new Set(report.findings.map(item => item.code).filter(Boolean));
+
+test('后台食谱按四大类分组、组内降序，内脏计入动物性原料', () => {
+  const analysis = analyzeRecipeIngredients({
+    南瓜: 20,
+    鸡肝: 10,
+    鸡小胸: 40,
+    菠菜: 15,
+    鱼油: 5,
+  }, {
+    ...ingredientsDb,
+    鱼油: { category: 'addition', calories_per_100g: 884 },
+  });
+  assert.deepEqual(analysis.groups.map(group => group.label), [
+    '动物性原料',
+    '淀粉类碳水',
+    '非淀粉类果蔬',
+    '其它',
+  ]);
+  assert.deepEqual(analysis.groups[0].rows.map(row => row.name), ['鸡小胸', '鸡肝']);
+  assert.deepEqual(analysis.groups[1].rows.map(row => row.name), ['南瓜']);
+  assert.deepEqual(analysis.groups[2].rows.map(row => row.name), ['菠菜']);
+  assert.deepEqual(analysis.groups[3].rows.map(row => row.name), ['鱼油']);
+});
+
+test('后台100克能量密度与鲜食验证使用相同食材数据和逐项计算规则', () => {
+  const ingredients = [
+    { name: '鸡小胸', grams: 50 },
+    { name: '南瓜', grams: 30 },
+    { name: '菠菜', grams: 20 },
+  ];
+  const analysis = analyzeRecipeIngredients(
+    Object.fromEntries(ingredients.map(item => [item.name, item.grams])),
+    ingredientsDb
+  );
+  const report = analyze(ingredients);
+  assert.equal(analysis.energy.kcal_per_gram, report.daily_need.recipe_kcal_per_gram);
+  assert.equal(analysis.energy.calories_per_100g, Number((report.daily_need.recipe_kcal_per_gram * 100).toFixed(1)));
+  assert.equal(analysis.energy.complete, true);
+});
+
+test('未知食材不会按0千卡伪造后台能量密度', () => {
+  const analysis = analyzeRecipeIngredients({ 鸡小胸: 50, 未建档食材: 50 }, ingredientsDb);
+  assert.equal(analysis.energy.complete, false);
+  assert.equal(analysis.energy.calories_per_100g, null);
+  assert.deepEqual(analysis.energy.unknown_ingredients, ['未建档食材']);
+});
 
 test('350g低肉高碳水配方会被确定性结构规则识别', () => {
   const report = analyze([{ name: '鸡胸肉', grams: 50 }, { name: '胡萝卜', grams: 100 }, { name: '南瓜', grams: 200 }]);
@@ -144,6 +191,80 @@ test('不完整PostgreSQL食材行不会覆盖静态基础营养数据', () => {
   assert.equal(merged['兔里脊'].category, 'protein');
   assert.equal(merged['兔里脊'].protein_pct, 22);
   assert.equal(merged['自定义食材'].calories_per_100g, '25.5');
+});
+
+test('规范食谱不会被PostgreSQL的空值或“无”覆盖必配全价营养包', () => {
+  const canonical = nutritionRepository.normalizeRecipe({
+    id: 'dog_recipe_002',
+    name: '鸡肉燕麦经典',
+    health_tags: [],
+    ingredients: {},
+    cooking_profile: {},
+    nutrition_snapshot: {},
+    b_pack: '无',
+  });
+  assert.match(canonical.b_pack, /维矿预混料/);
+  assert.match(canonical.b_pack, /钙磷/);
+
+  const snapshot = nutritionRepository.normalizeRecipe({
+    id: 'dog_recipe_002',
+    health_tags: [],
+    ingredients: {},
+    cooking_profile: {},
+    nutrition_snapshot: { b_pack: '数据库营养包B：维矿预混料、钙源' },
+    b_pack: '无',
+  });
+  assert.equal(snapshot.b_pack, '数据库营养包B：维矿预混料、钙源');
+
+  const structured = nutritionRepository.normalizeRecipe({
+    id: 'dog_recipe_002',
+    health_tags: [],
+    ingredients: {},
+    cooking_profile: {},
+    nutrition_snapshot: {
+      b_pack: {
+        '成犬维矿预混料（含维生素、矿物质和铁铜锌锰碘硒等微量元素）': 5.7,
+        '成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）': 3,
+        'Omega-3鱼油或藻油（EPA+DHA必需脂肪酸来源）': 1.3,
+      },
+    },
+  });
+  assert.match(structured.b_pack, /成犬钙磷维护矿物粉/);
+
+  const custom = nutritionRepository.normalizeRecipe({
+    id: 'custom_recipe_001',
+    health_tags: [],
+    ingredients: {},
+    cooking_profile: {},
+    nutrition_snapshot: {},
+    b_pack: '无',
+  });
+  assert.equal(custom.b_pack, '无');
+
+  const report = analyze(
+    [
+      ['鸡小胸', 202], ['鸡心', 85], ['鸡肝', 63],
+      ['红薯', 63], ['南瓜', 57], ['山药', 41],
+      ['全熟燕麦片', 25], ['苹果', 57], ['豌豆', 38],
+    ].map(([name, grams]) => ({ name, grams })),
+    { name: structured.b_pack.split('：')[0], description: structured.b_pack },
+    { ...adult, age_months: 3, life_stage: 'puppy', current_weight_kg: 6 }
+  );
+  assert.equal(report.score_details.nutrition.score, 100);
+  assert.equal(report.score_details.nutrition.components.micronutrients, 100);
+  assert.equal(report.score_details.nutrition.deductions.some(item => item.code === 'NUTRITION_MICRONUTRIENT_INCOMPLETE'), false);
+});
+
+test('B包对象必须明确覆盖钙磷、微量元素和必需脂肪酸', () => {
+  assert.match(
+    nutritionRepository.validateBPackObject({ 钙粉: 3, 成犬维矿预混料: 5.7, 'Omega-3鱼油或藻油': 1.3 }),
+    /磷/
+  );
+  assert.equal(nutritionRepository.validateBPackObject({
+    '成犬维矿预混料（含维生素、矿物质和铁铜锌锰碘硒等微量元素）': 5.7,
+    '成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）': 3,
+    'Omega-3鱼油或藻油（EPA+DHA必需脂肪酸来源）': 1.3,
+  }), '');
 });
 
 test('兔里脊通用目录行仍计入动物蛋白结构和蛋白质营养', () => {

@@ -143,18 +143,59 @@ const NUTRITION_FALLBACK_KEYS = {
   calories_per_100g: ['calories_per_100g', 'caloric_density'],
 };
 
+const INGREDIENT_GROUPS = [
+  { key: 'animal', label: '动物性原料' },
+  { key: 'starch', label: '淀粉类碳水' },
+  { key: 'produce', label: '非淀粉类果蔬' },
+  { key: 'other', label: '其它' },
+];
+
 function objectToRows(value) {
   return Object.entries(value || {}).map(([name, percent]) => ({ name, percent: String(percent ?? '') }));
+}
+
+function recipeIngredientRows(recipe) {
+  if (Array.isArray(recipe.ingredient_groups)) {
+    return recipe.ingredient_groups.flatMap(group => (group.rows || []).map(row => ({
+      name: row.name,
+      percent: String(row.percent ?? ''),
+      group: group.key,
+      calories_per_100g: row.calories_per_100g,
+    })));
+  }
+  return objectToRows(recipe.ingredients).map(row => ({ ...row, group: 'other', calories_per_100g: null }));
+}
+
+function calculateDraftEnergy(rows) {
+  const validRows = rows.filter(row => row.name.trim() && Number(row.percent) > 0);
+  const totalWeight = validRows.reduce((sum, row) => sum + Number(row.percent), 0);
+  const unknownIngredients = validRows
+    .filter(row => !Number.isFinite(Number(row.calories_per_100g)))
+    .map(row => row.name);
+  if (!totalWeight || unknownIngredients.length) {
+    return { caloriesPer100g: null, kcalPerGram: null, unknownIngredients };
+  }
+  const totalKcal = validRows.reduce(
+    (sum, row) => sum + Math.round(Number(row.percent) * Number(row.calories_per_100g) / 100),
+    0
+  );
+  return {
+    caloriesPer100g: Number((totalKcal / totalWeight * 100).toFixed(1)),
+    kcalPerGram: Number((totalKcal / totalWeight).toFixed(2)),
+    unknownIngredients: [],
+  };
 }
 
 function bPackToRows(value) {
   if (value && typeof value === 'object' && !Array.isArray(value)) return objectToRows(value);
   if (typeof value !== 'string') return [];
-  return value.split('/').map((part, index) => {
+  return value.split(/\s+\/\s+/).map((part, index) => {
     const clean = part.trim();
     const match = clean.match(/^(.*?)(\d+(?:\.\d+)?)\s*$/);
     if (!match) return { name: clean, percent: '' };
-    const rawName = match[1].trim().replace(/^[^：:]+[：:]\s*/, index === 0 ? '' : '');
+    const rawName = index === 0
+      ? match[1].trim().replace(/^[^：]+[：]\s*/, '')
+      : match[1].trim();
     return { name: rawName || clean, percent: match[2] };
   }).filter(row => row.name);
 }
@@ -169,6 +210,23 @@ function rowsToObject(rows) {
 
 function sumRows(rows) {
   return rows.reduce((sum, row) => sum + (Number(row.percent) || 0), 0);
+}
+
+function validateBPackRows(rows) {
+  if (!rows.length) return 'B包不能为空';
+  if (rows.some(row => !row.name.trim() || !Number.isFinite(Number(row.percent)) || Number(row.percent) <= 0)) {
+    return 'B包每一行都必须填写成分名称和大于0的数值';
+  }
+  const text = rows.map(row => row.name).join(' ');
+  const missing = [
+    [/维生素|维矿|预混/, '维生素'],
+    [/矿物|维矿|预混/, '矿物质'],
+    [/钙/, '钙'],
+    [/磷|Ca\s*:\s*P/i, '磷'],
+    [/微量元素|维矿|预混|铁|铜|锌|锰|碘|硒/, '微量元素'],
+    [/Omega[-\s]?3|鱼油|藻油|DHA|EPA|脂肪酸/i, '必需脂肪酸'],
+  ].filter(([pattern]) => !pattern.test(text)).map(([, label]) => label);
+  return missing.length ? `B包缺少明确来源：${missing.join('、')}` : '';
 }
 
 function sortRecipesById(items) {
@@ -226,6 +284,9 @@ function toRecipeDraft(recipe) {
     acc[key] = String(getNutritionValue(recipe, nutrition, key) ?? '');
     return acc;
   }, {});
+  if (recipe.calculated_nutrition?.complete) {
+    nutritionFields.calories_per_100g = String(recipe.calculated_nutrition.calories_per_100g);
+  }
 
   return {
     img: recipe.img || '',
@@ -235,8 +296,9 @@ function toRecipeDraft(recipe) {
     status: recipe.status || 'active',
     version: recipe.version || 1,
     health_tags: asArray(recipe.health_tags || recipe.tags).join('、'),
-    ingredientsRows: objectToRows(recipe.ingredients || {}),
+    ingredientsRows: recipeIngredientRows(recipe),
     bPackRows: bPackToRows(bPackValue),
+    productPricing: String(nutrition.product_pricing || ''),
     nutritionFields,
     nutritionSnapshot: nutrition,
     cookingProfile,
@@ -256,13 +318,16 @@ function toRecipeDraft(recipe) {
 
 function buildRecipePayload(draft) {
   const bPackObject = rowsToObject(draft.bPackRows);
+  const calculatedEnergy = calculateDraftEnergy(draft.ingredientsRows);
   const nutritionValues = Object.fromEntries(
     Object.entries(draft.nutritionFields).map(([key, value]) => [key, value === '' ? null : Number(value)])
   );
+  nutritionValues.calories_per_100g = calculatedEnergy.caloriesPer100g;
   const nutritionSnapshot = {
     ...(draft.nutritionSnapshot || {}),
     ...nutritionValues,
     b_pack: bPackObject,
+    product_pricing: draft.productPricing.trim(),
   };
   const cookingProfile = {
     ...(draft.cookingProfile || {}),
@@ -725,14 +790,22 @@ function App() {
   const updateRecipeRow = (recipeId, listKey, index, field, value) => {
     updateRecipeDraft(recipeId, draft => ({
       ...draft,
-      [listKey]: draft[listKey].map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row),
+      [listKey]: draft[listKey].map((row, rowIndex) => {
+        if (rowIndex !== index) return row;
+        if (listKey === 'ingredientsRows' && field === 'name' && value !== row.name) {
+          return { ...row, name: value, group: 'other', calories_per_100g: null };
+        }
+        return { ...row, [field]: value };
+      }),
     }));
   };
 
   const addRecipeRow = (recipeId, listKey) => {
     updateRecipeDraft(recipeId, draft => ({
       ...draft,
-      [listKey]: [...draft[listKey], { name: '', percent: '' }],
+      [listKey]: [...draft[listKey], listKey === 'ingredientsRows'
+        ? { name: '', percent: '', group: 'other', calories_per_100g: null }
+        : { name: '', percent: '' }],
     }));
   };
 
@@ -745,6 +818,8 @@ function App() {
 
   const validateRecipeDraft = (draft) => {
     if (!draft.name.trim()) return '食谱名字不能为空';
+    const bPackError = validateBPackRows(draft.bPackRows);
+    if (draft.status === 'active' && bPackError) return bPackError;
     return '';
   };
 
@@ -1546,6 +1621,7 @@ function App() {
                   const imageUrl = resolveRecipeImage(draft.img);
                   const ingredientTotal = sumRows(draft.ingredientsRows);
                   const bPackTotal = sumRows(draft.bPackRows);
+                  const calculatedEnergy = calculateDraftEnergy(draft.ingredientsRows);
                   const rowError = recipeRowErrors[recipe.id];
                 return (
                   <article key={recipe.id} className="recipe-edit-row">
@@ -1592,17 +1668,32 @@ function App() {
                         </select>
                       </label>
                       <label><span>健康标签</span><input value={draft.health_tags} onChange={e => updateRecipeDraft(recipe.id, { health_tags: e.target.value })} placeholder="美毛、低敏" /></label>
+                      <label><span>产品定价</span><input value={draft.productPricing} onChange={e => updateRecipeDraft(recipe.id, { productPricing: e.target.value })} placeholder="例如：¥19.9 / 200克" /></label>
                     </div>
 
                     <div className="recipe-list-cell">
                       <div className={Math.abs(ingredientTotal - 100) > 0.01 ? 'ratio-total error' : 'ratio-total'}>合计 {ingredientTotal.toFixed(1)}%</div>
-                      {draft.ingredientsRows.map((row, index) => (
-                        <div className="ratio-row" key={`${recipe.id}-ingredient-${index}`}>
-                          <input value={row.name} onChange={e => updateRecipeRow(recipe.id, 'ingredientsRows', index, 'name', e.target.value)} placeholder="食材名" />
-                          <input type="number" step="0.1" value={row.percent} onChange={e => updateRecipeRow(recipe.id, 'ingredientsRows', index, 'percent', e.target.value)} placeholder="%" />
-                          <button type="button" onClick={() => removeRecipeRow(recipe.id, 'ingredientsRows', index)}>−</button>
-                        </div>
-                      ))}
+                      {INGREDIENT_GROUPS.map(group => {
+                        const rows = draft.ingredientsRows
+                          .map((row, index) => ({ row, index }))
+                          .filter(item => item.row.group === group.key);
+                        const subtotal = rows.reduce((sum, item) => sum + (Number(item.row.percent) || 0), 0);
+                        return (
+                          <div className="ingredient-group" key={`${recipe.id}-${group.key}`}>
+                            <div className="ingredient-group-title">
+                              <span>{group.label}</span>
+                              <em>{subtotal.toFixed(1)}%</em>
+                            </div>
+                            {rows.map(({ row, index }) => (
+                              <div className="ratio-row" key={`${recipe.id}-ingredient-${index}`}>
+                                <input value={row.name} onChange={e => updateRecipeRow(recipe.id, 'ingredientsRows', index, 'name', e.target.value)} placeholder="食材名" />
+                                <input type="number" step="0.1" value={row.percent} onChange={e => updateRecipeRow(recipe.id, 'ingredientsRows', index, 'percent', e.target.value)} placeholder="%" />
+                                <button type="button" onClick={() => removeRecipeRow(recipe.id, 'ingredientsRows', index)}>−</button>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
                       <button type="button" className="small-action-btn" onClick={() => addRecipeRow(recipe.id, 'ingredientsRows')}>增加一行</button>
                     </div>
 
@@ -1622,13 +1713,23 @@ function App() {
                       {NUTRITION_FIELDS.map(([key, label, unit]) => (
                         <label key={key}>
                           <span>{label}</span>
-                          <input value={draft.nutritionFields[key]} onChange={e => updateRecipeDraft(recipe.id, current => ({
-                            ...current,
-                            nutritionFields: { ...current.nutritionFields, [key]: e.target.value },
-                          }))} />
+                          <input
+                            value={key === 'calories_per_100g' ? (calculatedEnergy.caloriesPer100g ?? '') : draft.nutritionFields[key]}
+                            readOnly={key === 'calories_per_100g'}
+                            title={key === 'calories_per_100g' ? '按鲜食验证的食材能量公式自动计算' : undefined}
+                            onChange={key === 'calories_per_100g' ? undefined : e => updateRecipeDraft(recipe.id, current => ({
+                              ...current,
+                              nutritionFields: { ...current.nutritionFields, [key]: e.target.value },
+                            }))}
+                          />
                           <em>{unit}</em>
                         </label>
                       ))}
+                      <p className={calculatedEnergy.caloriesPer100g === null ? 'energy-calculation warning' : 'energy-calculation'}>
+                        {calculatedEnergy.caloriesPer100g === null
+                          ? `无法完整计算：${calculatedEnergy.unknownIngredients.join('、') || '请先填写有效食材配比'}`
+                          : `鲜食验证公式：${calculatedEnergy.kcalPerGram} kcal/g`}
+                      </p>
                     </div>
 
                     <div className="recipe-cooking-cell">

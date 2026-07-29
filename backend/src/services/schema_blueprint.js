@@ -109,6 +109,7 @@ const schemaBlueprint = {
       tuya_device_id: { type: 'string', required: true },
       tuya_home_id: { type: 'string', required: false },
       tuya_pid: { type: 'string', required: false },
+      mac_address: { type: 'string', required: false, example: 'AA:BB:CC:DD:EE:FF' },
       product_type: { type: 'enum', required: true, values: ['pet_chef'] },
       device_name: { type: 'string', required: true },
       status: { type: 'enum', required: true, values: ['active', 'offline', 'unbound', 'disabled'] },

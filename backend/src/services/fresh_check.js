@@ -2,6 +2,7 @@ const { analyzeFreshCheck, lookupFreshCheckIngredientFacts, recognizeFreshCheckR
 const { listBPackOptions, getIngredientMap } = require('./nutrition_repository');
 const { breedsDb } = require('../data/breeds_db');
 const { dailyEnergyNeed } = require('./nutrition_energy');
+const { matchIngredientRecord } = require('./recipe_ingredient_analysis');
 
 const FORBIDDEN = ['木糖醇', '巧克力', '可可', '咖啡', '咖啡因', '酒精', '葡萄', '葡萄干', '洋葱', '大蒜', '韭菜', '葱', '夏威夷果', '牛油果', '熟骨', '骨头', '尖锐骨'];
 const INEDIBLE = ['石头', '石块', '铁钉', '钉子', '玻璃', '塑料', '金属', '电池', '硬币', '磁铁', '木头', '水泥', '清洁剂', '洗衣液', '漂白剂', '玩具', '纸巾', '衣服'];
@@ -56,6 +57,8 @@ function bPackCoverage(description) {
     vitamins: /维生素|维矿|预混/.test(text),
     minerals: /矿物|维矿|预混|钙磷/.test(text),
     calcium: /钙/.test(text),
+    phosphorus: /磷|ca\s*:\s*p/i.test(text),
+    trace_minerals: /微量元素|维矿|预混|铁|铜|锌|锰|碘|硒/.test(text),
     fatty_acids: /omega[-\s]?3|鱼油|藻油|dha|epa|脂肪酸/i.test(text),
   };
 }
@@ -221,14 +224,6 @@ function canonicalCategory(name, record = {}) {
   if (record.category === 'fruit' || has(name, FRUIT)) return 'fruit';
   if (['veg', 'vegetable'].includes(record.category) || has(name, VEGETABLE)) return 'vegetable';
   return 'other';
-}
-
-function matchIngredientRecord(name, ingredientMap = {}) {
-  if (ingredientMap[name]) return { key: name, record: ingredientMap[name] };
-  const key = Object.keys(ingredientMap)
-    .filter(candidate => name.includes(candidate) || candidate.includes(name))
-    .sort((a, b) => b.length - a.length)[0];
-  return key ? { key, record: ingredientMap[key] } : null;
 }
 
 function macroStandard(pet) {
@@ -685,7 +680,14 @@ function localCheck({ pet, ingredients, mealIntent = 'long_term', selectedBPack 
   const proteinAdequacy = macro_nutrition.per_1000_kcal.protein_g === null ? 0 : Math.min(100, macro_nutrition.per_1000_kcal.protein_g / macro_nutrition.standards.protein_min_g_per_1000kcal * 100);
   const fatAdequacy = macro_nutrition.per_1000_kcal.fat_g === null ? 0 : Math.min(100, macro_nutrition.per_1000_kcal.fat_g / macro_nutrition.standards.fat_min_g_per_1000kcal * 100);
   const macroAdequacy = (proteinAdequacy + fatAdequacy) / 2;
-  const microCovered = categories.calcium.length || (packCoverage.vitamins && packCoverage.minerals && packCoverage.calcium);
+  const microCovered = categories.calcium.length || (
+    packCoverage.vitamins
+    && packCoverage.minerals
+    && packCoverage.calcium
+    && packCoverage.phosphorus
+    && packCoverage.trace_minerals
+    && packCoverage.fatty_acids
+  );
   const microScore = microCovered ? 100 : mealIntent === 'long_term' ? 35 : 65;
   let completeness = score(macroAdequacy * 0.6 + microScore * 0.4);
   if (macro_nutrition.coverage.status === 'uncertain') completeness = Math.min(completeness, 60);

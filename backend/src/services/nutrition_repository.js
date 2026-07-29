@@ -1,6 +1,9 @@
 const { query, isAvailable } = require('../data/pg_client');
 const { recipesDb } = require('../data/recipes_db');
 const { ingredientsDb } = require('../data/ingredients_db');
+const { analyzeRecipeIngredients } = require('./recipe_ingredient_analysis');
+
+const canonicalRecipeById = new Map(recipesDb.map(recipe => [recipe.id, recipe]));
 
 function parseJson(value, fallback) {
   if (value == null) return fallback;
@@ -16,6 +19,42 @@ function asPercent(value, fallback) {
   const num = Number(value);
   if (!Number.isFinite(num)) return fallback;
   return num > 0 && num <= 1 ? num * 100 : num;
+}
+
+function bPackText(value, name = '全价营养包B') {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const composition = Object.entries(value)
+      .filter(([ingredient, amount]) => String(ingredient).trim() && amount !== null && amount !== undefined && amount !== '')
+      .map(([ingredient, amount]) => `${ingredient} ${amount}`)
+      .join(' / ');
+    return composition ? `${name}：${composition}` : '';
+  }
+  const text = String(value || '').trim();
+  return /^(无|none|null|undefined)$/i.test(text) ? '' : text;
+}
+
+function firstConfiguredBPack(name, ...values) {
+  return values.map(value => bPackText(value, name)).find(Boolean) || '无';
+}
+
+function validateBPackObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return 'B包必须是“成分名称: 数值”的对象';
+  }
+  const entries = Object.entries(value);
+  if (!entries.length || entries.some(([name, amount]) => !String(name).trim() || !Number.isFinite(Number(amount)) || Number(amount) <= 0)) {
+    return 'B包每项必须包含成分名称和大于0的数值';
+  }
+  const text = entries.map(([name]) => name).join(' ');
+  const missing = [
+    [/维生素|维矿|预混/, '维生素'],
+    [/矿物|维矿|预混/, '矿物质'],
+    [/钙/, '钙'],
+    [/磷|ca\s*:\s*p/i, '磷'],
+    [/微量元素|维矿|预混|铁|铜|锌|锰|碘|硒/, '微量元素'],
+    [/omega[-\s]?3|鱼油|藻油|dha|epa|脂肪酸/i, '必需脂肪酸'],
+  ].filter(([pattern]) => !pattern.test(text)).map(([, label]) => label);
+  return missing.length ? `B包缺少明确来源：${missing.join('、')}` : '';
 }
 
 let recipeColumnCache = null;
@@ -35,6 +74,8 @@ function normalizeRecipe(row) {
   const ingredients = parseJson(row.ingredients, {});
   const cookingProfile = parseJson(row.cooking_profile, {});
   const nutrition = parseJson(row.nutrition_snapshot, {});
+  const canonicalRecipe = canonicalRecipeById.get(row.id);
+  const canonicalBPackName = String(canonicalRecipe?.b_pack || '').split('：')[0] || '全价营养包B';
 
   return {
     ...row,
@@ -49,9 +90,18 @@ function normalizeRecipe(row) {
     fat_pct: asPercent(row.fat_pct ?? nutrition.fat_pct, 15),
     carb_pct: asPercent(row.carb_pct ?? nutrition.carb_pct, 35),
     fiber_pct: asPercent(row.fiber_pct ?? nutrition.fiber_pct, 5),
-    b_pack: row.b_pack || nutrition.b_pack || '无',
+    b_pack: firstConfiguredBPack(canonicalBPackName, nutrition.b_pack, row.b_pack, canonicalRecipe?.b_pack),
     c_pack: row.c_pack || nutrition.c_pack || '无',
     img: row.img || '',
+  };
+}
+
+function withIngredientAnalysis(recipe, ingredientMap) {
+  const analysis = analyzeRecipeIngredients(recipe.ingredients, ingredientMap);
+  return {
+    ...recipe,
+    ingredient_groups: analysis.groups,
+    calculated_nutrition: analysis.energy,
   };
 }
 
@@ -75,14 +125,23 @@ async function listRecipes(filterFn) {
 }
 
 async function listAdminRecipes() {
+  const ingredientLibrary = await getIngredientMap();
   try {
     const rows = await fetchRecipeRows('ORDER BY id', [], { activeOnly: false });
-    if (rows) return { recipes: rows, source: 'pg' };
+    if (rows) {
+      return {
+        recipes: rows.map(recipe => withIngredientAnalysis(recipe, ingredientLibrary.ingredients)),
+        source: 'pg',
+      };
+    }
   } catch (err) {
     console.warn('[NutritionRepo] admin recipes table unavailable, using seed data:', err.message);
   }
 
-  return { recipes: recipesDb, source: 'json_fallback' };
+  return {
+    recipes: recipesDb.map(recipe => withIngredientAnalysis(recipe, ingredientLibrary.ingredients)),
+    source: 'json_fallback',
+  };
 }
 
 async function getRecipeById(id) {
@@ -130,6 +189,16 @@ async function updateRecipe(id, patch = {}) {
     throw error;
   }
 
+  const bPack = patch.nutrition_snapshot?.b_pack;
+  if (bPack !== undefined && patch.status !== 'draft') {
+    const validationError = validateBPackObject(bPack);
+    if (validationError) {
+      const error = new Error(validationError);
+      error.code = 'INVALID_B_PACK';
+      throw error;
+    }
+  }
+
   const allowed = [
     'name',
     'category',
@@ -168,7 +237,12 @@ async function updateRecipe(id, patch = {}) {
     `UPDATE recipes SET ${assignments.join(', ')}, updated_at = NOW() WHERE id = $1 RETURNING *`,
     params
   );
-  return { recipe: result.rows[0] ? normalizeRecipe(result.rows[0]) : null, source: 'pg' };
+  const recipe = result.rows[0] ? normalizeRecipe(result.rows[0]) : null;
+  const ingredientLibrary = await getIngredientMap();
+  return {
+    recipe: recipe ? withIngredientAnalysis(recipe, ingredientLibrary.ingredients) : null,
+    source: 'pg',
+  };
 }
 
 async function createRecipe(patch = {}) {
@@ -218,7 +292,12 @@ async function createRecipe(patch = {}) {
     `INSERT INTO recipes (${columnSql}) VALUES (${valueSql}) RETURNING *`,
     params
   );
-  return { recipe: result.rows[0] ? normalizeRecipe(result.rows[0]) : null, source: 'pg' };
+  const recipe = result.rows[0] ? normalizeRecipe(result.rows[0]) : null;
+  const ingredientLibrary = await getIngredientMap();
+  return {
+    recipe: recipe ? withIngredientAnalysis(recipe, ingredientLibrary.ingredients) : null,
+    source: 'pg',
+  };
 }
 
 function buildRecipeIndexByName(recipes) {
@@ -269,5 +348,5 @@ module.exports = {
   updateRecipe,
   getIngredientMap,
   buildRecipeIndexByName,
-  _test: { mergeIngredientRows },
+  _test: { mergeIngredientRows, normalizeRecipe, validateBPackObject, withIngredientAnalysis },
 };

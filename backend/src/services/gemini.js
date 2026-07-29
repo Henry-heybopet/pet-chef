@@ -1,5 +1,5 @@
 // Pet Chef Ver B1.00 — Safety Filter · 2026-06-22
-// gemini.js — Google Gemini AI 客户端封装 (已迁移为 DeepSeek)
+// gemini.js — legacy filename; all model calls are routed through DeepSeek.
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const { validateIngredientSafety, hasToxicIngredients, generateSafetyWarnings } = require('./safety_filter');
@@ -11,7 +11,7 @@ async function callDeepSeekAPI(systemPrompt, userPrompt) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not configured');
   const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
-  const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -647,7 +647,7 @@ ${enrichedProposed.map((p, idx) => `
     const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not configured');
     const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
-    const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+    const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',

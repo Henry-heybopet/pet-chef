@@ -32,7 +32,7 @@ app.set('trust proxy', 1);
 const uploadsDir = path.resolve(__dirname, '../public/uploads');
 const recipeUploadsDir = path.join(uploadsDir, 'recipes');
 const runtimeDataDir = path.resolve(__dirname, '../.data');
-const AI_RECOMMENDATION_CACHE_VERSION = 16;
+const AI_RECOMMENDATION_CACHE_VERSION = 17;
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(recipeUploadsDir, { recursive: true });
 fs.mkdirSync(runtimeDataDir, { recursive: true });
@@ -310,6 +310,9 @@ app.patch('/api/v1/admin/recipes/:id', async (req, res) => {
   } catch (err) {
     if (err.code === 'DB_UNAVAILABLE') {
       return res.status(503).json({ success: false, error: 'recipes table unavailable; cannot save admin changes' });
+    }
+    if (err.code === 'INVALID_B_PACK') {
+      return res.status(400).json({ success: false, error: err.message });
     }
     console.error('Admin recipe update error:', err.message);
     res.status(500).json({ success: false, error: err.message });
@@ -1243,7 +1246,8 @@ app.get('/api/v1/debug-env', (req, res) => {
     TUYA_SECRET: process.env.TUYA_SECRET ? `${process.env.TUYA_SECRET.substring(0, 6)}...` : 'MISSING',
     TUYA_DEVICE_ID: process.env.TUYA_DEVICE_ID ? `${process.env.TUYA_DEVICE_ID.substring(0, 6)}...` : 'MISSING',
     TUYA_BASE_URL: process.env.TUYA_BASE_URL || 'MISSING (default: tuyacn.com)',
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY ? `${process.env.GEMINI_API_KEY.substring(0, 8)}...` : 'MISSING',
+    DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ? 'CONFIGURED' : 'MISSING',
+    DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
     NODE_ENV: process.env.NODE_ENV || 'undefined',
     VERCEL: process.env.VERCEL || 'undefined',
   });

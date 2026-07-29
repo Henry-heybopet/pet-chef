@@ -80,10 +80,10 @@ const REGION_CONFIGS = Object.freeze({
       supported_languages: ['zh', 'en'],
     },
 
-    // --- Gemini AI ---
+    // --- DeepSeek AI ---
     ai: {
-      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite',
-      api_key_env: 'GEMINI_API_KEY',
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
+      api_key_env: 'DEEPSEEK_API_KEY',
     },
   },
 
@@ -148,8 +148,8 @@ const REGION_CONFIGS = Object.freeze({
     },
 
     ai: {
-      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite',
-      api_key_env: 'GEMINI_API_KEY',
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
+      api_key_env: 'DEEPSEEK_API_KEY',
     },
   },
 
@@ -216,8 +216,8 @@ const REGION_CONFIGS = Object.freeze({
     },
 
     ai: {
-      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite',
-      api_key_env: 'GEMINI_API_KEY',
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
+      api_key_env: 'DEEPSEEK_API_KEY',
     },
   },
 });
