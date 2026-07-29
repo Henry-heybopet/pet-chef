@@ -51,3 +51,14 @@ test('烹饪中心主图文字使用高对比浅色', () => {
   assert.match(stylesSource, /\.cooking-hero-copy h1\s*\{[^}]*color:\s*#fff/s);
   assert.match(stylesSource, /\.cooking-hero-copy p\s*\{[^}]*color:\s*rgba\(255,\s*255,\s*255,\s*0\.9\)/s);
 });
+
+test('浅色主题下 Wi-Fi 密码圆点、明文和光标使用可见颜色', () => {
+  assert.match(
+    stylesSource,
+    /\.cooking-wifi-input,\s*\.cooking-password-row input,[\s\S]*?color:\s*var\(--theme-text-primary\)\s*!important;/,
+  );
+  assert.match(
+    stylesSource,
+    /\.cooking-password-row input\s*\{[^}]*caret-color:\s*var\(--theme-fresh\)/s,
+  );
+});

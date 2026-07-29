@@ -3494,12 +3494,17 @@ body,
 .text-input-field,
 .tuya-flow-input,
 .cooking-wifi-input,
+.cooking-password-row input,
 .fresh-check-select,
 .fresh-check-row input,
 .fresh-check-recognition textarea {
   background: var(--theme-surface-soft) !important;
   border-color: var(--theme-border) !important;
   color: var(--theme-text-primary) !important;
+}
+
+.cooking-password-row input {
+  caret-color: var(--theme-fresh);
 }
 
 input::placeholder,
