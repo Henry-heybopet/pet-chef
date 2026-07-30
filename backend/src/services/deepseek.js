@@ -259,13 +259,13 @@ async function lookupFreshCheckIngredientFacts({ ingredients, retry = false }) {
     `你是犬类鲜食安全与食物成分核验助手。对每个输入项独立判断，并只返回 JSON。
 ${retry ? '这是第一次未返回有效营养值后的唯一一次复核。请优先核对常见别名、具体部位与常见生熟状态；仍无法可靠确认时必须继续返回 null，禁止猜测。' : ''}
 规则：
-1. name 必须原样返回。
+1. 输入可能使用任意语言。必须按每项的 input_id 独立核验并原样返回 input_id；name 仅用于理解食材，不得用翻译后的名称替代 input_id。
 2. is_food 表示它是否为真实可食用原料；石头、铁钉、塑料、玻璃、清洁剂等必须为 false。
 3. dog_safety 只能是 safe、unsafe、uncertain；犬类禁食或非食物必须为 unsafe。
 4. 对可食用原料给出常见可食部、生/熟状态下合理的 kcal_per_100g、protein_pct、fat_pct、carb_pct；无法可靠估计的字段返回 null，禁止编造精确值。
 5. confidence 只能是 high、medium、low，并用 basis 简述估算依据和默认生熟状态。
 6. category 只能是 protein、organ、carb、vegetable、fruit、fat、addition、unknown。水果归为 fruit，非淀粉蔬菜归为 vegetable。
-7. JSON 格式：{"ingredients":[{"name":"鸡头","is_food":true,"dog_safety":"safe","category":"protein","kcal_per_100g":180,"protein_pct":16,"fat_pct":12,"carb_pct":0,"confidence":"medium","basis":"按生鲜鸡头可食部估算"}]}`,
+7. JSON 格式：{"ingredients":[{"input_id":"ingredient_1","name":"鸡头","is_food":true,"dog_safety":"safe","category":"protein","kcal_per_100g":180,"protein_pct":16,"fat_pct":12,"carb_pct":0,"confidence":"medium","basis":"按生鲜鸡头可食部估算"}]}`,
     JSON.stringify({ ingredients })
   );
 }

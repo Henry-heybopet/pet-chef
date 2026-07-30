@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { ingredientsDb } = require('../src/data/ingredients_db');
 const { buildFreshCheckAnalysis, _test } = require('../src/services/fresh_check');
 const { _test: nutritionRepository } = require('../src/services/nutrition_repository');
-const { analyzeRecipeIngredients } = require('../src/services/recipe_ingredient_analysis');
+const { analyzeRecipeIngredients, matchIngredientRecord } = require('../src/services/recipe_ingredient_analysis');
 
 const adult = { id: 'dog-1', name: '姐姐', species: 'dog', age_months: 24, current_weight_kg: 10, activity_level: 'medium', feeding_goal: 'maintenance' };
 const analyze = (ingredients, selectedBPack = null, pet = adult) => _test.localCheck({ pet, ingredients, mealIntent: 'long_term', selectedBPack, ingredientMap: ingredientsDb });
@@ -575,6 +575,96 @@ test('DeepSeek查询异常也只重试一次并保持未解析，不启用营养
   assert.equal(calls, 2);
   assert.deepEqual(result.unresolved_ingredients, ['无法联网食材']);
   assert.equal(result.facts[0].nutrition_unresolved, true);
+  assert.equal(result.status, 'service_unavailable');
+});
+
+test('AI食材结果按稳定input_id对齐并保留用户输入的原始语言名称', async () => {
+  const lookup = async ({ ingredients }) => ({
+    ingredients: ingredients.map(item => ({
+      input_id: item.input_id,
+      name: '胡萝卜',
+      is_food: true,
+      dog_safety: 'safe',
+      category: 'vegetable',
+      kcal_per_100g: 41,
+      protein_pct: 0.9,
+      fat_pct: 0.2,
+      carb_pct: 9.6,
+      confidence: 'high',
+      basis: '生胡萝卜可食部',
+    })),
+  });
+  const result = await _test.lookupIngredientFactsWithRetry([{ name: 'Carrots', grams: 100 }], lookup);
+  assert.equal(result.status, 'available');
+  assert.equal(result.facts[0].input_id, 'ingredient_1');
+  assert.equal(result.facts[0].name, 'Carrots');
+  assert.equal(result.facts[0].category, 'vegetable');
+});
+
+test('AI食材服务失败只显示一次服务异常，不把每种食材伪装成安全性不确定', async () => {
+  const ingredients = [{ name: 'Carrots', grams: 50 }, { name: 'Foie de bœuf', grams: 50 }];
+  const lookup = await _test.lookupIngredientFactsWithRetry(ingredients, async () => {
+    const error = new Error('timeout');
+    error.code = 'ECONNABORTED';
+    throw error;
+  });
+  const report = _test.localCheck({
+    pet: adult,
+    ingredients,
+    ingredientFacts: lookup.facts,
+    ingredientMap: {},
+    ingredientLookupStatus: lookup.status,
+  });
+  assert.equal(codes(report).has('INGREDIENT_LOOKUP_SERVICE_UNAVAILABLE'), true);
+  assert.equal(report.findings.filter(item => item.code === 'INGREDIENT_LOOKUP_SERVICE_UNAVAILABLE').length, 1);
+  assert.equal(report.findings.some(item => item.code === 'INGREDIENT_SAFETY_UNCERTAIN'), false);
+  assert.equal(report.findings.some(item => item.code === 'INGREDIENT_NUTRITION_UNAVAILABLE'), false);
+});
+
+test('审核后的英法食材别名优先命中本地确定性食材记录', () => {
+  const canonical = {
+    胡萝卜: { category: 'veg', calories_per_100g: 41, protein_pct: 0.9, fat_pct: 0.2, carb_pct: 9.6 },
+    牛肝: { category: 'organ', calories_per_100g: 135, protein_pct: 20, fat_pct: 3.6, carb_pct: 5 },
+    鱼油: { category: 'addition', calories_per_100g: 884, protein_pct: 0, fat_pct: 100, carb_pct: 0 },
+  };
+  const aliases = nutritionRepository.mergeIngredientAliases(canonical, [
+    { canonical_name: '胡萝卜', locale: 'en', alias_name: 'Carrot' },
+    { canonical_name: '胡萝卜', locale: 'fr', alias_name: 'Carotte' },
+    { canonical_name: '牛肝', locale: 'en', alias_name: 'Beef Liver' },
+    { canonical_name: '牛肝', locale: 'fr', alias_name: 'Foie de bœuf' },
+    { canonical_name: '鱼油', locale: 'en', alias_name: 'Fish Oil' },
+  ]);
+  assert.equal(matchIngredientRecord('Carrots', aliases).record.canonical_name, '胡萝卜');
+  assert.equal(matchIngredientRecord('carottes', aliases).record.canonical_name, '胡萝卜');
+  assert.equal(matchIngredientRecord('Uncooked Beef Liver', aliases).record.canonical_name, '牛肝');
+  assert.equal(matchIngredientRecord('Foie de bœuf cru', aliases).record.canonical_name, '牛肝');
+  assert.equal(matchIngredientRecord('Fish Oil', aliases).record.canonical_name, '鱼油');
+  assert.equal(matchIngredientRecord('Scarotte powder', aliases), null);
+
+  const fatReport = _test.localCheck({
+    pet: adult,
+    ingredients: [{ name: 'Fish Oil', grams: 5 }],
+    ingredientFacts: [],
+    ingredientMap: aliases,
+  });
+  assert.equal(fatReport.macro_nutrition.ingredient_weight_ratios.fat_source_pct, 100);
+
+  const ambiguous = nutritionRepository.mergeIngredientAliases(canonical, [
+    { canonical_name: '胡萝卜', locale: 'en', alias_name: 'Shared Food' },
+    { canonical_name: '牛肝', locale: 'en', alias_name: 'shared food' },
+  ]);
+  assert.equal(matchIngredientRecord('Shared Food', ambiguous), null);
+});
+
+test('非中文内脏和脂肪采用标准category参与食谱结构计算', () => {
+  const ingredients = [{ name: 'Foie de bœuf', grams: 30 }, { name: 'Fish Oil', grams: 5 }];
+  const facts = [
+    { name: 'Foie de bœuf', is_food: true, dog_safety: 'safe', category: 'organ', kcal_per_100g: 135, protein_pct: 20, fat_pct: 3.6, carb_pct: 5 },
+    { name: 'Fish Oil', is_food: true, dog_safety: 'safe', category: 'fat', kcal_per_100g: 884, protein_pct: 0, fat_pct: 100, carb_pct: 0 },
+  ];
+  const report = _test.localCheck({ pet: adult, ingredients, ingredientFacts: facts, ingredientMap: {} });
+  assert.equal(report.macro_nutrition.ingredient_weight_ratios.organ_pct, 85.7);
+  assert.equal(report.macro_nutrition.ingredient_weight_ratios.fat_source_pct, 14.3);
 });
 
 test('未知食材两次均为null时提示未计入营养计算且不使用分类兜底', async () => {

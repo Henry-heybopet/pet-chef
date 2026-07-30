@@ -6,15 +6,32 @@ const INGREDIENT_GROUPS = [
 ];
 
 function normalizeName(value) {
-  return String(value || '').trim();
+  return String(value || '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function nameContainsAlias(name, alias) {
+  const normalizedName = normalizeName(name);
+  const normalizedAlias = normalizeName(alias);
+  if (!normalizedName || !normalizedAlias) return false;
+  if (/[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/u.test(normalizedAlias)) {
+    return normalizedName.includes(normalizedAlias) || normalizedAlias.includes(normalizedName);
+  }
+  const pluralSuffix = /^[\p{L}\p{N}]+$/u.test(normalizedAlias) ? '(?:s|es)?' : '';
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(normalizedAlias)}${pluralSuffix}([^\\p{L}\\p{N}]|$)`, 'u').test(normalizedName);
 }
 
 function matchIngredientRecord(name, ingredientMap = {}) {
   const cleanName = normalizeName(name);
-  if (ingredientMap[cleanName]) return { key: cleanName, record: ingredientMap[cleanName] };
-  const key = Object.keys(ingredientMap)
-    .filter(candidate => cleanName.includes(candidate) || candidate.includes(cleanName))
-    .sort((a, b) => b.length - a.length)[0];
+  const keys = Object.keys(ingredientMap);
+  const exactKey = keys.find(candidate => normalizeName(candidate) === cleanName);
+  if (exactKey) return { key: exactKey, record: ingredientMap[exactKey] };
+  const key = keys
+    .filter(candidate => nameContainsAlias(cleanName, candidate))
+    .sort((a, b) => normalizeName(b).length - normalizeName(a).length)[0];
   return key ? { key, record: ingredientMap[key] } : null;
 }
 
@@ -73,4 +90,5 @@ module.exports = {
   analyzeRecipeIngredients,
   ingredientGroup,
   matchIngredientRecord,
+  _test: { normalizeName, nameContainsAlias },
 };

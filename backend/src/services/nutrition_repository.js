@@ -322,12 +322,50 @@ function mergeIngredientRows(seedIngredients, rows) {
   return merged;
 }
 
+function mergeIngredientAliases(ingredients, rows = []) {
+  const merged = { ...ingredients };
+  const canonicalKeys = new Set(Object.keys(ingredients).map(name => String(name).normalize('NFKC').trim().toLowerCase()));
+  const aliasOwners = new Map();
+  const ambiguousAliases = new Set();
+  for (const row of rows) {
+    const alias = String(row.alias_name || '').trim();
+    const canonicalName = String(row.canonical_name || '').trim();
+    const canonical = ingredients[canonicalName];
+    const normalizedAlias = alias.normalize('NFKC').toLowerCase();
+    if (!alias || !canonical || canonicalKeys.has(normalizedAlias) || ambiguousAliases.has(normalizedAlias)) continue;
+    const owner = aliasOwners.get(normalizedAlias);
+    if (owner && owner.canonicalName !== canonicalName) {
+      delete merged[owner.alias];
+      aliasOwners.delete(normalizedAlias);
+      ambiguousAliases.add(normalizedAlias);
+      continue;
+    }
+    merged[alias] = { ...canonical, canonical_name: canonicalName, alias_locale: row.locale || null };
+    aliasOwners.set(normalizedAlias, { alias, canonicalName });
+  }
+  return merged;
+}
+
 async function getIngredientMap() {
   try {
     if (await isAvailable()) {
       const result = await query('SELECT * FROM ingredient_library', []);
+      const canonical = mergeIngredientRows(ingredientsDb, result.rows);
+      let translations = [];
+      try {
+        const translationResult = await query(
+          `SELECT i.name AS canonical_name, t.locale, t.name AS alias_name
+           FROM ingredient_translations t
+           JOIN ingredient_library i ON i.id = t.ingredient_id
+           WHERE t.translation_status = 'translated'`,
+          []
+        );
+        translations = translationResult.rows;
+      } catch (error) {
+        if (error.code !== '42P01') console.warn('[NutritionRepo] ingredient aliases unavailable:', error.message);
+      }
       return {
-        ingredients: mergeIngredientRows(ingredientsDb, result.rows),
+        ingredients: mergeIngredientAliases(canonical, translations),
         source: 'pg',
       };
     }
@@ -348,5 +386,5 @@ module.exports = {
   updateRecipe,
   getIngredientMap,
   buildRecipeIndexByName,
-  _test: { mergeIngredientRows, normalizeRecipe, validateBPackObject, withIngredientAnalysis },
+  _test: { mergeIngredientRows, mergeIngredientAliases, normalizeRecipe, validateBPackObject, withIngredientAnalysis },
 };

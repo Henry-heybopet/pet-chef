@@ -31,6 +31,7 @@ const ADJUSTMENT_CODES = {
   FORBIDDEN: 'REMOVE_INGREDIENT',
   AI_UNSAFE_INGREDIENT: 'REMOVE_INGREDIENT',
   INGREDIENT_SAFETY_UNCERTAIN: 'VERIFY_INGREDIENT',
+  INGREDIENT_LOOKUP_SERVICE_UNAVAILABLE: 'RETRY_ANALYSIS',
   PET_FOOD_CONFLICT: 'REMOVE_INGREDIENT',
   SEASONING_RISK: 'REPLACE_UNSEASONED_INGREDIENT',
   PROFESSIONAL_CONFIRMATION_REQUIRED: 'CONSULT_PROFESSIONAL',
@@ -221,29 +222,35 @@ async function getFreshCheckBPackOptions(pet) {
   return { source, options: B_PACK_CATEGORIES.map(category => byCategory.get(category)).filter(Boolean) };
 }
 
-function classifyRecipe(items) {
+function classifyRecipe(items, ingredientMap = {}, ingredientFacts = []) {
   const categories = { protein: [], organ: [], carb: [], vegetable: [], fruit: [], fat: [], calcium: [] };
+  const facts = new Map(ingredientFacts.map(item => [item.name, item]));
   items.forEach(item => {
-    if (has(item.name, ORGAN)) categories.organ.push(item);
-    else if (has(item.name, PROTEIN)) categories.protein.push(item);
-    else if (has(item.name, CARB)) categories.carb.push(item);
-    else if (has(item.name, FRUIT)) {
+    const local = matchIngredientRecord(item.name, ingredientMap);
+    const record = local?.record || facts.get(item.name) || {};
+    const category = canonicalCategory(item.name, record);
+    const semanticName = record.canonical_name || item.name;
+    if (category === 'organ') categories.organ.push(item);
+    else if (category === 'protein') categories.protein.push(item);
+    else if (category === 'carb') categories.carb.push(item);
+    else if (category === 'fruit') {
       categories.fruit.push(item);
       categories.vegetable.push(item);
-    } else if (has(item.name, VEGETABLE)) categories.vegetable.push(item);
-    if (has(item.name, FAT)) categories.fat.push(item);
-    if (has(item.name, CALCIUM)) categories.calcium.push(item);
+    } else if (category === 'vegetable') categories.vegetable.push(item);
+    if (category === 'fat') categories.fat.push(item);
+    if (has(semanticName, CALCIUM)) categories.calcium.push(item);
   });
   return categories;
 }
 
 function canonicalCategory(name, record = {}) {
-  if (has(name, ORGAN)) return 'organ';
-  if (has(name, FAT)) return 'fat';
-  if (record.category === 'protein' || has(name, PROTEIN)) return 'protein';
-  if (record.category === 'carb' || has(name, CARB)) return 'carb';
-  if (record.category === 'fruit' || has(name, FRUIT)) return 'fruit';
-  if (['veg', 'vegetable'].includes(record.category) || has(name, VEGETABLE)) return 'vegetable';
+  const semanticName = record.canonical_name || name;
+  if (record.category === 'organ' || has(semanticName, ORGAN)) return 'organ';
+  if (record.category === 'fat' || has(semanticName, FAT)) return 'fat';
+  if (record.category === 'protein' || has(semanticName, PROTEIN)) return 'protein';
+  if (record.category === 'carb' || has(semanticName, CARB)) return 'carb';
+  if (record.category === 'fruit' || has(semanticName, FRUIT)) return 'fruit';
+  if (['veg', 'vegetable'].includes(record.category) || has(semanticName, VEGETABLE)) return 'vegetable';
   return 'other';
 }
 
@@ -456,25 +463,37 @@ function kcalFor(item) {
   return match ? Math.round(item.grams * match[1] / 100) : null;
 }
 
-function normalizeIngredientFacts(items = [], allowedNames = []) {
-  const allowed = new Set(allowedNames);
-  return items.map(item => ({
-    name: clean(item?.name),
-    is_food: item?.is_food === true ? true : item?.is_food === false ? false : null,
-    dog_safety: ['safe', 'unsafe', 'uncertain'].includes(item?.dog_safety) ? item.dog_safety : null,
-    kcal_per_100g: nullableNumber(item?.kcal_per_100g, 0, 900),
-    category: ['protein', 'organ', 'carb', 'vegetable', 'fruit', 'fat', 'addition', 'unknown'].includes(item?.category) ? item.category : 'unknown',
-    protein_pct: nullableNumber(item?.protein_pct, 0, 100),
-    fat_pct: nullableNumber(item?.fat_pct, 0, 100),
-    carb_pct: nullableNumber(item?.carb_pct, 0, 100),
-    confidence: ['high', 'medium', 'low'].includes(item?.confidence) ? item.confidence : 'low',
-    basis: clean(item?.basis),
-  })).filter(item => allowed.has(item.name));
+function withIngredientInputIds(items = []) {
+  return items.map((item, index) => ({ ...item, input_id: clean(item?.input_id) || `ingredient_${index + 1}` }));
+}
+
+function normalizeIngredientFacts(items = [], allowedInputs = []) {
+  const inputs = withIngredientInputIds(allowedInputs.map(item => typeof item === 'string' ? { name: item } : item));
+  const byId = new Map(inputs.map(item => [item.input_id, item]));
+  const byName = new Map(inputs.map(item => [clean(item.name), item]));
+  return items.map(item => {
+    const input = byId.get(clean(item?.input_id)) || byName.get(clean(item?.name));
+    if (!input) return null;
+    return {
+      input_id: input.input_id,
+      name: clean(input.name),
+      is_food: item?.is_food === true ? true : item?.is_food === false ? false : null,
+      dog_safety: ['safe', 'unsafe', 'uncertain'].includes(item?.dog_safety) ? item.dog_safety : null,
+      kcal_per_100g: nullableNumber(item?.kcal_per_100g, 0, 900),
+      category: ['protein', 'organ', 'carb', 'vegetable', 'fruit', 'fat', 'addition', 'unknown'].includes(item?.category) ? item.category : 'unknown',
+      protein_pct: nullableNumber(item?.protein_pct, 0, 100),
+      fat_pct: nullableNumber(item?.fat_pct, 0, 100),
+      carb_pct: nullableNumber(item?.carb_pct, 0, 100),
+      confidence: ['high', 'medium', 'low'].includes(item?.confidence) ? item.confidence : 'low',
+      basis: clean(item?.basis),
+    };
+  }).filter(Boolean);
 }
 
 function mergeIngredientFact(first = {}, second = {}) {
   const value = (key) => second[key] !== null && second[key] !== undefined && second[key] !== '' ? second[key] : first[key] ?? null;
   return {
+    input_id: second.input_id || first.input_id,
     name: second.name || first.name,
     is_food: value('is_food'),
     dog_safety: value('dog_safety'),
@@ -489,30 +508,47 @@ function mergeIngredientFact(first = {}, second = {}) {
 }
 
 async function lookupIngredientFactsWithRetry(ingredients, lookup = lookupFreshCheckIngredientFacts) {
-  const names = ingredients.map(item => item.name);
+  const inputs = withIngredientInputIds(ingredients);
+  const errors = [];
   let firstResult = {};
-  try { firstResult = await lookup({ ingredients }); } catch (_) { /* retry all unresolved items once */ }
-  const firstFacts = normalizeIngredientFacts(firstResult?.ingredients, names);
-  const firstByName = new Map(firstFacts.map(item => [item.name, item]));
-  const retryIngredients = ingredients.filter(item => {
-    const fact = firstByName.get(item.name);
+  try { firstResult = await lookup({ ingredients: inputs }); } catch (error) { errors.push(error); }
+  const firstFacts = normalizeIngredientFacts(firstResult?.ingredients, inputs);
+  const firstById = new Map(firstFacts.map(item => [item.input_id, item]));
+  const retryIngredients = inputs.filter(item => {
+    const fact = firstById.get(item.input_id);
     if (fact?.is_food === false || fact?.dog_safety === 'unsafe') return false;
     return !fact || !hasNutritionValues(fact);
   });
-  let secondByName = new Map();
+  let secondById = new Map();
   if (retryIngredients.length) {
     let secondResult = {};
-    try { secondResult = await lookup({ ingredients: retryIngredients, retry: true }); } catch (_) { /* keep unresolved after the only retry */ }
-    const secondFacts = normalizeIngredientFacts(secondResult?.ingredients, retryIngredients.map(item => item.name));
-    secondByName = new Map(secondFacts.map(item => [item.name, item]));
+    try { secondResult = await lookup({ ingredients: retryIngredients, retry: true }); } catch (error) { errors.push(error); }
+    const secondFacts = normalizeIngredientFacts(secondResult?.ingredients, retryIngredients);
+    secondById = new Map(secondFacts.map(item => [item.input_id, item]));
   }
-  const retried = new Set(retryIngredients.map(item => item.name));
-  const facts = ingredients.map(item => {
-    const fact = mergeIngredientFact(firstByName.get(item.name), secondByName.get(item.name));
+  const retried = new Set(retryIngredients.map(item => item.input_id));
+  const facts = inputs.map(item => {
+    const fact = mergeIngredientFact(firstById.get(item.input_id), secondById.get(item.input_id));
     const unsafe = fact.is_food === false || fact.dog_safety === 'unsafe';
-    return { ...fact, name: item.name, lookup_attempts: retried.has(item.name) ? 2 : 1, nutrition_unresolved: !unsafe && !hasNutritionValues(fact) };
+    return { ...fact, input_id: item.input_id, name: item.name, lookup_attempts: retried.has(item.input_id) ? 2 : 1, nutrition_unresolved: !unsafe && !hasNutritionValues(fact) };
   });
-  return { facts, retried_ingredients: [...retried], unresolved_ingredients: facts.filter(item => item.nutrition_unresolved).map(item => item.name) };
+  const validCount = facts.filter(fact => fact.is_food !== null || fact.dog_safety !== null || hasNutritionValues(fact)).length;
+  const lookupStatus = validCount === 0 ? 'service_unavailable' : validCount < facts.length ? 'partial' : 'available';
+  if (errors.length || lookupStatus === 'service_unavailable') {
+    console.warn('[FreshCheck] ingredient lookup degraded', {
+      status: lookupStatus,
+      attempts_failed: errors.length,
+      error_codes: errors.length
+        ? errors.map(error => error?.response?.status || error?.code || error?.name || 'UNKNOWN')
+        : ['INVALID_RESPONSE'],
+    });
+  }
+  return {
+    facts,
+    status: lookupStatus,
+    retried_ingredients: retryIngredients.map(item => item.name),
+    unresolved_ingredients: facts.filter(item => item.nutrition_unresolved).map(item => item.name),
+  };
 }
 
 function fallbackKcalPer100(item) {
@@ -615,9 +651,9 @@ function energyFinding({ energy, need, categories, feasibility }) {
   return finding('safe', '每日能量在建议范围内', `当前食谱约 ${energy.total_kcal} kcal，处于该宠物建议每日 ${need.min_kcal}-${need.max_kcal} kcal 的范围。`, `按当前配方密度，建议每日总量约 ${suggestedGrams}g，分 ${need.meals_per_day} 餐喂养。`, 'DAILY_ENERGY_ADEQUATE', 'energy', { total_kcal: energy.total_kcal, min_kcal: need.min_kcal, max_kcal: need.max_kcal, suggested_grams: suggestedGrams, meals_per_day: need.meals_per_day });
 }
 
-function localCheck({ pet, ingredients, mealIntent = 'long_term', selectedBPack = null, ingredientFacts = [], ingredientMap = {} }) {
+function localCheck({ pet, ingredients, mealIntent = 'long_term', selectedBPack = null, ingredientFacts = [], ingredientMap = {}, ingredientLookupStatus = 'available' }) {
   const total = ingredients.reduce((sum, item) => sum + item.grams, 0);
-  const categories = classifyRecipe(ingredients);
+  const categories = classifyRecipe(ingredients, ingredientMap, ingredientFacts);
   const daily_need = dailyEnergyNeed(pet);
   const factsByName = new Map(ingredientFacts.map(item => [item.name, item]));
   const withEnergy = ingredients.map(item => ({ ...item, energy: energyFor(item, factsByName, ingredientMap) }));
@@ -639,9 +675,12 @@ function localCheck({ pet, ingredients, mealIntent = 'long_term', selectedBPack 
     if (has(item.name, INEDIBLE)) findings.push(finding('danger', '安全红线：非食物不可使用', `${item.name} 不是犬类可食用原料，吞食可能造成中毒、异物阻塞或机械损伤。`, '立即移除该项；如宠物已经吞食，请尽快联系执业兽医。', 'INEDIBLE', 'safety', facts));
     else if (has(item.name, FORBIDDEN)) findings.push(finding('danger', '安全红线：不可使用', `${item.name} 对犬类存在明确禁食或伤害风险。`, '立即移除该食材后重新验证。', 'FORBIDDEN', 'safety', facts));
     else if (aiFact && (aiFact.is_food === false || aiFact.dog_safety === 'unsafe')) findings.push(finding('danger', '安全红线：AI识别为不可用', `${item.name} ${aiFact.is_food === false ? '不是可食用原料' : '不适合犬类食用'}${aiFact.basis ? `：${aiFact.basis}` : '。'}`, '立即移除该项；不确定时请由执业兽医确认。', 'AI_UNSAFE_INGREDIENT', 'safety', { ...facts, basis: aiFact.basis || null, is_food: aiFact.is_food }));
-    else if (aiFact && (aiFact.dog_safety === 'uncertain' || aiFact.dog_safety === null)) findings.push(finding('warning', '食材安全性待确认', `暂不能确认 ${item.name} 是否适合犬类食用。`, '提供更准确的部位、生熟状态或产品配料表后重新验证。', 'INGREDIENT_SAFETY_UNCERTAIN', 'safety', facts));
+    else if (ingredientLookupStatus !== 'service_unavailable' && aiFact && (aiFact.dog_safety === 'uncertain' || aiFact.dog_safety === null)) findings.push(finding('warning', '食材安全性待确认', `暂不能确认 ${item.name} 是否适合犬类食用。`, '提供更准确的部位、生熟状态或产品配料表后重新验证。', 'INGREDIENT_SAFETY_UNCERTAIN', 'safety', facts));
     else if (has(item.name, SEASONINGS)) findings.push(finding('warning', '高盐或复合调味风险', `${item.name} 可能含盐分或成分不明的调味物。`, '改为无盐、未调味的原料，并确认完整配料表。', 'SEASONING_RISK', 'safety', facts));
   });
+  if (ingredientLookupStatus === 'service_unavailable') {
+    findings.push(finding('warning', '食材核验服务暂时不可用', '本次无法连接食材核验服务，不能据此判断这些食材本身不安全。', '请稍后重新验证；系统恢复前不要将本次结果用于长期喂养决策。', 'INGREDIENT_LOOKUP_SERVICE_UNAVAILABLE', 'safety', { ingredient_count: ingredientFacts.filter(item => item.nutrition_unresolved).length }));
+  }
   findings.push(...profileNotice(pet, ingredients));
   if (daily_need.target_weight_conflict) findings.push(finding('warning', '幼犬目标体重档案冲突', `当前体重 ${daily_need.current_weight_kg}kg，但目标体重 ${daily_need.target_weight_kg}kg 更低；幼犬仍在生长，不能据此得出减重结论。`, '暂停使用该目标体重做减重计算；请结合BCS、犬种生长曲线和连续称重，由兽医复核目标。', 'PUPPY_TARGET_WEIGHT_CONFLICT', 'profile', { current_weight_kg: daily_need.current_weight_kg, target_weight_kg: daily_need.target_weight_kg }));
   const ratios = macro_nutrition.ingredient_weight_ratios;
@@ -677,7 +716,7 @@ function localCheck({ pet, ingredients, mealIntent = 'long_term', selectedBPack 
   }
   if (structureResult.fatLow && ratios.fat_source_pct === 0) findings.push(finding('warning', '脂肪来源不足', `估算脂肪为 ${macro_nutrition.per_1000_kcal.fat_g}g/1000kcal，低于当前阶段参考最低值 ${macro_nutrition.standards.fat_min_g_per_1000kcal}g/1000kcal，且没有明确脂肪来源。`, '在专业建议下加入适配的脂肪来源，重新核算总能量与必需脂肪酸。', 'LOW_FAT_SOURCE', 'nutrition', { actual_g_per_1000kcal: macro_nutrition.per_1000_kcal.fat_g, minimum_g_per_1000kcal: macro_nutrition.standards.fat_min_g_per_1000kcal }));
   if (macro_nutrition.coverage.status === 'uncertain') findings.push(finding('warning', '宏量营养估算不完整', `仅覆盖 ${macro_nutrition.coverage.weight_pct}% 食材重量，无法可靠判断蛋白质、脂肪和碳水是否达标。`, '补充未识别食材的生熟状态或营养标签后重新验证。', 'MACRO_DATA_INCOMPLETE', 'nutrition', { coverage_weight_pct: macro_nutrition.coverage.weight_pct }));
-  const unresolvedNutrition = ingredientFacts.filter(item => item.nutrition_unresolved);
+  const unresolvedNutrition = ingredientLookupStatus === 'service_unavailable' ? [] : ingredientFacts.filter(item => item.nutrition_unresolved);
   unresolvedNutrition.forEach(item => findings.push(finding('notice', `未查询到${item.name}食材的营养值`, `${item.name} 经两次查询仍未返回有效营养值，未计入食品营养值计算。`, '请补充准确食材名称、部位、生熟状态或包装营养标签后重新验证。', 'INGREDIENT_NUTRITION_UNAVAILABLE', 'nutrition', { ingredient_name: item.name, ingredient_id: ingredientId(item.name), lookup_attempts: item.lookup_attempts || 2 })));
   const packCoverage = selectedBPack ? (selectedBPack.coverage || bPackCoverage(selectedBPack.description)) : {};
   const bPackNeeded = mealIntent === 'long_term' && !categories.calcium.length;
@@ -841,7 +880,7 @@ async function buildFreshCheckAnalysis({ pet, ingredients, meal_intent, b_pack_c
   const lookupCandidates = normalizedIngredients.filter(item => !isPlainWater(item.name) && !matchIngredientRecord(item.name, ingredientLibrary.ingredients) && !isDeterministicDanger(item.name));
   let ingredientFacts = deterministicFacts;
   let energyLookupSource = lookupCandidates.length ? 'unresolved' : 'local_database';
-  let lookupMeta = { retried_ingredients: [], unresolved_ingredients: [] };
+  let lookupMeta = { status: 'available', retried_ingredients: [], unresolved_ingredients: [] };
   if (lookupCandidates.length) {
     try {
       lookupMeta = await lookupIngredientFactsWithRetry(lookupCandidates.map(item => ({ name: item.name, grams: item.grams })), dependencies.lookupFreshCheckIngredientFacts || lookupFreshCheckIngredientFacts);
@@ -849,7 +888,7 @@ async function buildFreshCheckAnalysis({ pet, ingredients, meal_intent, b_pack_c
       if (lookupMeta.facts.some(hasNutritionValues)) energyLookupSource = lookupMeta.unresolved_ingredients.length ? 'deepseek_partial' : 'deepseek';
     } catch (_) {
       ingredientFacts = [...deterministicFacts, ...lookupCandidates.map(item => ({ name: item.name, is_food: null, dog_safety: null, kcal_per_100g: null, category: 'unknown', protein_pct: null, fat_pct: null, carb_pct: null, confidence: 'low', basis: '', lookup_attempts: 2, nutrition_unresolved: true }))];
-      lookupMeta = { retried_ingredients: lookupCandidates.map(item => item.name), unresolved_ingredients: lookupCandidates.map(item => item.name) };
+      lookupMeta = { status: 'service_unavailable', retried_ingredients: lookupCandidates.map(item => item.name), unresolved_ingredients: lookupCandidates.map(item => item.name) };
     }
   }
   const requestedCategory = clean(b_pack_category);
@@ -859,9 +898,9 @@ async function buildFreshCheckAnalysis({ pet, ingredients, meal_intent, b_pack_c
     error.status = 400;
     throw error;
   }
-  const local = localCheck({ pet, ingredients: normalizedIngredients, mealIntent: meal_intent, selectedBPack, ingredientFacts, ingredientMap: ingredientLibrary.ingredients });
+  const local = localCheck({ pet, ingredients: normalizedIngredients, mealIntent: meal_intent, selectedBPack, ingredientFacts, ingredientMap: ingredientLibrary.ingredients, ingredientLookupStatus: lookupMeta.status });
   local.ingredient_library = { source: ingredientLibrary.source };
-  local.energy_lookup = { source: energyLookupSource, queried_ingredients: lookupCandidates.map(item => item.name), retried_ingredients: lookupMeta.retried_ingredients, unresolved_ingredients: lookupMeta.unresolved_ingredients };
+  local.energy_lookup = { source: energyLookupSource, status: lookupMeta.status, queried_ingredients: lookupCandidates.map(item => item.name), retried_ingredients: lookupMeta.retried_ingredients, unresolved_ingredients: lookupMeta.unresolved_ingredients };
   local.b_pack = {
     source: bPacks.source,
     needed: local.b_pack_needed,
@@ -882,5 +921,5 @@ module.exports = {
   buildFreshCheckAnalysis,
   getFreshCheckBPackOptions,
   evaluateRecipe: localCheck,
-  _test: { calculateMacroNutrition, structureAssessment, dailyEnergyNeed, intakeFeasibility, localCheck, normalizeIngredientFacts, lookupIngredientFactsWithRetry, hasNutritionValues, bPackApplication, selectBPackOption, deterministicIngredientFact },
+  _test: { calculateMacroNutrition, structureAssessment, dailyEnergyNeed, intakeFeasibility, localCheck, normalizeIngredientFacts, lookupIngredientFactsWithRetry, hasNutritionValues, bPackApplication, selectBPackOption, deterministicIngredientFact, classifyRecipe },
 };

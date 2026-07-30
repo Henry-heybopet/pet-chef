@@ -327,7 +327,7 @@ model DevicePetBinding {
 model Recipe {
   id                 String       @id
   name               String
-  img                String?
+  img                String?      @default("")
   species            PetSpecies
   category           String
   life_stage         String?
