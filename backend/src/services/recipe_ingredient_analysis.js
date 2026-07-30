@@ -13,15 +13,26 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function nameContainsAlias(name, alias) {
+function aliasMatchIndex(name, alias) {
   const normalizedName = normalizeName(name);
   const normalizedAlias = normalizeName(alias);
-  if (!normalizedName || !normalizedAlias) return false;
+  if (!normalizedName || !normalizedAlias) return -1;
   if (/[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/u.test(normalizedAlias)) {
-    return normalizedName.includes(normalizedAlias) || normalizedAlias.includes(normalizedName);
+    const index = normalizedName.indexOf(normalizedAlias);
+    if (index >= 0) return index;
+    return normalizedAlias.includes(normalizedName) ? 0 : -1;
   }
   const pluralSuffix = /^[\p{L}\p{N}]+$/u.test(normalizedAlias) ? '(?:s|es)?' : '';
-  return new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(normalizedAlias)}${pluralSuffix}([^\\p{L}\\p{N}]|$)`, 'u').test(normalizedName);
+  const match = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(normalizedAlias)}${pluralSuffix}(?=[^\\p{L}\\p{N}]|$)`, 'u').exec(normalizedName);
+  return match ? match.index + match[1].length : -1;
+}
+
+function nameContainsAlias(name, alias) {
+  return aliasMatchIndex(name, alias) >= 0;
+}
+
+function aliasWordCount(alias) {
+  return normalizeName(alias).match(/[\p{L}\p{N}]+/gu)?.length || 0;
 }
 
 function matchIngredientRecord(name, ingredientMap = {}) {
@@ -31,7 +42,11 @@ function matchIngredientRecord(name, ingredientMap = {}) {
   if (exactKey) return { key: exactKey, record: ingredientMap[exactKey] };
   const key = keys
     .filter(candidate => nameContainsAlias(cleanName, candidate))
-    .sort((a, b) => normalizeName(b).length - normalizeName(a).length)[0];
+    .sort((a, b) => (
+      aliasWordCount(b) - aliasWordCount(a)
+      || aliasMatchIndex(cleanName, b) - aliasMatchIndex(cleanName, a)
+      || normalizeName(b).length - normalizeName(a).length
+    ))[0];
   return key ? { key, record: ingredientMap[key] } : null;
 }
 
@@ -90,5 +105,5 @@ module.exports = {
   analyzeRecipeIngredients,
   ingredientGroup,
   matchIngredientRecord,
-  _test: { normalizeName, nameContainsAlias },
+  _test: { normalizeName, nameContainsAlias, aliasMatchIndex },
 };

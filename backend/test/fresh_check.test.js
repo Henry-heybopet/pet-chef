@@ -628,6 +628,7 @@ test('审核后的英法食材别名优先命中本地确定性食材记录', ()
     鱼油: { category: 'addition', calories_per_100g: 884, protein_pct: 0, fat_pct: 100, carb_pct: 0 },
     米饭: { category: 'carb', calories_per_100g: 130, protein_pct: 2.7, fat_pct: 0.3, carb_pct: 28 },
     鸡蛋: { category: 'protein', calories_per_100g: 155, protein_pct: 13, fat_pct: 11, carb_pct: 1.1 },
+    鸡肉: { category: 'protein', calories_per_100g: 165, protein_pct: 31, fat_pct: 3.6, carb_pct: 0 },
   };
   const aliases = nutritionRepository.mergeIngredientAliases(canonical, [
     { canonical_name: '胡萝卜', locale: 'en', alias_name: 'Carrot' },
@@ -637,6 +638,7 @@ test('审核后的英法食材别名优先命中本地确定性食材记录', ()
     { canonical_name: '鱼油', locale: 'en', alias_name: 'Fish Oil' },
     { canonical_name: '米饭', locale: 'en', alias_name: 'Rice' },
     { canonical_name: '鸡蛋', locale: 'en', alias_name: 'Egg' },
+    { canonical_name: '鸡肉', locale: 'en', alias_name: 'Chicken' },
   ]);
   assert.equal(matchIngredientRecord('Carrots', aliases).record.canonical_name, '胡萝卜');
   assert.equal(matchIngredientRecord('carottes', aliases).record.canonical_name, '胡萝卜');
