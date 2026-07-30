@@ -29,3 +29,7 @@ graphify-out/
 business-graphify/
 scratch/
 nginx/admin.htpasswd
+
+# User manual local render/cache output (source, screenshots and final files stay tracked)
+docs/user-manual/__pycache__/
+docs/user-manual/rendered*/
