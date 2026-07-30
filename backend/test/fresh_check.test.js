@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ingredientsDb } = require('../src/data/ingredients_db');
-const { _test } = require('../src/services/fresh_check');
+const { buildFreshCheckAnalysis, _test } = require('../src/services/fresh_check');
 const { _test: nutritionRepository } = require('../src/services/nutrition_repository');
 const { analyzeRecipeIngredients } = require('../src/services/recipe_ingredient_analysis');
 
@@ -604,6 +604,51 @@ test('AI确认非食物或犬类不安全食材时直接标红并且不复核营
   assert.equal(calls, 1);
   assert.ok(codes(report).has('AI_UNSAFE_INGREDIENT'));
   assert.equal(report.daily_need.recipe_kcal, 0);
+});
+
+test('饮用水使用确定性安全事实且不会触发AI不可用红线', () => {
+  for (const name of ['水', '清水', '饮用水', '纯净水', '矿泉水', 'Water', ' WATER ']) {
+    const fact = _test.deterministicIngredientFact({ name });
+    assert.equal(fact.is_food, true, name);
+    assert.equal(fact.dog_safety, 'safe', name);
+    assert.equal(fact.category, 'addition', name);
+    assert.equal(fact.kcal_per_100g, 0, name);
+    assert.equal(fact.water_pct, 100, name);
+
+    const report = _test.localCheck({
+      pet: adult,
+      ingredients: [{ name: name.trim(), grams: 100 }],
+      ingredientFacts: [{ ...fact, name: name.trim() }],
+      ingredientMap: {},
+    });
+    assert.equal(codes(report).has('AI_UNSAFE_INGREDIENT'), false, name);
+    assert.notEqual(report.macro_nutrition.details[0].source, 'excluded', name);
+    assert.equal(report.macro_nutrition.coverage.weight_pct, 100, name);
+    assert.equal(report.daily_need.recipe_kcal, 0, name);
+  }
+});
+
+test('饮用水规则使用全词匹配，不会把水牛肉当作水', () => {
+  assert.equal(_test.deterministicIngredientFact({ name: '水牛肉' }), null);
+});
+
+test('饮用水在完整分析链路中不会提交给AI食材核验', async () => {
+  let lookupCalls = 0;
+  const report = await buildFreshCheckAnalysis({
+    pet: adult,
+    ingredients: [{ name: 'Water', grams: 100 }],
+    meal_intent: 'long_term',
+  }, {
+    lookupFreshCheckIngredientFacts: async () => {
+      lookupCalls += 1;
+      return { ingredients: [] };
+    },
+  });
+
+  assert.equal(lookupCalls, 0);
+  assert.deepEqual(report.energy_lookup.queried_ingredients, []);
+  assert.equal(codes(report).has('AI_UNSAFE_INGREDIENT'), false);
+  assert.equal(report.macro_nutrition.coverage.weight_pct, 100);
 });
 
 test('疾病适配提示明确建议听从专业医师建议', () => {

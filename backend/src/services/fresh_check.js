@@ -15,6 +15,7 @@ const FRUIT = ['苹果', '蓝莓', '草莓', '蔓越莓', '覆盆子', '黑莓',
 const FAT = ['鱼油', '橄榄油', '亚麻籽油'];
 const CALCIUM = ['钙', '蛋壳粉', '骨粉', '营养包'];
 const B_PACK_CATEGORIES = ['幼犬通用', '控钙幼犬（大型幼犬）', '成犬通用', '老年犬通用', '美毛护肤', '低敏单一蛋白', '护肝'];
+const PLAIN_WATER_NAMES = new Set(['水', '清水', '饮用水', '纯净水', '矿泉水', 'water']);
 const B_PACK_CATEGORY_CODES = {
   幼犬通用: 'PUPPY_GENERAL', '控钙幼犬（大型幼犬）': 'LARGE_PUPPY_CONTROLLED_CALCIUM',
   成犬通用: 'ADULT_GENERAL', 老年犬通用: 'SENIOR_GENERAL', 美毛护肤: 'COAT_CARE',
@@ -39,6 +40,26 @@ const clean = value => String(value || '').trim();
 const has = (name, terms) => terms.some(term => name.includes(term));
 const score = (value) => Math.max(0, Math.min(100, Math.round(value)));
 const isDeterministicDanger = name => has(name, FORBIDDEN) || has(name, INEDIBLE);
+const isPlainWater = name => PLAIN_WATER_NAMES.has(clean(name).toLowerCase());
+
+function deterministicIngredientFact(item) {
+  if (!isPlainWater(item?.name)) return null;
+  return {
+    name: clean(item.name),
+    is_food: true,
+    dog_safety: 'safe',
+    category: 'addition',
+    kcal_per_100g: 0,
+    protein_pct: 0,
+    fat_pct: 0,
+    carb_pct: 0,
+    water_pct: 100,
+    confidence: 'high',
+    basis: '饮用水是安全的烹饪添加用水',
+    lookup_attempts: 0,
+    nutrition_unresolved: false,
+  };
+}
 
 function nullableNumber(value, min, max) {
   if (value === null || value === undefined || value === '') return null;
@@ -816,17 +837,18 @@ async function buildFreshCheckAnalysis({ pet, ingredients, meal_intent, b_pack_c
   const bPacks = await getFreshCheckBPackOptions(pet);
   const ingredientLibrary = await getIngredientMap();
   const normalizedIngredients = normalizeIngredients(ingredients);
-  const lookupCandidates = normalizedIngredients.filter(item => !matchIngredientRecord(item.name, ingredientLibrary.ingredients) && !isDeterministicDanger(item.name));
-  let ingredientFacts = [];
+  const deterministicFacts = normalizedIngredients.map(deterministicIngredientFact).filter(Boolean);
+  const lookupCandidates = normalizedIngredients.filter(item => !isPlainWater(item.name) && !matchIngredientRecord(item.name, ingredientLibrary.ingredients) && !isDeterministicDanger(item.name));
+  let ingredientFacts = deterministicFacts;
   let energyLookupSource = lookupCandidates.length ? 'unresolved' : 'local_database';
   let lookupMeta = { retried_ingredients: [], unresolved_ingredients: [] };
   if (lookupCandidates.length) {
     try {
       lookupMeta = await lookupIngredientFactsWithRetry(lookupCandidates.map(item => ({ name: item.name, grams: item.grams })), dependencies.lookupFreshCheckIngredientFacts || lookupFreshCheckIngredientFacts);
-      ingredientFacts = lookupMeta.facts;
-      if (ingredientFacts.some(hasNutritionValues)) energyLookupSource = lookupMeta.unresolved_ingredients.length ? 'deepseek_partial' : 'deepseek';
+      ingredientFacts = [...deterministicFacts, ...lookupMeta.facts];
+      if (lookupMeta.facts.some(hasNutritionValues)) energyLookupSource = lookupMeta.unresolved_ingredients.length ? 'deepseek_partial' : 'deepseek';
     } catch (_) {
-      ingredientFacts = lookupCandidates.map(item => ({ name: item.name, is_food: null, dog_safety: null, kcal_per_100g: null, category: 'unknown', protein_pct: null, fat_pct: null, carb_pct: null, confidence: 'low', basis: '', lookup_attempts: 2, nutrition_unresolved: true }));
+      ingredientFacts = [...deterministicFacts, ...lookupCandidates.map(item => ({ name: item.name, is_food: null, dog_safety: null, kcal_per_100g: null, category: 'unknown', protein_pct: null, fat_pct: null, carb_pct: null, confidence: 'low', basis: '', lookup_attempts: 2, nutrition_unresolved: true }))];
       lookupMeta = { retried_ingredients: lookupCandidates.map(item => item.name), unresolved_ingredients: lookupCandidates.map(item => item.name) };
     }
   }
@@ -860,5 +882,5 @@ module.exports = {
   buildFreshCheckAnalysis,
   getFreshCheckBPackOptions,
   evaluateRecipe: localCheck,
-  _test: { calculateMacroNutrition, structureAssessment, dailyEnergyNeed, intakeFeasibility, localCheck, normalizeIngredientFacts, lookupIngredientFactsWithRetry, hasNutritionValues, bPackApplication, selectBPackOption },
+  _test: { calculateMacroNutrition, structureAssessment, dailyEnergyNeed, intakeFeasibility, localCheck, normalizeIngredientFacts, lookupIngredientFactsWithRetry, hasNutritionValues, bPackApplication, selectBPackOption, deterministicIngredientFact },
 };
