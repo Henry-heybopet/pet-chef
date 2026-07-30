@@ -626,6 +626,8 @@ test('审核后的英法食材别名优先命中本地确定性食材记录', ()
     胡萝卜: { category: 'veg', calories_per_100g: 41, protein_pct: 0.9, fat_pct: 0.2, carb_pct: 9.6 },
     牛肝: { category: 'organ', calories_per_100g: 135, protein_pct: 20, fat_pct: 3.6, carb_pct: 5 },
     鱼油: { category: 'addition', calories_per_100g: 884, protein_pct: 0, fat_pct: 100, carb_pct: 0 },
+    米饭: { category: 'carb', calories_per_100g: 130, protein_pct: 2.7, fat_pct: 0.3, carb_pct: 28 },
+    鸡蛋: { category: 'protein', calories_per_100g: 155, protein_pct: 13, fat_pct: 11, carb_pct: 1.1 },
   };
   const aliases = nutritionRepository.mergeIngredientAliases(canonical, [
     { canonical_name: '胡萝卜', locale: 'en', alias_name: 'Carrot' },
@@ -633,12 +635,16 @@ test('审核后的英法食材别名优先命中本地确定性食材记录', ()
     { canonical_name: '牛肝', locale: 'en', alias_name: 'Beef Liver' },
     { canonical_name: '牛肝', locale: 'fr', alias_name: 'Foie de bœuf' },
     { canonical_name: '鱼油', locale: 'en', alias_name: 'Fish Oil' },
+    { canonical_name: '米饭', locale: 'en', alias_name: 'Rice' },
+    { canonical_name: '鸡蛋', locale: 'en', alias_name: 'Egg' },
   ]);
   assert.equal(matchIngredientRecord('Carrots', aliases).record.canonical_name, '胡萝卜');
   assert.equal(matchIngredientRecord('carottes', aliases).record.canonical_name, '胡萝卜');
   assert.equal(matchIngredientRecord('Uncooked Beef Liver', aliases).record.canonical_name, '牛肝');
   assert.equal(matchIngredientRecord('Foie de bœuf cru', aliases).record.canonical_name, '牛肝');
   assert.equal(matchIngredientRecord('Fish Oil', aliases).record.canonical_name, '鱼油');
+  assert.equal(matchIngredientRecord('Raw Basmati White Rice (from India)', aliases).record.canonical_name, '米饭');
+  assert.equal(matchIngredientRecord('Chicken Eggs', aliases).record.canonical_name, '鸡蛋');
   assert.equal(matchIngredientRecord('Scarotte powder', aliases), null);
 
   const fatReport = _test.localCheck({

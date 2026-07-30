@@ -357,7 +357,7 @@ async function getIngredientMap() {
           `SELECT i.name AS canonical_name, t.locale, t.name AS alias_name
            FROM ingredient_translations t
            JOIN ingredient_library i ON i.id = t.ingredient_id
-           WHERE t.translation_status = 'translated'`,
+           WHERE t.translation_status IN ('translated', 'fallback')`,
           []
         );
         translations = translationResult.rows;
