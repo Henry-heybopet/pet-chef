@@ -687,34 +687,34 @@ function localCheck({ pet, ingredients, mealIntent = 'long_term', selectedBPack 
   if (daily_need.target_weight_conflict) findings.push(finding('warning', '幼犬目标体重档案冲突', `当前体重 ${daily_need.current_weight_kg}kg，但目标体重 ${daily_need.target_weight_kg}kg 更低；幼犬仍在生长，不能据此得出减重结论。`, '暂停使用该目标体重做减重计算；请结合BCS、犬种生长曲线和连续称重，由兽医复核目标。', 'PUPPY_TARGET_WEIGHT_CONFLICT', 'profile', { current_weight_kg: daily_need.current_weight_kg, target_weight_kg: daily_need.target_weight_kg }));
   const ratios = macro_nutrition.ingredient_weight_ratios;
   if (ratios.animal_protein_pct < 40) {
-    findings.push(finding('warning', '动物性食材占比较低', `动物性食材占配方 ${ratios.animal_protein_pct}%，低于 40%。`, '重点检查蛋白质、脂肪、必需氨基酸和能量密度，并提高适配的动物性食材占比。', 'LOW_ANIMAL_PROTEIN', 'structure', { actual_pct: ratios.animal_protein_pct, minimum_pct: 40 }));
+    findings.push(finding('warning', '动物性食材占比较低', `动物性食材占配方 ${ratios.animal_protein_pct}%，低于 45%–65% 的常规推荐范围太多。`, '重点检查蛋白质、脂肪、必需氨基酸和能量密度能否满足宠物需求。', 'LOW_ANIMAL_PROTEIN', 'structure', { actual_pct: ratios.animal_protein_pct, minimum_pct: 40 }));
   } else if (ratios.animal_protein_pct < 45) {
-    findings.push(finding('notice', '动物性食材处于可接受区间', `动物性食材占配方 ${ratios.animal_protein_pct}%，位于 40%–45% 可接受区间。`, '通过营养计算确认蛋白质、脂肪和必需氨基酸，并重点检查能量密度能否满足当前宠物需求。', 'ANIMAL_PROTEIN_ACCEPTABLE_REVIEW', 'structure', { actual_pct: ratios.animal_protein_pct, minimum_pct: 40, recommended_minimum_pct: 45 }));
+    findings.push(finding('notice', '动物性食材占比略低', `动物性食材占配方 ${ratios.animal_protein_pct}%，低于 45%–65% 的常规推荐范围。`, '该比例可以接受，但应通过营养计算确认，重点检查能量密度能否满足需求。', 'ANIMAL_PROTEIN_ACCEPTABLE_REVIEW', 'structure', { actual_pct: ratios.animal_protein_pct, minimum_pct: 40, recommended_minimum_pct: 45 }));
   } else if (ratios.animal_protein_pct > 65 && ratios.animal_protein_pct <= 75) {
-    findings.push(finding('notice', '高动物性食材结构', `动物性食材占配方 ${ratios.animal_protein_pct}%，属于 65%–75% 高动物性食材结构。`, '这不一定有问题，但应检查脂肪、钙磷、内脏比例和总能量是否超标。', 'HIGH_ANIMAL_PROTEIN_REVIEW', 'structure', { actual_pct: ratios.animal_protein_pct, high_range_minimum_pct: 65, maximum_pct: 75 }));
+    findings.push(finding('notice', '高动物性食材结构', `动物性食材占配方 ${ratios.animal_protein_pct}%，高于 45%–65% 的常规推荐范围。`, '该比例可以接受，属于高动物性食材结构，不一定有问题，但应检查脂肪、钙磷、内脏和总能量是否超标。', 'HIGH_ANIMAL_PROTEIN_REVIEW', 'structure', { actual_pct: ratios.animal_protein_pct, high_range_minimum_pct: 65, maximum_pct: 75 }));
   } else if (ratios.animal_protein_pct > 75) {
-    findings.push(finding('warning', '动物性食材占比超过75%', `动物性食材占配方 ${ratios.animal_protein_pct}%，不能据此自动判定健康。`, '检查纤维和其他食材空间是否被挤压，并复核脂肪、磷、铜、维生素A及总能量。', 'EXCESSIVE_ANIMAL_PROTEIN', 'structure', { actual_pct: ratios.animal_protein_pct, maximum_pct: 75 }));
+    findings.push(finding('warning', '动物性食材占比过高', `动物性食材占配方 ${ratios.animal_protein_pct}%，高于 45%–65% 的常规推荐范围太多。`, '容易挤压纤维和其他食材空间，也可能导致脂肪、磷、铜或维生素A过高。', 'EXCESSIVE_ANIMAL_PROTEIN', 'structure', { actual_pct: ratios.animal_protein_pct, maximum_pct: 75 }));
   }
   if (ratios.carb_pct < 10) {
-    findings.push(finding('notice', '低碳水配方', `淀粉类碳水食材占配方 ${ratios.carb_pct}%，低于 10%。`, '标记为低碳水配方，并确认脂肪、蛋白质和总能量能够满足需求。', 'LOW_CARB_FORMULA', 'structure', { actual_pct: ratios.carb_pct, low_threshold_pct: 10 }));
+    findings.push(finding('notice', '碳水比例太低', `淀粉类碳水食材占配方 ${ratios.carb_pct}%，低于 10%。`, '可以作为低碳水宠物零食配方，不可以长期作为主食食谱配方。', 'LOW_CARB_FORMULA', 'structure', { actual_pct: ratios.carb_pct, low_threshold_pct: 10 }));
   } else if (ratios.carb_pct < 15) {
-    findings.push(finding('notice', '碳水比例偏低', `淀粉类碳水食材占配方 ${ratios.carb_pct}%，位于 10%–15% 偏低区间。`, '结合活动量、脂肪来源和总能量确认长期适用性。', 'LOW_CARB', 'structure', { actual_pct: ratios.carb_pct, recommended_minimum_pct: 15 }));
+    findings.push(finding('notice', '碳水比例偏低', `淀粉类碳水食材占配方 ${ratios.carb_pct}%，位于 10%–15% 偏低区间。`, '建议增加淀粉类食材到常规推荐区间。', 'LOW_CARB', 'structure', { actual_pct: ratios.carb_pct, recommended_minimum_pct: 15 }));
   } else if (ratios.carb_pct > 45) {
-    findings.push(finding('warning', '碳水比例超过45%', `淀粉类碳水食材占配方 ${ratios.carb_pct}%，不建议作为常规犬鲜食结构。`, '减少淀粉类碳水，避免稀释动物性营养，并重新核算蛋白质密度和总能量。', 'VERY_HIGH_CARB', 'structure', { actual_pct: ratios.carb_pct, maximum_pct: 45 }));
+    findings.push(finding('warning', '碳水比例太高', `淀粉类碳水食材占配方 ${ratios.carb_pct}%，超过 45%。`, '不建议作为常规犬鲜食结构，会稀释动物性营养的配方。', 'VERY_HIGH_CARB', 'structure', { actual_pct: ratios.carb_pct, maximum_pct: 45 }));
   } else if (ratios.carb_pct > 35) {
-    findings.push(finding('notice', '碳水比例偏高', `淀粉类碳水食材占配方 ${ratios.carb_pct}%，位于 35%–45% 偏高区间。`, '检查蛋白质密度和总能量，并在需要时减少淀粉类碳水。', 'HIGH_CARB', 'structure', { actual_pct: ratios.carb_pct, maximum_pct: 35 }));
+    findings.push(finding('notice', '碳水比例偏高', `淀粉类碳水食材占配方 ${ratios.carb_pct}%，位于 35%–45% 偏高区间。`, '检查蛋白质密度和总能量能否满足宠物营养需求。', 'HIGH_CARB', 'structure', { actual_pct: ratios.carb_pct, maximum_pct: 35 }));
   }
   if (ratios.vegetable_pct < 5) {
-    findings.push(finding('notice', '非淀粉果蔬比例较低', `非淀粉果蔬占配方 ${ratios.vegetable_pct}%，低于 5%。`, '检查实际纤维含量和食材多样性，不仅凭食材重量下结论。', 'LOW_NON_STARCHY_PRODUCE', 'structure', { actual_pct: ratios.vegetable_pct, low_threshold_pct: 5 }));
+    findings.push(finding('notice', '纤维和食材多样性不足', `非淀粉果蔬占配方 ${ratios.vegetable_pct}%，低于 5%。`, '请观察宠物粪便情况。', 'VERY_LOW_NON_STARCHY_PRODUCE', 'structure', { actual_pct: ratios.vegetable_pct, low_threshold_pct: 5 }));
   } else if (ratios.vegetable_pct < 10) {
-    findings.push(finding('notice', '非淀粉果蔬比例偏低', `非淀粉果蔬占配方 ${ratios.vegetable_pct}%，位于 5%–10% 偏低区间。`, '结合实际纤维含量和粪便情况确认是否需要增加低淀粉蔬菜。', 'LOW_NON_STARCHY_PRODUCE', 'structure', { actual_pct: ratios.vegetable_pct, recommended_minimum_pct: 10 }));
+    findings.push(finding('notice', '纤维摄入偏低', `非淀粉果蔬占配方 ${ratios.vegetable_pct}%，位于 5%–10% 偏低区间。`, '建议增加非淀粉类果蔬。', 'LOW_NON_STARCHY_PRODUCE', 'structure', { actual_pct: ratios.vegetable_pct, recommended_minimum_pct: 10 }));
   } else if (ratios.vegetable_pct > 30) {
-    findings.push(finding('warning', '非淀粉果蔬比例超过30%', `非淀粉果蔬占配方 ${ratios.vegetable_pct}%，通常不建议。`, '减少果蔬总量，避免日粮体积过大、能量密度下降和纤维过多。', 'VERY_HIGH_VEGETABLE', 'structure', { actual_pct: ratios.vegetable_pct, maximum_pct: 30 }));
+    findings.push(finding('warning', '纤维摄入过高', `非淀粉果蔬占配方 ${ratios.vegetable_pct}%，超过 30%。`, '容易导致日粮体积过大、能量密度下降。', 'VERY_HIGH_VEGETABLE', 'structure', { actual_pct: ratios.vegetable_pct, maximum_pct: 30 }));
   } else if (ratios.vegetable_pct > 25) {
-    findings.push(finding('notice', '非淀粉果蔬比例偏高', `非淀粉果蔬占配方 ${ratios.vegetable_pct}%，位于 25%–30% 偏高区间。`, '检查能量密度和粪便情况，并避免挤占动物性营养来源。', 'HIGH_VEGETABLE', 'structure', { actual_pct: ratios.vegetable_pct, maximum_pct: 25 }));
+    findings.push(finding('notice', '纤维摄入偏高', `非淀粉果蔬占配方 ${ratios.vegetable_pct}%，位于 25%–30% 偏高区间。`, '需要检查能量密度和粪便情况。', 'HIGH_VEGETABLE', 'structure', { actual_pct: ratios.vegetable_pct, maximum_pct: 25 }));
   }
   if (ratios.fruit_pct > 5) {
-    findings.push(finding(ratios.fruit_pct > 10 ? 'warning' : 'notice', '水果比例偏高', `水果占配方 ${ratios.fruit_pct}%，超过建议的 0%–5%。`, '减少高糖水果，使主要果蔬来源回到低淀粉蔬菜。', 'HIGH_FRUIT', 'structure', { actual_pct: ratios.fruit_pct, maximum_pct: 5 }));
+    findings.push(finding(ratios.fruit_pct > 10 ? 'warning' : 'notice', '水果比例偏高', `水果占配方 ${ratios.fruit_pct}%，超过建议的 0%–5%。`, '水果建议只占总配方的约 0%–5%，主要果蔬来源应是低淀粉蔬菜，而不是高糖水果。', 'HIGH_FRUIT', 'structure', { actual_pct: ratios.fruit_pct, maximum_pct: 5 }));
   }
   if (structureResult.fatLow && ratios.fat_source_pct === 0) findings.push(finding('warning', '脂肪来源不足', `估算脂肪为 ${macro_nutrition.per_1000_kcal.fat_g}g/1000kcal，低于当前阶段参考最低值 ${macro_nutrition.standards.fat_min_g_per_1000kcal}g/1000kcal，且没有明确脂肪来源。`, '在专业建议下加入适配的脂肪来源，重新核算总能量与必需脂肪酸。', 'LOW_FAT_SOURCE', 'nutrition', { actual_g_per_1000kcal: macro_nutrition.per_1000_kcal.fat_g, minimum_g_per_1000kcal: macro_nutrition.standards.fat_min_g_per_1000kcal }));
   if (macro_nutrition.coverage.status === 'uncertain') findings.push(finding('warning', '宏量营养估算不完整', `仅覆盖 ${macro_nutrition.coverage.weight_pct}% 食材重量，无法可靠判断蛋白质、脂肪和碳水是否达标。`, '补充未识别食材的生熟状态或营养标签后重新验证。', 'MACRO_DATA_INCOMPLETE', 'nutrition', { coverage_weight_pct: macro_nutrition.coverage.weight_pct }));

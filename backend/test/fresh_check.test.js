@@ -327,7 +327,7 @@ test('非淀粉果蔬和水果按独立区间计算', () => {
   const at35 = analyze([{ name: '鸡胸肉', grams: 40 }, { name: '米饭', grams: 25 }, { name: '胡萝卜', grams: 30 }, { name: '苹果', grams: 5 }]);
   const fruit10 = analyze([{ name: '鸡胸肉', grams: 55 }, { name: '米饭', grams: 30 }, { name: '胡萝卜', grams: 5 }, { name: '苹果', grams: 10 }]);
 
-  assert.ok(codes(at4).has('LOW_NON_STARCHY_PRODUCE'));
+  assert.ok(codes(at4).has('VERY_LOW_NON_STARCHY_PRODUCE'));
   assert.ok(codes(at7).has('LOW_NON_STARCHY_PRODUCE'));
   assert.equal(at20.macro_nutrition.ingredient_weight_ratios.vegetable_pct, 20);
   assert.equal(at20.macro_nutrition.ingredient_weight_ratios.fruit_pct, 5);
@@ -360,6 +360,21 @@ test('结构分段边界按下一区间起点执行且不发生一克误判', ()
 
   const fruit5 = analyze([{ name: '鸡胸肉', grams: 50 }, { name: '米饭', grams: 30 }, { name: '胡萝卜', grams: 15 }, { name: '苹果', grams: 5 }]);
   assert.ok(!codes(fruit5).has('HIGH_FRUIT'));
+});
+
+test('结构分段提示与当前比例区间一致', () => {
+  const animalLow = analyze([{ name: '鸡胸肉', grams: 39 }, { name: '米饭', grams: 35 }, { name: '胡萝卜', grams: 26 }]).findings.find(item => item.risk_code === 'LOW_ANIMAL_PROTEIN');
+  const animalAcceptable = analyze([{ name: '鸡胸肉', grams: 42 }, { name: '米饭', grams: 33 }, { name: '胡萝卜', grams: 25 }]).findings.find(item => item.risk_code === 'ANIMAL_PROTEIN_ACCEPTABLE_REVIEW');
+  const lowCarb = analyze([{ name: '鸡胸肉', grams: 70 }, { name: '米饭', grams: 5 }, { name: '胡萝卜', grams: 25 }]).findings.find(item => item.risk_code === 'LOW_CARB_FORMULA');
+  const lowProduce = analyze([{ name: '鸡胸肉', grams: 65 }, { name: '米饭', grams: 31 }, { name: '胡萝卜', grams: 4 }]).findings.find(item => item.risk_code === 'VERY_LOW_NON_STARCHY_PRODUCE');
+
+  assert.match(animalLow.reason, /低于 45%–65% 的常规推荐范围太多/);
+  assert.match(animalLow.adjustment, /能否满足宠物需求/);
+  assert.match(animalAcceptable.reason, /低于 45%–65% 的常规推荐范围/);
+  assert.match(animalAcceptable.adjustment, /重点检查能量密度/);
+  assert.match(lowCarb.adjustment, /不可以长期作为主食食谱配方/);
+  assert.equal(lowProduce.title, '纤维和食材多样性不足');
+  assert.equal(lowProduce.adjustment, '请观察宠物粪便情况。');
 });
 
 test('名称分类不依赖营养覆盖，但缺失营养仍明确标记为不完整', () => {

@@ -226,6 +226,33 @@ test('Fresh Check template placeholders stay identical across all eight locales'
   }
 });
 
+test('structure-ratio findings expose the revised band-specific copy in all eight locales', () => {
+  const expectedCodes = [
+    'LOW_ANIMAL_PROTEIN',
+    'ANIMAL_PROTEIN_ACCEPTABLE_REVIEW',
+    'HIGH_ANIMAL_PROTEIN_REVIEW',
+    'EXCESSIVE_ANIMAL_PROTEIN',
+    'LOW_CARB_FORMULA',
+    'LOW_CARB',
+    'HIGH_CARB',
+    'VERY_HIGH_CARB',
+    'VERY_LOW_NON_STARCHY_PRODUCE',
+    'LOW_NON_STARCHY_PRODUCE',
+    'HIGH_VEGETABLE',
+    'VERY_HIGH_VEGETABLE',
+    'HIGH_FRUIT',
+  ];
+  for (const code of expectedCodes) {
+    for (const locale of SUPPORTED_LOCALES) {
+      assert.ok(FRESH_CHECK_FINDING_TEMPLATES[code]?.[locale], `${code}/${locale}`);
+    }
+  }
+  assert.match(FRESH_CHECK_FINDING_TEMPLATES.LOW_ANIMAL_PROTEIN.zh[1], /45%–65%/);
+  assert.match(FRESH_CHECK_FINDING_TEMPLATES.LOW_CARB_FORMULA.zh[2], /不可以长期作为主食/);
+  assert.equal(FRESH_CHECK_FINDING_TEMPLATES.VERY_LOW_NON_STARCHY_PRODUCE.zh[2], '请观察宠物粪便情况。');
+  assert.match(FRESH_CHECK_FINDING_TEMPLATES.HIGH_FRUIT.zh[2], /低淀粉蔬菜，而不是高糖水果/);
+});
+
 test('daily nutrition guidance is professionally localized in all eight locales', () => {
   const chineseGuidance = 'AI营养建议基于犬类能量需求模型（RER/MER）、体重、年龄及活动水平综合计算，为日常喂养提供科学参考。建议根据体况评分（BCS）和实际变化持续调整。如存在疾病、特殊生理阶段或特殊营养需求，请咨询兽医。';
   const expected = {
