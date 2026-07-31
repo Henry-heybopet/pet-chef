@@ -15,9 +15,9 @@ const { recognizeFreshCheck, buildFreshCheckAnalysis } = require('../services/fr
 const { translatePresentationFields } = require('../services/deepseek');
 const { normalizeLocale, localizeSemanticResultWithAi } = require('../services/localization');
 const { storeAnalysis, getAnalysis, getRendered, storeRendered } = require('../services/localization_cache');
+const { avatarDir, avatarPublicUrl } = require('../config/uploads');
 
 const router = express.Router();
-const avatarDir = path.resolve(__dirname, '../../public/uploads/avatars');
 const imageTypes = { png: 'png', jpeg: 'jpg', jpg: 'jpg', webp: 'webp' };
 const maxAvatarBytes = 5 * 1024 * 1024;
 const FRESH_CHECK_ERRORS = {
@@ -171,7 +171,7 @@ router.post('/uploads/avatar', authMiddleware, asyncHandler(async (req, res) => 
   fs.mkdirSync(avatarDir, { recursive: true });
   const filename = `${crypto.randomUUID()}.${imageTypes[match[1]]}`;
   fs.writeFileSync(path.join(avatarDir, filename), buffer);
-  const avatar_url = `${req.protocol}://${req.get('host')}/uploads/avatars/${filename}`;
+  const avatar_url = avatarPublicUrl(filename);
   res.json({ success: true, avatar_url });
 }));
 
@@ -255,6 +255,14 @@ router.patch('/pets/:id', authMiddleware, asyncHandler(async (req, res) => {
   const pet = await petRepository.updatePetForUser(user.id, req.params.id, req.body || {});
   if (!pet) return res.status(404).json({ success: false, error: 'Pet not found' });
   res.json({ success: true, pet, user: publicUser(user), source: 'pg' });
+}));
+
+router.delete('/pets/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const user = await requireUser(req);
+  const deleted = await petRepository.deletePetForUser(user.id, req.params.id);
+  if (!deleted) return res.status(404).json({ success: false, error: 'Pet not found' });
+  store.deletePetData(req.params.id);
+  res.json({ success: true });
 }));
 
 router.get('/devices', authMiddleware, asyncHandler(async (req, res) => {

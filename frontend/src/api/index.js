@@ -98,6 +98,7 @@ export const api = {
   listPets: (token) => authedGet('/api/pets', token),
   getPet: (petId, token) => authedGet(`/api/pets/${petId}`, token),
   updatePet: (petId, body, token) => authedPatch(`/api/pets/${petId}`, body, token),
+  deletePet: (petId, token) => authedDelete(`/api/pets/${encodeURIComponent(petId)}`, token),
   registerDevice: (body, token) => authedPost('/api/devices', body, token),
   listDevices: (token) => authedGet('/api/devices', token),
   unbindDevice: (deviceId, token) => authedDelete(`/api/devices/${encodeURIComponent(deviceId)}`, token),

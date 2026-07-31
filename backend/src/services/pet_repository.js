@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { query } = require('../data/pg_client');
+const { query, getPool } = require('../data/pg_client');
 const { getDefaultHouseholdForUser } = require('./user_repository');
 
 function id(prefix) {
@@ -238,6 +238,43 @@ async function updatePetForUser(userId, petId, payload = {}) {
   return toPetDTO(result.rows[0]);
 }
 
+async function deletePetForUser(userId, petId) {
+  const pool = getPool();
+  if (!pool) throw new Error('PostgreSQL not available');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const ownedPet = await client.query(
+      `SELECT id FROM pets
+        WHERE id = $1 AND owner_user_id = $2
+        FOR UPDATE`,
+      [petId, userId]
+    );
+    if (!ownedPet.rows[0]) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+
+    await client.query('DELETE FROM feeding_records WHERE pet_id = $1', [petId]);
+    await client.query('DELETE FROM health_records WHERE pet_id = $1', [petId]);
+    await client.query('DELETE FROM medical_records WHERE pet_id = $1', [petId]);
+    await client.query('DELETE FROM device_pet_bindings WHERE pet_id = $1', [petId]);
+    await client.query('UPDATE cooking_operations SET pet_id = NULL WHERE pet_id = $1', [petId]);
+    await client.query('UPDATE orders SET pet_id = NULL WHERE pet_id = $1', [petId]);
+    await client.query(
+      'UPDATE pets SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1',
+      [petId]
+    );
+    await client.query('COMMIT');
+    return true;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 function toPetAnalysisInput(pet, extras = {}) {
   if (!pet) return null;
   const ageMonths = Number(pet.age_months || 0);
@@ -285,6 +322,7 @@ module.exports = {
   getPetById,
   createPetForUser,
   updatePetForUser,
+  deletePetForUser,
   toPetDTO,
   toPetAnalysisInput,
   petToDogProfile,

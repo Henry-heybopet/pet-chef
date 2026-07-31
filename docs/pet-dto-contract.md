@@ -60,8 +60,10 @@ owner_primary_phone?: string
 - `GET /api/pets/:id` returns one `PetDTO`.
 - `POST /api/pets` accepts form payload aliases but returns `PetDTO`.
 - `PATCH /api/pets/:id` accepts form payload aliases but returns `PetDTO`.
+- `DELETE /api/pets/:id` is idempotent and requires authentication plus owner matching. In one PostgreSQL transaction it deletes feeding, health, medical, and device-binding records; detaches retained cooking/order audit records; and soft-deletes the pet profile. The JSON-backed MVP record store applies the same pet-data cleanup.
 - `GET /api/admin/pets` returns `PetDTO[]`.
-- `POST /api/uploads/avatar` returns `{ avatar_url }`; pet save then writes `avatar_url`.
+- `POST /api/uploads/avatar` returns a relative `{ avatar_url }` in the form `/uploads/avatars/<filename>`; pet save then writes it to `PetDTO`.
+- `PETCHEF_UPLOADS_DIR` may point multiple local worktrees at one absolute runtime upload directory. When absent, the backend uses `backend/public/uploads`.
 - `POST /api/recommend` accepts `{ pet_id }` only for pet-specific recommendation.
 - `POST /api/recommend/compare` accepts `{ pet_id, currentSelection, proposedSelection }` only.
 - `POST /api/recommend/compare/batch` accepts `{ pet_id, currentSelection, proposedSelections }` only.
@@ -70,6 +72,7 @@ owner_primary_phone?: string
 
 - `PetFormDraft` is page state only.
 - Before saving, base64 avatars must be uploaded through `/api/uploads/avatar`.
+- Avatar URLs stored in PostgreSQL must be relative `/uploads/...` paths; clients resolve them against their configured API origin.
 - The pet save payload must contain formal pet fields only.
 - After save, replace local state with returned `PetDTO`.
 - localStorage may store auth/onboarding state, but not persisted pet profiles.

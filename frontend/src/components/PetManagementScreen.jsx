@@ -1,11 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from '../i18n/translations';
 import { tData } from '../i18n/dataTranslations';
 import TopBar from './TopBar';
 import { getPetAvatarUrl, handlePetAvatarError } from '../utils/petAvatar';
 
-export default function PetManagementScreen({ profiles = [], breeds = [], onAddPet, onEditPet, onSelectPet, onBack, lang }) {
+export default function PetManagementScreen({ profiles = [], breeds = [], onAddPet, onEditPet, onDeletePet, deletingPetId, onSelectPet, onBack, lang }) {
   const t = useTranslation(lang);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || deletingPetId) return;
+    const deleted = await onDeletePet?.(deleteTarget);
+    if (deleted) setDeleteTarget(null);
+  };
 
   return (
     <div className="animate-fade flex-col" style={{ flex: 1, padding: '0 24px 32px' }}>
@@ -83,8 +90,8 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                   transition: 'all 0.2s ease'
                 }}
               >
-                {/* Left side: Avatar & Edit button */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '60px', flexShrink: 0 }}>
+                {/* Left side: Avatar & action buttons */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '82px', flexShrink: 0 }}>
                   <div style={{
                     width: '56px',
                     height: '56px',
@@ -105,32 +112,44 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                       onError={(event) => handlePetAvatarError(event, pet, 'pet-list')}
                     />
                   </div>
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEditPet && onEditPet(pet);
-                    }}
-                    style={{
-                      background: 'var(--theme-surface-soft)',
-                      border: '1px solid var(--theme-border)',
-                      borderRadius: '8px',
-                      color: 'var(--gray)',
-                      fontSize: '11px',
-                      padding: '4px 10px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseEnter={e => {
-                      e.target.style.background = 'var(--theme-nutrition-soft)';
-                      e.target.style.color = 'var(--theme-text-primary)';
-                    }}
-                    onMouseLeave={e => {
-                      e.target.style.background = 'var(--theme-surface-soft)';
-                      e.target.style.color = 'var(--gray)';
-                    }}
-                  >
-                    {t('edit')}
-                  </button>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditPet && onEditPet(pet);
+                      }}
+                      style={{
+                        background: 'var(--theme-surface-soft)',
+                        border: '1px solid var(--theme-border)',
+                        borderRadius: '8px',
+                        color: 'var(--gray)',
+                        fontSize: '11px',
+                        padding: '4px 7px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {t('edit')}
+                    </button>
+                    <button
+                      disabled={deletingPetId === pet.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget(pet);
+                      }}
+                      style={{
+                        background: 'rgba(255, 80, 80, 0.08)',
+                        border: '1px solid rgba(255, 80, 80, 0.25)',
+                        borderRadius: '8px',
+                        color: 'var(--secondary)',
+                        fontSize: '11px',
+                        padding: '4px 7px',
+                        cursor: deletingPetId === pet.id ? 'wait' : 'pointer',
+                        opacity: deletingPetId === pet.id ? 0.55 : 1
+                      }}
+                    >
+                      {t('delete')}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Right side: Information block */}
@@ -195,6 +214,80 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
           })
         )}
       </div>
+
+      {deleteTarget && (
+        <div
+          role="presentation"
+          onClick={() => { if (!deletingPetId) setDeleteTarget(null); }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            background: 'rgba(0, 0, 0, 0.45)'
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-pet-title"
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: 'min(100%, 340px)',
+              padding: '24px 22px 20px',
+              borderRadius: 18,
+              background: 'var(--theme-card)',
+              border: '1px solid var(--border)',
+              boxShadow: '0 18px 60px rgba(0, 0, 0, 0.22)'
+            }}
+          >
+            <h3 id="delete-pet-title" style={{ margin: '0 0 12px', fontSize: 18, color: 'var(--theme-text-primary)' }}>
+              {t('delete')}
+            </h3>
+            <p style={{ margin: 0, color: 'var(--gray)', fontSize: 14, lineHeight: 1.7 }}>
+              {t('deletePetConfirm', { name: deleteTarget.name })}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}>
+              <button
+                type="button"
+                disabled={Boolean(deletingPetId)}
+                onClick={() => setDeleteTarget(null)}
+                style={{
+                  minWidth: 74,
+                  padding: '9px 14px',
+                  borderRadius: 10,
+                  border: '1px solid var(--theme-border)',
+                  background: 'var(--theme-surface-soft)',
+                  color: 'var(--theme-text-primary)',
+                  cursor: deletingPetId ? 'wait' : 'pointer'
+                }}
+              >
+                {t('cancelBtn')}
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(deletingPetId)}
+                onClick={confirmDelete}
+                style={{
+                  minWidth: 74,
+                  padding: '9px 14px',
+                  borderRadius: 10,
+                  border: '1px solid rgba(255, 80, 80, 0.35)',
+                  background: 'var(--secondary)',
+                  color: '#fff',
+                  cursor: deletingPetId ? 'wait' : 'pointer',
+                  opacity: deletingPetId ? 0.65 : 1
+                }}
+              >
+                {t('confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -388,6 +388,7 @@ function AppInner({ theme, onToggleTheme }) {
   const [authPromptMessage, setAuthPromptMessage] = useState('');
   const [pendingAuthAction, setPendingAuthAction] = useState(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [deletingPetId, setDeletingPetId] = useState(null);
   const [breedOptions, setBreedOptions] = useState(dogBreeds);
   const [updateGate, setUpdateGate] = useState(() => ({ status: isNativeAndroid ? 'checking' : 'ready' }));
   const swipeStartRef = useRef(null);
@@ -606,6 +607,30 @@ function AppInner({ theme, onToggleTheme }) {
   const handleEditPet = (pet) => {
     setEditingPet(pet);
     setScreen('dog_setup');
+  };
+
+  const handleDeletePet = async (pet) => {
+    if (!pet?.id || deletingPetId) return false;
+    setDeletingPetId(pet.id);
+    try {
+      const result = await api.deletePet(pet.id, authToken);
+      if (!result?.success) throw new Error(result?.error || t('deletePetFailed'));
+      deleteProfile(pet.id);
+      if (editingPet?.id === pet.id) setEditingPet(null);
+      if (aiProfile?.id === pet.id) setAiProfile(null);
+      try {
+        await reloadPets('after-delete');
+      } catch (error) {
+        console.warn('Reload pets after delete failed:', error);
+      }
+      return true;
+    } catch (error) {
+      console.error('Delete pet profile failed:', error);
+      window.alert(lang === 'zh' && error?.message ? error.message : t('deletePetFailed'));
+      return false;
+    } finally {
+      setDeletingPetId(null);
+    }
   };
 
   const toDateInput = (value) => {
@@ -965,6 +990,8 @@ function AppInner({ theme, onToggleTheme }) {
           breeds={breedOptions}
           onAddPet={handleAddPet}
           onEditPet={handleEditPet}
+          onDeletePet={handleDeletePet}
+          deletingPetId={deletingPetId}
           onSelectPet={handleSelectPet}
           onBack={goHome}
           lang={lang}

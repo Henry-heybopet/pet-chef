@@ -434,6 +434,26 @@ function getPetForUser(userId, petId) {
   return null;
 }
 
+function deletePetData(petId) {
+  const relatedTables = [
+    'device_pet_bindings',
+    'feeding_records',
+    'health_records',
+    'medical_records',
+    'vet_reviews',
+  ];
+  db.pets = db.pets.filter(item => item.id !== petId);
+  relatedTables.forEach(table => {
+    db[table] = db[table].filter(item => item.pet_id !== petId);
+  });
+  ['cooking_operations', 'device_operation_records', 'orders', 'analytics_events'].forEach(table => {
+    db[table] = db[table].map(item => item.pet_id === petId
+      ? { ...item, pet_id: '', pet_name: '' }
+      : item);
+  });
+  saveDb();
+}
+
 function petToDogProfile(pet, extras = {}) {
   if (!pet) return null;
   const ageMonths = Number(pet.age_months || 0);
@@ -889,6 +909,7 @@ module.exports = {
   updateById,
   getPetById,
   getPetForUser,
+  deletePetData,
   petToDogProfile,
   upsertDevice,
   syncDeviceDp,

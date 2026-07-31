@@ -26,11 +26,10 @@ const adminAccounts = require('./services/admin_accounts');
 const { normalizeLocale, aiNutritionPresentationIsValid, buildAiNutritionFallback, cachedAiNutritionAnalysis, validationDetailsTranslationStatus } = require('./services/localization');
 const { attachCatalogPresentations } = require('./services/catalog_localization');
 const { localizeComparison } = require('./services/comparison_localization');
+const { uploadsDir, recipeUploadsDir } = require('./config/uploads');
 
 const app = express();
 app.set('trust proxy', 1);
-const uploadsDir = path.resolve(__dirname, '../public/uploads');
-const recipeUploadsDir = path.join(uploadsDir, 'recipes');
 const runtimeDataDir = path.resolve(__dirname, '../.data');
 const AI_RECOMMENDATION_CACHE_VERSION = 17;
 fs.mkdirSync(uploadsDir, { recursive: true });
