@@ -566,6 +566,83 @@ test('未知食材第一次无营养值时只复核一次，第二次成功后�
   assert.equal(result.facts[0].lookup_attempts, 2);
 });
 
+test('未知语言食材有营养但安全结论不确定时只复核一次', async () => {
+  let calls = 0;
+  const lookup = async ({ ingredients, retry }) => {
+    calls += 1;
+    return { ingredients: [{
+      input_id: ingredients[0].input_id,
+      name: retry ? '蜂蜜' : 'honey',
+      is_food: true,
+      dog_safety: retry ? 'safe' : 'uncertain',
+      category: 'carb',
+      kcal_per_100g: 304,
+      protein_pct: 0.3,
+      fat_pct: 0,
+      carb_pct: 82.4,
+      confidence: 'high',
+      basis: retry ? '复核常见蜂蜜' : '首次安全结论不确定',
+    }] };
+  };
+  const result = await _test.lookupIngredientFactsWithRetry([{ name: 'honey', grams: 56 }], lookup);
+  assert.equal(calls, 2);
+  assert.deepEqual(result.retried_ingredients, ['honey']);
+  assert.equal(result.facts[0].name, 'honey');
+  assert.equal(result.facts[0].is_food, true);
+  assert.equal(result.facts[0].dog_safety, 'safe');
+  assert.equal(result.facts[0].kcal_per_100g, 304);
+  assert.equal(result.facts[0].nutrition_unresolved, false);
+});
+
+test('两次AI核验冲突时保留更保守的食物与犬类安全结论', async () => {
+  let calls = 0;
+  const lookup = async ({ ingredients, retry }) => {
+    calls += 1;
+    return { ingredients: [{
+      input_id: ingredients[0].input_id,
+      name: 'translated ingredient',
+      is_food: retry ? false : true,
+      dog_safety: retry ? 'unsafe' : 'safe',
+      category: 'unknown',
+      kcal_per_100g: null,
+      protein_pct: null,
+      fat_pct: null,
+      carb_pct: null,
+      confidence: 'medium',
+      basis: retry ? '复核判定不可食用' : '首次结论',
+    }] };
+  };
+  const result = await _test.lookupIngredientFactsWithRetry([{ name: 'unknown item', grams: 10 }], lookup);
+  assert.equal(calls, 2);
+  assert.equal(result.facts[0].is_food, false);
+  assert.equal(result.facts[0].dog_safety, 'unsafe');
+  assert.equal(result.facts[0].nutrition_unresolved, false);
+});
+
+test('安全与营养结论均完整时不产生额外AI调用', async () => {
+  let calls = 0;
+  const lookup = async ({ ingredients }) => {
+    calls += 1;
+    return { ingredients: [{
+      input_id: ingredients[0].input_id,
+      name: 'known food',
+      is_food: true,
+      dog_safety: 'safe',
+      category: 'carb',
+      kcal_per_100g: 100,
+      protein_pct: 1,
+      fat_pct: 1,
+      carb_pct: 20,
+      confidence: 'high',
+      basis: '完整数据',
+    }] };
+  };
+  const result = await _test.lookupIngredientFactsWithRetry([{ name: 'known food', grams: 20 }], lookup);
+  assert.equal(calls, 1);
+  assert.deepEqual(result.retried_ingredients, []);
+  assert.equal(result.facts[0].dog_safety, 'safe');
+});
+
 test('DeepSeek查询异常也只重试一次并保持未解析，不启用营养兜底', async () => {
   let calls = 0;
   const result = await _test.lookupIngredientFactsWithRetry([{ name: '无法联网食材', grams: 100 }], async () => {

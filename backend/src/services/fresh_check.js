@@ -492,11 +492,13 @@ function normalizeIngredientFacts(items = [], allowedInputs = []) {
 
 function mergeIngredientFact(first = {}, second = {}) {
   const value = (key) => second[key] !== null && second[key] !== undefined && second[key] !== '' ? second[key] : first[key] ?? null;
+  const isFoodValues = [first.is_food, second.is_food];
+  const safetyValues = [first.dog_safety, second.dog_safety];
   return {
     input_id: second.input_id || first.input_id,
     name: second.name || first.name,
-    is_food: value('is_food'),
-    dog_safety: value('dog_safety'),
+    is_food: isFoodValues.includes(false) ? false : (isFoodValues.includes(true) ? true : null),
+    dog_safety: safetyValues.includes('unsafe') ? 'unsafe' : (safetyValues.includes('safe') ? 'safe' : (safetyValues.includes('uncertain') ? 'uncertain' : null)),
     kcal_per_100g: value('kcal_per_100g'),
     category: second.category && second.category !== 'unknown' ? second.category : first.category || 'unknown',
     protein_pct: value('protein_pct'),
@@ -517,7 +519,7 @@ async function lookupIngredientFactsWithRetry(ingredients, lookup = lookupFreshC
   const retryIngredients = inputs.filter(item => {
     const fact = firstById.get(item.input_id);
     if (fact?.is_food === false || fact?.dog_safety === 'unsafe') return false;
-    return !fact || !hasNutritionValues(fact);
+    return fact?.is_food !== true || fact?.dog_safety !== 'safe' || !hasNutritionValues(fact);
   });
   let secondById = new Map();
   if (retryIngredients.length) {
