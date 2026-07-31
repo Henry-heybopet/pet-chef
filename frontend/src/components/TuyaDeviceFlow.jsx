@@ -74,8 +74,10 @@ function parseDps(dpsData) {
 
 export default function TuyaDeviceFlow({ onBack }) {
   // Authentication & Session
-  const [loginInput, setLoginInput] = useState('13501578655');
-  const [passwordInput, setPasswordInput] = useState('13501578665');
+  const [loginInput, setLoginInput] = useState('');
+  const [smsCodeInput, setSmsCodeInput] = useState('');
+  const [smsCountdown, setSmsCountdown] = useState(0);
+  const [agreementsAccepted, setAgreementsAccepted] = useState(false);
   const [heyboUser, setHeyboUser] = useState(null);
   const [heyboToken, setHeyboToken] = useState('');
   const [tuyaUid, setTuyaUid] = useState('');
@@ -113,7 +115,7 @@ export default function TuyaDeviceFlow({ onBack }) {
   const [logs, setLogs] = useState([]);
   const [historyRecords, setHistoryRecords] = useState([]);
   const [loading, setLoading] = useState('');
-  const [message, setMessage] = useState('请先登录 Heybo Pet 测试账号，完成后将静默激活虚拟涂鸦账号。');
+  const [message, setMessage] = useState('请使用手机号和短信验证码登录，完成后将静默激活涂鸦账号。');
   const [activeTab, setActiveTab] = useState('control'); // 'control' | 'logs' | 'history'
 
   // Diagnostic Monitor details state
@@ -186,6 +188,12 @@ export default function TuyaDeviceFlow({ onBack }) {
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (smsCountdown <= 0) return undefined;
+    const timer = window.setTimeout(() => setSmsCountdown(value => Math.max(0, value - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [smsCountdown]);
 
   // Scroll to bottom of logs
   useEffect(() => {
@@ -284,22 +292,48 @@ export default function TuyaDeviceFlow({ onBack }) {
     }
   };
 
+  const handleSendSmsCode = async () => {
+    if (!/^1[3-9]\d{9}$/.test(loginInput) || !agreementsAccepted || smsCountdown > 0) {
+      setMessage(agreementsAccepted ? '请输入有效的中国大陆手机号。' : '请先同意用户协议和隐私政策。');
+      return;
+    }
+    await setBusy('send-code', async () => {
+      const result = await api.sendSmsCode({
+        phone: loginInput,
+        accepted_terms: true,
+        accepted_privacy: true,
+      });
+      if (!result?.success) throw new Error(result?.error || '短信发送失败');
+      setSmsCountdown(Number(result.cooldown_seconds) || 60);
+      setMessage('验证码已发送，5分钟内有效。');
+    });
+  };
+
   // Heybo Pet Login Flow (which triggers silent Tuya Login)
   const handleHeyboLogin = async () => {
-    if (!loginInput.trim() || !passwordInput.trim()) {
-      setMessage('请输入手机号和密码。');
+    if (!/^1[3-9]\d{9}$/.test(loginInput) || !/^\d{6}$/.test(smsCodeInput)) {
+      setMessage('请输入有效手机号和6位短信验证码。');
+      return;
+    }
+    if (!agreementsAccepted) {
+      setMessage('请先同意用户协议和隐私政策。');
       return;
     }
 
     await setBusy('login', async () => {
-      addLog(`正在登录 Heybo Pet 账号: ${loginInput}...`);
-      const loginResult = await api.heyboMockLogin({
-        login: loginInput.trim(),
-        password: passwordInput.trim(),
+      addLog(`正在验证手机号 ${loginInput.slice(0, 3)}****${loginInput.slice(-4)}...`);
+      const loginResult = await api.verifySmsCode({
+        phone: loginInput,
+        code: smsCodeInput,
+        accepted_terms: true,
+        accepted_privacy: true,
       });
 
       if (!loginResult?.success) {
         throw new Error(loginResult?.error || '登录失败');
+      }
+      if (loginResult.needsUsername) {
+        throw new Error('该手机号尚未完成注册，请先在消费者 App 中设置用户名。');
       }
 
       const nextUser = loginResult.user;
@@ -337,20 +371,6 @@ export default function TuyaDeviceFlow({ onBack }) {
 
       setMessage(`Heybo 登录完成，虚拟涂鸦账号 ${nextStatus.initialized ? '已静默登录' : '激活中'}。`);
     });
-  };
-
-  // One-click Fill Test Account 1
-  const prefillTestAccount1 = () => {
-    setLoginInput('13501578655');
-    setPasswordInput('13501578665');
-    addLog('已填入硬件工厂预设测试账号1与密码');
-  };
-
-  // One-click Fill Test Account 2
-  const prefillTestAccount2 = () => {
-    setLoginInput('18757129405');
-    setPasswordInput('18757129405');
-    addLog('已填入硬件工厂预设测试账号2与密码');
   };
 
   // Device unbinding
@@ -911,24 +931,41 @@ export default function TuyaDeviceFlow({ onBack }) {
             <div style={{ display: 'flex', gap: '10px' }}>
               <input
                 value={loginInput}
-                onChange={e => setLoginInput(e.target.value)}
-                placeholder="手机号或 Email"
+                onChange={e => setLoginInput(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                placeholder="中国大陆手机号"
                 className="tuya-flow-input"
                 style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px', color: 'white', fontSize: '14px' }}
                 disabled={Boolean(loading)}
               />
               <input
-                value={passwordInput}
-                onChange={e => setPasswordInput(e.target.value)}
-                placeholder="密码"
-                type="password"
+                value={smsCodeInput}
+                onChange={e => setSmsCodeInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="6位短信验证码"
+                inputMode="numeric"
+                autoComplete="one-time-code"
                 className="tuya-flow-input"
                 style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '10px', color: 'white', fontSize: '14px' }}
                 disabled={Boolean(loading)}
               />
             </div>
-            
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>
+              <input type="checkbox" checked={agreementsAccepted} onChange={e => setAgreementsAccepted(e.target.checked)} />
+              <span>
+                我已阅读并同意
+                <a href="https://heybopet.com/terms" target="_blank" rel="noreferrer" style={{ color: '#00e6ff' }}>《用户协议》</a>
+                和
+                <a href="https://heybopet.com/privacy-policy" target="_blank" rel="noreferrer" style={{ color: '#00e6ff' }}>《隐私政策》</a>
+              </span>
+            </label>
             <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+              <button
+                className="tuya-flow-ghost"
+                onClick={handleSendSmsCode}
+                style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '12px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}
+                disabled={Boolean(loading) || smsCountdown > 0}
+              >
+                {loading === 'send-code' ? '发送中…' : smsCountdown > 0 ? `${smsCountdown}秒后重发` : '获取验证码'}
+              </button>
               <button 
                 className="tuya-flow-button" 
                 onClick={handleHeyboLogin} 
@@ -936,22 +973,6 @@ export default function TuyaDeviceFlow({ onBack }) {
                 disabled={Boolean(loading)}
               >
                 {loading === 'login' ? '正在静默激活 Tuya...' : '登录账号并激活涂鸦'}
-              </button>
-              <button 
-                className="tuya-flow-ghost" 
-                onClick={prefillTestAccount1} 
-                style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '12px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}
-                disabled={Boolean(loading)}
-              >
-                测试号 1
-              </button>
-              <button 
-                className="tuya-flow-ghost" 
-                onClick={prefillTestAccount2} 
-                style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '12px', color: 'white', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}
-                disabled={Boolean(loading)}
-              >
-                测试号 2
               </button>
             </div>
           </div>

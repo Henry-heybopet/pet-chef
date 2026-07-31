@@ -12,7 +12,13 @@ async function requestJson(path, options) {
   } catch {
     throw new Error(res.ok ? '后端返回了非 JSON 数据，请确认后端服务已启动' : `请求失败 ${res.status}`);
   }
-  if (!res.ok) throw new Error(data?.error || `请求失败 ${res.status}`);
+  if (!res.ok) {
+    const error = new Error(data?.error || `请求失败 ${res.status}`);
+    error.status = res.status;
+    error.code = data?.code;
+    error.retry_after_seconds = data?.retry_after_seconds;
+    throw error;
+  }
   return data;
 }
 
@@ -20,6 +26,28 @@ async function post(path, body) {
   return requestJson(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+function getDeviceId() {
+  const key = 'heybo_device_id';
+  let value = localStorage.getItem(key);
+  if (!value) {
+    value = globalThis.crypto?.randomUUID?.()
+      || `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(key, value);
+  }
+  return value;
+}
+
+async function smsPost(path, body) {
+  return requestJson(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Device-ID': getDeviceId(),
+    },
     body: JSON.stringify(body),
   });
 }
@@ -89,8 +117,8 @@ async function createPayment(body, token, idempotencyKey) {
 
 export const api = {
   getAndroidRelease: () => getWithTimeout('/api/app-releases/android'),
-  heyboMockLogin: (body) => post('/api/auth/mock-login', body),
-  phoneLogin: (body) => post('/api/auth/phone-login', body),
+  sendSmsCode: (body) => smsPost('/api/auth/sms/send', body),
+  verifySmsCode: (body) => smsPost('/api/auth/sms/verify', body),
   phoneSignup: (body) => post('/api/auth/phone-signup', body),
   heyboMe: (token) => authedGet('/api/users/me', token),
   uploadAvatar: (dataUrl, token) => authedPost('/api/uploads/avatar', { data_url: dataUrl }, token),

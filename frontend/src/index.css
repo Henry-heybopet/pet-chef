@@ -395,6 +395,49 @@ body {
   color: var(--primary);
 }
 
+.auth-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 124px;
+  gap: 10px;
+}
+
+.auth-code-row button {
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+.auth-agreement {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--gray);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.auth-agreement input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--primary);
+}
+
+.auth-agreement a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.auth-agreement a:hover {
+  text-decoration: underline;
+}
+
+.auth-modal-form .auth-auto-signup {
+  margin-top: -6px;
+  font-size: 12px;
+}
+
 .auth-modal-message {
   display: grid;
   gap: 4px;

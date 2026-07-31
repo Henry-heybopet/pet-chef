@@ -140,8 +140,8 @@ frontend/src/components/TuyaDeviceFlow.jsx
 
 当前页面流程：
 
-1. 输入 Heybo Pet 测试账号：手机号或 Email。
-2. App 创建本地测试 Heybo 用户 ID。
+1. 输入中国大陆手机号，获取并提交短信验证码。
+2. Heybo 后端验证成功后返回正式用户 ID 和 JWT。
 3. App 调用 `prepareTuyaForHeyboUser(heyboUid)`：
    - 初始化 Tuya SDK。
    - 使用 Heybo UID 静默登录/注册 Tuya UID。
@@ -277,12 +277,11 @@ lib/armeabi-v7a/libthing_security_algorithm.so
 
 ## 下一步
 
-1. 将当前测试账号替换为真实 Heybo 后端手机号验证码登录。
-2. 后端签发稳定 Tuya UID 和安全登录凭证，替换当前本地测试 UID。
-3. 真机确认工厂固件支持的配网方式：EZ、AP、蓝牙辅助或扫码。
-4. 真机联调 DP 下发顺序、状态回传、故障码。
-5. 增加设备状态监听，把 `status`、`remain_time`、`temperature` 显示到 App 页面。
-6. 把设备操作记录回写 Heybo 后端，绑定用户、家庭、设备、宠物和食谱。
+1. 后端签发稳定 Tuya UID 和安全登录凭证，替换当前本地测试 UID。
+2. 真机确认工厂固件支持的配网方式：EZ、AP、蓝牙辅助或扫码。
+3. 真机联调 DP 下发顺序、状态回传、故障码。
+4. 增加设备状态监听，把 `status`、`remain_time`、`temperature` 显示到 App 页面。
+5. 把设备操作记录回写 Heybo 后端，绑定用户、家庭、设备、宠物和食谱。
 
 ## 还需要硬件方确认
 

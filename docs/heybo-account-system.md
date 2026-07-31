@@ -38,29 +38,27 @@ Tuya 只作为设备能力层使用。用户在 App 内只登录 Heybo Pet 账�
 - 微信登录：产品和架构预留，企业资质准备完成后接入。
 - Apple ID：iOS 版本预留。
 
-短信服务建议：
+短信服务使用阿里云短信，AccessKey、签名和模板全部通过服务端环境变量提供。
 
-- 阿里云短信。
-- 腾讯云短信。
-
-后端需要封装短信服务接口，避免业务代码和某一家短信供应商强绑定。
-
-### 当前 MVP：手机号/用户名 + 6 位数字密码
+### 当前实现：手机号 + 6 位短信验证码
 
 当前前端登录入口固定在首页左上角，未登录时首页核心功能卡片保持展示但点击会要求登录。
 
 落地规则：
 
-- 登录账号可以是手机号或用户名。
 - 手机号只按中国大陆手机号识别：`1` 开头，第二位 `3-9`，后跟 9 位数字，共 11 位。
-- 密码必须是 6 位数字，前端不保存明文密码。
-- 后端只保存密码 PBKDF2 hash 到 `user_identities.password_hash`。
+- 用户名和密码不再作为消费者登录凭据；历史 `user_identities.password_hash` 暂不删除，仅用于可逆回滚。
+- 验证码由后端使用密码学安全随机数生成，只有 HMAC hash 写入 PostgreSQL，明文不写日志、不写响应。
+- 验证码 5 分钟有效、成功后只能使用一次；失败 5 次立即失效。
+- 同手机号 60 秒只能成功发送一次，按 `Asia/Shanghai` 自然日最多 10 次。
+- 同 IP 和同设备 5 分钟最多成功发送 5 条，按 `Asia/Shanghai` 自然日最多 50 条。
+- 阿里云拒绝的发送不占成功发送额度；发送成功的新验证码会使旧验证码失效。
 - 手机号首次登录时不直接创建默认用户名，必须先设置 1-18 位中文、英文或数字用户名，且用户名不能为纯数字。
 - 用户名保存在 `users.display_name`，手机号保存在 `users.primary_phone` 和 `user_identities.provider_user_id`。
-- 用户名登录如果账号不存在，直接返回账号或密码错误，不进入注册。
-- 手机号已存在但密码错误，直接返回密码错误，不进入设置用户名。
+- 首次注册使用 10 分钟有效且不可重放的注册凭证，不能绕过短信验证直接调用注册 API。
+- 用户必须勾选并同意《用户协议》和《隐私政策》；账号记录保存协议版本和接受时间。
 - 前端本地仅保存 `authToken`、`userId`、`username`、`sessionExpiresAt`。
-- 默认 session 有效期为 15 天；App 启动校验 `/api/users/me` 成功后刷新 token 并顺延本地免登录时间。
+- 默认 session 有效期为 30 天；App 启动校验 `/api/users/me` 成功后刷新 token 并顺延本地免登录时间。
 
 ### 全球化预留
 
@@ -528,7 +526,7 @@ Heybo 用户可以绑定多个 Tuya 家庭和多个设备。该结构需要支�
 
 ## 16. 当前后端 MVP 状态
 
-当前代码已增加 Heybo 后端账号和数据闭环 MVP。该版本使用本地 JSON 文件存储，适合开发验证；正式环境需要替换为数据库。
+当前账号、身份、家庭和短信验证码使用 PostgreSQL；部分设备和演示闭环仍保留 JSON 兼容层。
 
 本地数据文件：
 
@@ -540,7 +538,9 @@ backend/.data/heybo-db.json
 
 当前已实现 API：
 
-- `POST /api/auth/mock-login`：测试版 Heybo 登录，支持手机号或 Email。
+- `POST /api/auth/sms/send`：发送手机号登录验证码。
+- `POST /api/auth/sms/verify`：校验验证码并登录；新手机号返回一次性注册凭证。
+- `POST /api/auth/phone-signup`：短信验证后设置首次用户名并创建账号。
 - `GET /api/users/me`：读取当前用户、默认家庭、Tuya 映射。
 - `POST /api/households/default`：创建或读取默认家庭。
 - `GET /api/pets`：宠物列表。
@@ -563,16 +563,14 @@ backend/.data/heybo-db.json
 
 当前前端 `设备闭环` 页面已接入：
 
-- Heybo 后端测试登录。
+- Heybo 短信验证码登录。
 - Tuya 静默登录。
 - 设备登记到 Heybo 后端。
 - 85°C DIY 烹饪后写入后端操作记录。
 
 下一步需要替换：
 
-- `mock-login` 替换为真实手机号验证码登录。
-- 本地 JSON 存储替换为数据库。
-- `dev_` 测试 token 替换为正式 JWT/session。
+- 剩余设备演示 JSON 数据迁移到 PostgreSQL。
 - Tuya UID 登录凭证由后端安全签发。
 
 ## 17. 关键原则

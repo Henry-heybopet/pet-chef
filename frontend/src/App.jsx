@@ -22,7 +22,7 @@ import RecipeCategoryCatalog from './components/RecipeCategoryCatalog';
 import PetProfileDetails from './components/PetProfileDetails';
 import { dogBreeds } from './data/breeds';
 
-const SESSION_MS = 15 * 24 * 60 * 60 * 1000;
+const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 
 function AppUpdateGate({ state, onRetry, onUpgrade, onContinueOffline }) {
   const { lang } = useLanguage();
@@ -110,14 +110,16 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mode, setMode] = useState('login');
-  const [login, setLogin] = useState('');
-  const [password, setPassword] = useState('');
-  const [signupPhone, setSignupPhone] = useState('');
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
   const [maskedPhone, setMaskedPhone] = useState('');
+  const [registrationToken, setRegistrationToken] = useState('');
   const [username, setUsername] = useState('');
+  const [agreementsAccepted, setAgreementsAccepted] = useState(false);
+  const [countdown, setCountdown] = useState(0);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const [authAction, setAuthAction] = useState('login');
+  const [authAction, setAuthAction] = useState('');
 
   useEffect(() => {
     if (!authPrompt) return;
@@ -126,11 +128,18 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
     setMessage(lang === 'zh' && authPromptMessage ? authPromptMessage : t('loginRequired'));
   }, [authPrompt, authPromptMessage, lang]);
 
+  useEffect(() => {
+    if (countdown <= 0) return undefined;
+    const timer = window.setTimeout(() => setCountdown(value => Math.max(0, value - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [countdown]);
+
   const resetModal = () => {
     setOpen(false);
     setMode('login');
     setMessage('');
-    setPassword('');
+    setCode('');
+    setRegistrationToken('');
     setUsername('');
   };
 
@@ -139,30 +148,62 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
     resetModal();
   };
 
-  const handleSubmit = async (event, action = 'login') => {
+  const validatePhoneAndAgreement = () => {
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      setMessage(t('validMainlandPhoneRequired'));
+      return false;
+    }
+    if (!agreementsAccepted) {
+      setMessage(t('agreementsRequired'));
+      return false;
+    }
+    return true;
+  };
+
+  const handleSendCode = async () => {
+    if (busy || countdown > 0 || !validatePhoneAndAgreement()) return;
+    setBusy(true);
+    setAuthAction('send');
+    setMessage('');
+    try {
+      const result = await api.sendSmsCode({
+        phone,
+        accepted_terms: true,
+        accepted_privacy: true,
+      });
+      if (!result?.success) throw new Error(result?.error || t('authFailed'));
+      setCountdown(Number(result.cooldown_seconds) || 60);
+      setMessage(t('verificationCodeSent'));
+    } catch (error) {
+      if (Number(error?.retry_after_seconds) > 0) setCountdown(Number(error.retry_after_seconds));
+      setMessage(lang === 'zh' && error?.message ? error.message : t('authFailed'));
+    } finally {
+      setBusy(false);
+      setAuthAction('');
+    }
+  };
+
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    const loginValue = login.trim();
-    if (!loginValue) {
-      setMessage(t('enterUsernameOrPhone'));
-      return;
-    }
-    if (action === 'signup' && !/^1[3-9]\d{9}$/.test(loginValue)) {
-      setMessage(t('signupPhoneRequired'));
-      return;
-    }
-    if (!/^\d{6}$/.test(password)) {
-      setMessage(t('passwordMustSixDigits'));
+    if (!validatePhoneAndAgreement()) return;
+    if (!/^\d{6}$/.test(code)) {
+      setMessage(t('codeMustSixDigits'));
       return;
     }
     setBusy(true);
-    setAuthAction(action);
+    setAuthAction('verify');
     setMessage('');
     try {
-      const result = await api.phoneLogin({ login: loginValue, password });
+      const result = await api.verifySmsCode({
+        phone,
+        code,
+        accepted_terms: true,
+        accepted_privacy: true,
+      });
       if (!result?.success) throw new Error(result?.error || t('authFailed'));
       if (result.needsUsername) {
-        setSignupPhone(result.phone);
         setMaskedPhone(result.maskedPhone);
+        setRegistrationToken(result.registrationToken);
         setMode('signup');
         return;
       }
@@ -171,6 +212,7 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
       setMessage(lang === 'zh' && error?.message ? error.message : t('authFailed'));
     } finally {
       setBusy(false);
+      setAuthAction('');
     }
   };
 
@@ -196,7 +238,12 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
     setBusy(true);
     setMessage('');
     try {
-      const result = await api.phoneSignup({ phone: signupPhone, password, username: name });
+      const result = await api.phoneSignup({
+        registrationToken,
+        username: name,
+        accepted_terms: true,
+        accepted_privacy: true,
+      });
       if (!result?.success) throw new Error(result?.error || t('authFailed'));
       finishLogin(result);
     } catch (error) {
@@ -242,28 +289,47 @@ function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLog
                   </div>
                 )}
                 <input
-                  value={login}
-                  onChange={event => setLogin(event.target.value)}
-                  placeholder={t('usernameOrPhone')}
-                  autoComplete="username"
-                />
-                <input
-                  value={password}
-                  onChange={event => setPassword(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                  value={phone}
+                  onChange={event => setPhone(event.target.value.replace(/\D/g, '').slice(0, 11))}
+                  placeholder={t('mainlandPhone')}
+                  autoComplete="tel"
                   inputMode="numeric"
                   pattern="[0-9]*"
-                  type="password"
-                  placeholder={t('sixDigitPassword')}
-                  autoComplete="current-password"
                 />
-                <div className="auth-modal-actions">
-                  <button type="button" className="auth-modal-register" disabled={busy} onClick={event => handleSubmit(event, 'signup')}>
-                    {busy && authAction === 'signup' ? t('signingUp') : t('newUserSignup')}
-                  </button>
-                  <button type="submit" disabled={busy}>
-                    {busy && authAction === 'login' ? t('loggingIn') : t('login')}
+                <div className="auth-code-row">
+                  <input
+                    value={code}
+                    onChange={event => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder={t('smsCode')}
+                    autoComplete="one-time-code"
+                  />
+                  <button type="button" disabled={busy || countdown > 0} onClick={handleSendCode}>
+                    {authAction === 'send'
+                      ? t('sendingCode')
+                      : countdown > 0
+                        ? t('resendAfter', { seconds: countdown })
+                        : t('getVerificationCode')}
                   </button>
                 </div>
+                <label className="auth-agreement">
+                  <input
+                    type="checkbox"
+                    checked={agreementsAccepted}
+                    onChange={event => setAgreementsAccepted(event.target.checked)}
+                  />
+                  <span>
+                    {t('agreementPrefix')}
+                    <a href="https://heybopet.com/terms" target="_blank" rel="noreferrer">{t('userAgreement')}</a>
+                    {t('agreementAnd')}
+                    <a href="https://heybopet.com/privacy-policy" target="_blank" rel="noreferrer">{t('privacyPolicy')}</a>
+                  </span>
+                </label>
+                <p className="auth-auto-signup">{t('automaticSignupNotice')}</p>
+                <button type="submit" disabled={busy}>
+                  {authAction === 'verify' ? t('verifying') : t('verifyAndLogin')}
+                </button>
               </form>
             ) : (
               <form onSubmit={handleSignup} className="auth-modal-form">

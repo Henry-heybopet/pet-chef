@@ -69,7 +69,7 @@ API 采用全局限流与接口指尖限流机制，最大化防范 DDoS 及恶�
 ### 3.1 安全网关契约
 - **Base URL**: `/api/v1` (如: `https://api.petchef.cn/api/v1`)
 - **身份验证**: JWT (JSON Web Token) 承载。Authorization 头部采用 `Bearer <token>` 格式。
-- **环境隔离**: 非 production 部署时，后端兼容 `Bearer dev_usr_xxx` 的简易 Mock Token，上线后强制封闭，只接受密钥签名的合法 JWT。
+- **环境隔离**: 所有环境只接受后端密钥签名且未过期的合法 JWT；本地调试不再兼容 `dev_` Mock Token。
 
 ### 3.2 API 限流策略 (Rate Limiting)
 - **全局基础限流**: 单 IP 每 15 分钟限制最大请求数为 500 次。
