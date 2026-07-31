@@ -48,7 +48,7 @@ app.use((req, res, next) => {
 app.use(cors({
   origin: getCorsOrigins(),
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'idempotency-key', 'x-heybo-payment-mock-secret'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'idempotency-key', 'x-device-id', 'x-heybo-payment-mock-secret'],
 }));
 
 app.use('/uploads', express.static(uploadsDir));
@@ -596,7 +596,6 @@ function getOptionalUserId(req) {
   const authHeader = req.headers.authorization || '';
   if (!authHeader.startsWith('Bearer ')) return null;
   const token = authHeader.slice('Bearer '.length);
-  if (getEnvironment() !== 'production' && token.startsWith('dev_')) return token.replace('dev_', '');
   return verifyToken(token)?.sub || null;
 }
 

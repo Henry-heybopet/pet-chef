@@ -4,7 +4,7 @@ const store = require('../src/services/heybo_store');
 
 test('烹饪操作按会话记录、按事件幂等，并关联两项喂食反馈', () => {
   store.resetForTests();
-  const { user } = store.loginOrCreateUser({
+  const { user } = store.createUserForTests({
     login: 'operation-log-owner@example.com',
     provider: 'email',
     displayName: '日志测试用户',
@@ -66,8 +66,8 @@ test('烹饪操作按会话记录、按事件幂等，并关联两项喂食反�
 
 test('用户不能为其他账号的设备写入操作日志', () => {
   store.resetForTests();
-  const owner = store.loginOrCreateUser({ login: 'owner@example.com', provider: 'email' }).user;
-  const other = store.loginOrCreateUser({ login: 'other@example.com', provider: 'email' }).user;
+  const owner = store.createUserForTests({ login: 'owner@example.com', provider: 'email' }).user;
+  const other = store.createUserForTests({ login: 'other@example.com', provider: 'email' }).user;
   const device = store.upsertDevice(owner.id, {
     tuya_device_id: 'owner-device',
     device_name: 'Owner Pet Chef',

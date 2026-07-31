@@ -122,20 +122,24 @@ enum CookingOperationStatus {
 }
 
 model User {
-  id            String     @id
-  display_name  String
-  avatar_url    String?
-  primary_phone String?
-  primary_email String?
-  country_code  String
-  region        String
-  language      String     @default("zh")
-  timezone      String
-  status        UserStatus @default(active)
-  last_login_at DateTime?
-  created_at    DateTime   @default(now())
-  updated_at    DateTime   @updatedAt
-  deleted_at    DateTime?
+  id                  String     @id
+  display_name        String
+  avatar_url          String?
+  primary_phone       String?
+  primary_email       String?
+  country_code        String
+  region              String
+  language            String     @default("zh")
+  timezone            String
+  status              UserStatus @default(active)
+  terms_accepted_at   DateTime?
+  terms_version       String?
+  privacy_accepted_at DateTime?
+  privacy_version     String?
+  last_login_at       DateTime?
+  created_at          DateTime   @default(now())
+  updated_at          DateTime   @updatedAt
+  deleted_at          DateTime?
 
   identities         UserIdentity[]
   owned_households   Household[]
@@ -178,6 +182,30 @@ model UserIdentity {
   @@map("user_identities")
 }
 
+model SmsVerificationChallenge {
+  id                        String    @id
+  phone_hash                String
+  ip_hash                   String
+  device_hash               String?
+  code_hash                 String
+  status                    String    @default("pending")
+  failed_attempts           Int       @default(0)
+  expires_at                DateTime
+  sent_at                   DateTime?
+  verified_at               DateTime?
+  registration_completed_at DateTime?
+  provider_request_id       String?
+  provider_error_code       String?
+  created_at                DateTime  @default(now())
+  updated_at                DateTime  @updatedAt
+
+  @@index([phone_hash, created_at])
+  @@index([ip_hash, created_at])
+  @@index([device_hash, created_at])
+  @@index([status, expires_at])
+  @@map("sms_verification_challenges")
+}
+
 model Household {
   id            String   @id
   name          String
@@ -187,10 +215,10 @@ model Household {
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
 
-  owner   User              @relation(fields: [owner_user_id], references: [id])
-  members HouseholdMember[]
-  pets    Pet[]
-  devices Device[]
+  owner              User               @relation(fields: [owner_user_id], references: [id])
+  members            HouseholdMember[]
+  pets               Pet[]
+  devices            Device[]
   cooking_operations CookingOperation[]
   feeding_records    FeedingRecord[]
   health_records     HealthRecord[]
@@ -220,14 +248,14 @@ model HouseholdMember {
 }
 
 model TuyaUserMapping {
-  id                 String   @id
-  user_id            String
-  tuya_uid           String
-  tuya_country_code  String?
-  tuya_region        String?
-  tuya_home_ids      String[] @default([])
-  created_at         DateTime @default(now())
-  updated_at         DateTime @updatedAt
+  id                String   @id
+  user_id           String
+  tuya_uid          String
+  tuya_country_code String?
+  tuya_region       String?
+  tuya_home_ids     String[] @default([])
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
 
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
@@ -236,7 +264,7 @@ model TuyaUserMapping {
 }
 
 model Pet {
-  id                   String        @id
+  id                   String           @id
   household_id         String
   owner_user_id        String
   name                 String
@@ -249,22 +277,22 @@ model Pet {
   current_weight_kg    Float?
   target_weight_kg     Float?
   body_condition_score String?
-  activity_level       ActivityLevel @default(medium)
-  life_stage           LifeStage     @default(adult)
-  allergens            Json          @default("[]")
-  food_restrictions    Json          @default("[]")
-  health_tags          Json          @default("[]")
+  activity_level       ActivityLevel    @default(medium)
+  life_stage           LifeStage        @default(adult)
+  allergens            Json             @default("[]")
+  food_restrictions    Json             @default("[]")
+  health_tags          Json             @default("[]")
   doctor_notes         String?
   user_notes           String?
   avatar_url           String?
   feeding_goal         FeedingGoal?
   body_size            BodySize?
   environment          Environment?
-  allergy_symptoms     Json          @default("[]")
+  allergy_symptoms     Json             @default("[]")
   allergy_severity     AllergySeverity?
   special_period       SpecialPeriod?
-  created_at           DateTime      @default(now())
-  updated_at           DateTime      @updatedAt
+  created_at           DateTime         @default(now())
+  updated_at           DateTime         @updatedAt
   deleted_at           DateTime?
 
   household          Household          @relation(fields: [household_id], references: [id])
@@ -341,7 +369,7 @@ model Recipe {
   created_at         DateTime     @default(now())
   updated_at         DateTime     @updatedAt
 
-  source             RecipeSource?      @relation(fields: [source_id], references: [id])
+  source             RecipeSource?       @relation(fields: [source_id], references: [id])
   translations       RecipeTranslation[]
   cooking_operations CookingOperation[]
   feeding_records    FeedingRecord[]
@@ -411,7 +439,7 @@ model IngredientLibrary {
 }
 
 model IngredientTranslation {
-  ingredient_id     String
+  ingredient_id      String
   locale             String
   name               String
   benefits           String?
@@ -476,7 +504,7 @@ model CookingOperation {
 }
 
 model FeedingRecord {
-  id                   String    @id
+  id                   String   @id
   user_id              String
   household_id         String
   pet_id               String
@@ -487,7 +515,7 @@ model FeedingRecord {
   meal_type            String?
   appetite_score       Int?
   notes                String?
-  created_at           DateTime  @default(now())
+  created_at           DateTime @default(now())
 
   user              User              @relation(fields: [user_id], references: [id])
   household         Household         @relation(fields: [household_id], references: [id])
@@ -527,7 +555,7 @@ model HealthRecord {
 }
 
 model MedicalRecord {
-  id                String   @id
+  id                String    @id
   user_id           String
   household_id      String
   pet_id            String
@@ -536,10 +564,10 @@ model MedicalRecord {
   clinic_name       String?
   vet_name          String?
   summary           String
-  attachments       Json     @default("[]")
+  attachments       Json      @default("[]")
   next_follow_up_at DateTime?
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
 
   user      User      @relation(fields: [user_id], references: [id])
   household Household @relation(fields: [household_id], references: [id])
@@ -593,17 +621,17 @@ model Sku {
 }
 
 model Order {
-  id               String   @id
+  id               String    @id
   user_id          String
   household_id     String
   pet_id           String?
-  status           String   @default("created")
+  status           String    @default("created")
   total_cents      Int
-  currency         String   @default("CNY")
-  payment_status   String   @default("pending")
+  currency         String    @default("CNY")
+  payment_status   String    @default("pending")
   shipping_address Json?
-  created_at       DateTime @default(now())
-  updated_at       DateTime @updatedAt
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
   deleted_at       DateTime?
 
   user      User      @relation(fields: [user_id], references: [id])
@@ -636,19 +664,19 @@ model OrderItem {
 }
 
 model Payment {
-  id                  String   @id
+  id                  String    @id
   order_id            String
   user_id             String
   provider            String
   provider_payment_id String?
   amount_cents        Int
   currency            String
-  status              String   @default("pending")
+  status              String    @default("pending")
   paid_at             DateTime?
   raw_payload         Json?
-  idempotency_key     String?  @unique
-  created_at          DateTime @default(now())
-  updated_at          DateTime @updatedAt
+  idempotency_key     String?   @unique
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
 
   order Order @relation(fields: [order_id], references: [id])
   user  User  @relation(fields: [user_id], references: [id])

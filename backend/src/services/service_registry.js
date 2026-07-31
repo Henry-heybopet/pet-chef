@@ -1,10 +1,10 @@
 const serviceRegistry = {
   account_service: {
     description: '用户账号、登录身份、Token 边界和 Heybo 用户生命周期。',
-    owns: ['users', 'user_identities'],
+    owns: ['users', 'user_identities', 'sms_verification_challenges'],
     dependsOn: [],
-    currentMvpEntrypoints: ['POST /api/heybo/auth/mock-login', 'GET /api/heybo/users/me'],
-    futureResponsibilities: ['短信验证码登录', '微信/Apple/Google 登录', '账号注销', '隐私协议确认', 'Token 刷新'],
+    currentMvpEntrypoints: ['POST /api/auth/sms/send', 'POST /api/auth/sms/verify', 'POST /api/auth/phone-signup', 'GET /api/users/me'],
+    futureResponsibilities: ['微信/Apple/Google 登录', '账号注销', 'Token 刷新'],
   },
   household_service: {
     description: '家庭空间、成员权限和家庭级资源归属。',

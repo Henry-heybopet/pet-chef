@@ -7,7 +7,17 @@ const { createAnalyticsEvent } = require('../services/analytics_events');
 const paymentService = require('../services/payment');
 const { authMiddleware, generateToken, verifyToken } = require('../services/auth');
 const { getEnvironment } = require('../config/region_config');
-const { accountLogin, completePhoneSignup } = require('../services/phone_auth');
+const {
+  loginWithVerifiedPhone,
+  completePhoneSignup,
+  assertConsent,
+} = require('../services/phone_auth');
+const {
+  sendCode,
+  verifyCode,
+  createRegistrationToken,
+  verifyRegistrationToken,
+} = require('../services/sms_verification');
 const { getUserById, getDefaultHouseholdForUser, publicUser } = require('../services/user_repository');
 const petRepository = require('../services/pet_repository');
 const { buildFreshMatchAnalysis } = require('../services/fresh_match');
@@ -30,7 +40,13 @@ const localizedError = (key, locale) => FRESH_CHECK_ERRORS[key][['zh','en','de',
 function asyncHandler(fn) {
   return (req, res) => Promise.resolve(fn(req, res)).catch(error => {
     const status = error.status || (error.message === 'Unauthorized' ? 401 : 400);
-    res.status(status).json({ success: false, error: error.message });
+    if (error.retryAfterSeconds) res.set('Retry-After', String(error.retryAfterSeconds));
+    res.status(status).json({
+      success: false,
+      error: error.message,
+      ...(error.code ? { code: error.code } : {}),
+      ...(error.retryAfterSeconds ? { retry_after_seconds: error.retryAfterSeconds } : {}),
+    });
   });
 }
 
@@ -78,69 +94,73 @@ async function requireUser(req) {
   return user;
 }
 
-router.post('/auth/mock-login', asyncHandler(async (req, res) => {
-  const { login, password, provider, display_name } = req.body || {};
-  if (!login) return res.status(400).json({ success: false, error: 'login is required' });
-
-  // 硬件工厂测试账号特定密码验证
-  if (login === '13501578655') {
-    if (!password) {
-      return res.status(400).json({ success: false, error: 'password is required for this test account' });
-    }
-    if (password !== '13501578665') {
-      return res.status(401).json({ success: false, error: 'Incorrect password for test account' });
-    }
-  } else if (login === '18757129405') {
-    if (!password) {
-      return res.status(400).json({ success: false, error: 'password is required for this test account' });
-    }
-    if (password !== '18757129405') {
-      return res.status(401).json({ success: false, error: 'Incorrect password for test account' });
-    }
-  }
-
-  const result = store.loginOrCreateUser({
-    login,
-    provider: provider || (String(login).includes('@') ? 'email' : 'phone'),
-    displayName: login === '18757129405' ? '工厂测试账号2' : (login === '13501578655' ? '工厂测试账号' : display_name),
+router.post('/auth/sms/send', asyncHandler(async (req, res) => {
+  assertConsent(req.body?.accepted_terms, req.body?.accepted_privacy);
+  const result = await sendCode({
+    phone: req.body?.phone,
+    ip: req.ip,
+    deviceId: req.get('x-device-id') || req.body?.device_id,
   });
-
-
-  // 签发真实 JWT Token
-  const token = generateToken(result.user.id);
-
   res.json({
     success: true,
-    user: result.user,
-    household: result.household,
-    tuyaMapping: result.tuyaMapping,
-    token: token,
+    cooldown_seconds: result.cooldownSeconds,
+    expires_in_seconds: result.expiresInSeconds,
   });
 }));
 
-router.post('/auth/phone-login', asyncHandler(async (req, res) => {
-  const result = await accountLogin(req.body || {});
+router.post('/auth/sms/verify', asyncHandler(async (req, res) => {
+  const {
+    phone,
+    code,
+    accepted_terms: acceptedTerms,
+    accepted_privacy: acceptedPrivacy,
+  } = req.body || {};
+  assertConsent(acceptedTerms, acceptedPrivacy);
+  const verification = await verifyCode({ phone, code });
+  const result = await loginWithVerifiedPhone({
+    phone: verification.phone,
+    acceptedTerms,
+    acceptedPrivacy,
+  });
   if (result.needsUsername) {
     return res.json({
       success: true,
       needsUsername: true,
-      phone: result.phone,
       maskedPhone: result.maskedPhone,
+      registrationToken: createRegistrationToken({
+        phone: verification.phone,
+        challengeId: verification.challengeId,
+      }),
     });
   }
   res.json({
     success: true,
     user: result.user,
     household: result.household,
+    tuyaMapping: store.ensureTuyaMapping(result.user.id),
     token: generateToken(result.user.id),
   });
 }));
 
 router.post('/auth/phone-signup', asyncHandler(async (req, res) => {
-  const result = await completePhoneSignup(req.body || {});
+  const {
+    registrationToken,
+    username,
+    accepted_terms: acceptedTerms,
+    accepted_privacy: acceptedPrivacy,
+  } = req.body || {};
+  const registration = verifyRegistrationToken(registrationToken);
+  const result = await completePhoneSignup({
+    phone: registration.phone,
+    challengeId: registration.challengeId,
+    username,
+    acceptedTerms,
+    acceptedPrivacy,
+  });
   res.json({
     success: true,
     user: result.user,
+    tuyaMapping: store.ensureTuyaMapping(result.user.id),
     token: generateToken(result.user.id),
   });
 }));
@@ -436,19 +456,13 @@ router.post('/payments/mock-callback', asyncHandler(async (req, res) => {
 }));
 
 router.post('/analytics/events', asyncHandler(async (req, res) => {
-  // 尝试解析 Authorization header 中的 JWT
   let userId = null;
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
-    const env = getEnvironment();
-    if (env !== 'production' && token.startsWith('dev_')) {
-      userId = token.replace('dev_', '');
-    } else {
-      const decoded = verifyToken(token);
-      if (decoded) {
-        userId = decoded.sub;
-      }
+    const decoded = verifyToken(token);
+    if (decoded) {
+      userId = decoded.sub;
     }
   }
 

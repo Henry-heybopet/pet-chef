@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const { getEnvironment } = require('../config/region_config');
 
 const JWT_SECRET = process.env.JWT_SECRET || (getEnvironment() === 'production' ? '' : 'dev-only-jwt-secret');
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15d';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30d';
 
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET is required in production');
@@ -38,7 +38,7 @@ function verifyToken(token) {
 
 /**
  * Express 认证中间件
- * 支持真实 JWT 验证；本地/测试环境兼容 "dev_usr_xxx" 的 MVP 简易 Mock Token。
+ * 仅接受由 Heybo 后端签发的真实 JWT。
  */
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -53,15 +53,6 @@ function authMiddleware(req, res, next) {
 
   const token = parts[1];
 
-  // 1. 兼容 Mock 机制 (仅限非生产环境，如 local 或 test)
-  const env = getEnvironment();
-  if (env !== 'production' && token.startsWith('dev_')) {
-    const userId = token.replace('dev_', '');
-    req.user = { id: userId, is_mock: true };
-    return next();
-  }
-
-  // 2. 校验真实 JWT
   const decoded = verifyToken(token);
   if (!decoded) {
     return res.status(401).json({ success: false, error: 'Invalid or expired token' });
@@ -69,7 +60,6 @@ function authMiddleware(req, res, next) {
 
   req.user = {
     id: decoded.sub,
-    is_mock: false,
     ...decoded,
   };
   next();

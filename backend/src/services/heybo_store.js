@@ -149,18 +149,10 @@ function id(prefix) {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`;
 }
 
-function normalizeLogin(login) {
-  return String(login || '').trim().toLowerCase();
-}
-
 function normalizeMacAddress(value) {
   const compact = String(value || '').trim().replace(/[:-]/g, '').toUpperCase();
   if (!/^[0-9A-F]{12}$/.test(compact)) return '';
   return compact.match(/.{2}/g).join(':');
-}
-
-function hash(value) {
-  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
 }
 
 function loadDb() {
@@ -197,22 +189,16 @@ function publicUser(user) {
   return safeUser;
 }
 
-function findUserByLogin(login, provider = 'phone') {
-  const normalized = normalizeLogin(login);
-  const loginHash = hash(normalized);
-  const identity = db.user_identities.find(item =>
-    item.provider === provider &&
-    (item.login_hash === loginHash || item.provider_user_id === normalized)
-  );
-  if (!identity) return null;
-  return db.users.find(user => user.id === identity.user_id) || null;
+function getUser(userId) {
+  return db.users.find(user => user.id === userId && user.status !== 'deleted') || null;
 }
 
-function createUserWithIdentity({ login, provider = 'phone', displayName }) {
-  const normalized = normalizeLogin(login);
+function createUserForTests({ login, provider = 'email', displayName }) {
+  if (process.env.NODE_ENV === 'production') throw new Error('Test data helper is disabled in production');
+  const normalized = String(login || '').trim().toLowerCase();
   const user = {
     id: id('usr'),
-    display_name: displayName || (provider === 'phone' ? `用户${normalized.slice(-4)}` : normalized),
+    display_name: displayName || normalized,
     avatar_url: '',
     primary_phone: provider === 'phone' ? normalized : '',
     primary_email: provider === 'email' ? normalized : '',
@@ -225,49 +211,22 @@ function createUserWithIdentity({ login, provider = 'phone', displayName }) {
     updated_at: now(),
     last_login_at: now(),
   };
-
-  const identity = {
+  db.users.push(user);
+  db.user_identities.push({
     id: id('idt'),
     user_id: user.id,
     provider,
     provider_user_id: normalized,
-    login_hash: hash(normalized),
+    login_hash: '',
     phone_country_code: provider === 'phone' ? '86' : '',
     is_primary: true,
     verified_at: now(),
     created_at: now(),
-  };
-
-  db.users.push(user);
-  db.user_identities.push(identity);
-  ensureDefaultHousehold(user.id);
-  ensureTuyaMapping(user.id);
-  saveDb();
-  return user;
-}
-
-function loginOrCreateUser({ login, provider = 'phone', displayName }) {
-  let user = findUserByLogin(login, provider);
-  if (!user) {
-    user = createUserWithIdentity({ login, provider, displayName });
-  } else if (displayName && user.display_name !== displayName) {
-    user.display_name = displayName;
-  }
-  user.last_login_at = now();
-  user.updated_at = now();
+  });
   const household = ensureDefaultHousehold(user.id);
   const tuyaMapping = ensureTuyaMapping(user.id);
   saveDb();
-  return {
-    user: publicUser(user),
-    household,
-    tuyaMapping,
-    token: `dev_${user.id}`,
-  };
-}
-
-function getUser(userId) {
-  return db.users.find(user => user.id === userId && user.status !== 'deleted') || null;
+  return { user: publicUser(user), household, tuyaMapping };
 }
 
 function ensureDefaultHousehold(userId) {
@@ -300,14 +259,8 @@ function ensureDefaultHousehold(userId) {
 
 function ensureTuyaMapping(userId) {
   let mapping = db.tuya_user_mappings.find(item => item.user_id === userId);
-  const user = getUser(userId);
-  const isSpecialTestAccount = user && user.primary_phone === '18757129405';
 
   if (mapping) {
-    if (isSpecialTestAccount && mapping.tuya_uid !== '18757129405') {
-      mapping.tuya_uid = '18757129405';
-      mapping.updated_at = now();
-    }
     const expectedTestPassword = mapping.tuya_uid;
     if (mapping.tuya_test_password !== expectedTestPassword) {
       mapping.tuya_test_password = expectedTestPassword;
@@ -320,8 +273,8 @@ function ensureTuyaMapping(userId) {
   mapping = {
     id: id('tym'),
     user_id: userId,
-    tuya_uid: isSpecialTestAccount ? '18757129405' : `heybo_${userId}`,
-    tuya_test_password: isSpecialTestAccount ? '18757129405' : `heybo_${userId}`,
+    tuya_uid: `heybo_${userId}`,
+    tuya_test_password: `heybo_${userId}`,
     tuya_country_code: '86',
     tuya_region: 'CN',
     tuya_home_ids: [],
@@ -899,7 +852,7 @@ module.exports = {
   id,
   now,
   normalizeMacAddress,
-  loginOrCreateUser,
+  createUserForTests,
   getUser,
   publicUser,
   ensureDefaultHousehold,
