@@ -358,15 +358,13 @@ def build():
     add_step(doc, 7, "注意事项", "橙色警示优先级高，尤其是过敏原、健康限制或特殊生理期提示。")
     add_figure(doc, "app-ai-analysis.png", "图 4-1　每日总量、餐次、能量、核心需求与注意事项")
 
-    doc.add_heading("4.3 理解 A+B+C 组合", level=2)
+    doc.add_heading("4.3 理解 A+B 组合", level=2)
     add_bullet(doc, "A 鲜食基础包（必选）：主要食材组成和基础配方。")
     add_bullet(doc, "B 全价营养包（必选）：用于补足基础食材难以稳定覆盖的维生素、矿物质等。")
-    add_bullet(doc, "C 功能支持包（可选）：围绕美毛、关节、肠胃、护肝等目标提供额外支持。")
     add_step(doc, 1, "先检查 A 包", "点击“查看详情”，检查全部食材及比例，排除已知过敏原。")
     add_step(doc, 2, "确认 B 包", "优先保留系统推荐；更换时阅读适用阶段和禁忌。")
-    add_step(doc, 3, "按需选择 C 包", "最多选择一个主要功能方向，避免无目的叠加。")
-    add_step(doc, 4, "进入制作", "确认组合后点击底部制作按钮。")
-    add_figure(doc, "app-ai-recipe-recommendation.png", "图 4-2　AI 推荐的 A 基础包、B 营养包与 C 功能支持包")
+    add_step(doc, 3, "进入制作", "确认 A+B 组合后点击底部制作按钮。")
+    add_figure(doc, "app-ai-recipe-recommendation.png", "图 4-2　AI 推荐的 A 基础包与 B 全价营养包")
     add_callout(doc, "选择原则", "先安全、再适配、后偏好：先排除过敏和健康风险，再匹配年龄/体型/目标，最后考虑宠物口味。", "tip")
 
     # Chapter 5
@@ -484,12 +482,12 @@ def build():
     add_bullet(doc, "AI 根据这些信息生成营养需求，再对候选食谱进行排序和提示。")
     add_bullet(doc, "同一食谱面对不同宠物，建议克数、适配度、风险提示和营养包组合可能不同。")
     add_bullet(doc, "更新宠物档案后，应重新运行 AI 分析，不要继续沿用旧截图或旧份量。")
-    add_figure(doc, "app-ai-recipe-recommendation.png", "图 8-1　推荐页面把宠物需求与 A+B+C 食谱组合关联起来")
+    add_figure(doc, "app-ai-recipe-recommendation.png", "图 8-1　推荐页面把宠物需求与 A+B 食谱组合关联起来")
 
     doc.add_heading("8.2 查看和分享 AI 食谱信息", level=2)
     add_step(doc, 1, "确认宠物名称/品种", "分享前先说明这份建议是为哪只宠物、什么阶段生成。")
     add_step(doc, 2, "查看食谱详情", "打开 A 包详情，记录食材、比例、推荐理由和注意事项。")
-    add_step(doc, 3, "说明营养包", "分享时同时说明 B 包为必选补充、C 包为按需支持，避免他人只抄基础食材。")
+    add_step(doc, 3, "说明营养包", "分享时同时说明 B 包为必选补充，避免他人只抄基础食材。")
     add_step(doc, 4, "保留风险提示", "不要裁掉过敏、疾病、能量和专业确认提示。")
     add_step(doc, 5, "分享截图或文字", "使用手机系统截图/分享功能发送给家人或专业人士。APP 当前页面若没有专门“分享”按钮，可使用系统截图分享。")
     add_callout(doc, "不要直接照搬", "别人宠物的 AI 食谱分享只可作为参考。使用前必须为自己的宠物建立档案并重新评估。", "warn")

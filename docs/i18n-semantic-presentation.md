@@ -27,7 +27,7 @@
 - 执行 `cd backend && npm run test:fresh-check`。
 - 执行 `cd backend && npm run check:recipe-images`；ECS 使用 `RECIPE_IMAGE_ORIGIN` 检查线上静态图片。
 - 执行 `cd frontend && npm run check:i18n && npm run build`。
-- 切换 8 种语言后，食谱名、食材名/功效、B/C 包和对比报告同时变化；数字、code 和配比保持一致。
+- 切换 8 种语言后，食谱名、食材名/功效、B 包和对比报告同时变化；数字、code 和配比保持一致。
 
 ## 回滚
 

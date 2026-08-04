@@ -18,7 +18,7 @@
 | 文件 | 状态 | 后续处理 |
 | --- | --- | --- |
 | `宠物鲜食机项目进度计划.pptx` | `roadmap.md` | 6月到3月上市计划、测试节奏、交付物、风险管理 |
-| `docs/source/犬用鲜食配方_A+B+C_40种优化版_营养合规审查（0630）.xlsx` | `recipe-database.md`, `backend/src/data/recipes_db.js`, `frontend/src/data/demoRecipes.js` | 当前 40 个 A+B+C 优化食谱源数据 |
+| `docs/source/犬用鲜食配方_A+B_40种优化版_营养合规审查（0630）.xlsx` | `recipe-database.md`, `backend/src/data/recipes_db.js`, `frontend/src/data/demoRecipes.js` | 当前 40 个 A+B 优化食谱源数据 |
 | `鲜食机照片.jpg` | 未进入 Markdown | 可用于 README 或 UI 首屏素材 |
 
 ## 提炼原则
