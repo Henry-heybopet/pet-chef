@@ -91,7 +91,6 @@ function normalizeRecipe(row) {
     carb_pct: asPercent(row.carb_pct ?? nutrition.carb_pct, 35),
     fiber_pct: asPercent(row.fiber_pct ?? nutrition.fiber_pct, 5),
     b_pack: firstConfiguredBPack(canonicalBPackName, nutrition.b_pack, row.b_pack, canonicalRecipe?.b_pack),
-    c_pack: row.c_pack || nutrition.c_pack || '无',
     img: row.img || '',
   };
 }
@@ -208,7 +207,6 @@ async function updateRecipe(id, patch = {}) {
     'nutrition_snapshot',
     'cooking_profile',
     'b_pack',
-    'c_pack',
     'img',
     'water_content_pct',
     'protein_pct',
@@ -276,7 +274,6 @@ async function createRecipe(patch = {}) {
       water_ratio: 0.15,
     },
     b_pack: '',
-    c_pack: '无',
     img: '',
     status: 'draft',
     version: 1,

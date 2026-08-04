@@ -18,13 +18,6 @@ const packCodes = {
   '成犬/护肝基础营养包B': 'ADULT_LIVER_B',
   '老年犬轻负担营养包B': 'SENIOR_LIGHT_B',
   '低敏单一蛋白营养包B': 'HYPOALLERGENIC_B',
-  '脑发育支持功能包C': 'BRAIN_SUPPORT_C',
-  '美毛护肤支持功能包C': 'COAT_SUPPORT_C',
-  '护肝支持功能包C': 'LIVER_SUPPORT_C',
-  '肠胃健康支持功能包C': 'DIGESTIVE_SUPPORT_C',
-  '关节支持功能包C': 'JOINT_SUPPORT_C',
-  '心脏健康支持功能包C': 'HEART_SUPPORT_C',
-  '抗炎免疫支持功能包C': 'ANTI_INFLAMMATORY_C',
 };
 
 const canonicalPackName = value => String(value || '').split(/[：:（(]/)[0].trim();
@@ -55,7 +48,7 @@ try {
   const ingredients = (await client.query('SELECT id, name, benefits FROM ingredient_library')).rows;
   const packNames = new Set();
   for (const recipe of demoRecipes) {
-    for (const value of [recipe.b_pack, recipe.c_pack]) {
+    for (const value of [recipe.b_pack]) {
       const name = canonicalPackName(value);
       if (name && name !== '无') packNames.add(name);
     }

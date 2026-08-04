@@ -25,7 +25,7 @@ test('all catalog recipes, ingredient benefits, and packs have seven foreign pre
         assertTargetScript(tData(ingredient, locale), locale);
         assertTargetScript(tBenefit(ingredient, benefit, locale), locale);
       }
-      for (const pack of [recipe.b_pack, recipe.c_pack]) {
+      for (const pack of [recipe.b_pack]) {
         if (pack && pack !== '无') assertTargetScript(tPack(pack, locale), locale);
       }
     }

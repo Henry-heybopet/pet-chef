@@ -21,9 +21,9 @@ except ImportError as exc:
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_EXCEL = REPO_ROOT / "docs/source/犬用鲜食配方_A+B+C_40种优化版_营养合规审查（0630）.xlsx"
+DEFAULT_EXCEL = REPO_ROOT / "docs/source/犬用鲜食配方_A+B_40种优化版_营养合规审查（0630）.xlsx"
 RECIPES_JS = REPO_ROOT / "backend/src/data/recipes_db.js"
-RECIPE_SHEET = "01_40个食谱_A+B+C"
+RECIPE_SHEET = "01_40个食谱_A+B"
 RAW_START = "const rawRecipes = ["
 RAW_END = "];\n\n// 计算每个食谱的含水量、功效说明、烹饪基准参数"
 
@@ -91,7 +91,7 @@ def import_rows(excel_path: Path) -> list[dict]:
     sheet = workbook[RECIPE_SHEET]
     headers = [normalize_text(cell.value) for cell in sheet[1]]
     column = {name: index for index, name in enumerate(headers)}
-    required = ["recipe_id", "产品化大类", "新版配方名称", "A包明细", "B包明细", "C包明细"]
+    required = ["recipe_id", "产品化大类", "新版配方名称", "A包明细", "B包明细"]
     missing = [name for name in required if name not in column]
     if missing:
         raise ValueError(f"Missing required columns: {', '.join(missing)}")
@@ -125,7 +125,6 @@ def import_rows(excel_path: Path) -> list[dict]:
             "tags": old.get("tags", []),
             "ingredients": parse_ingredients(row[column["A包明细"]]),
             "b_pack": normalize_text(row[column["B包明细"]]),
-            "c_pack": normalize_text(row[column["C包明细"]]) or "无",
         })
 
     if len(rows) != 40:

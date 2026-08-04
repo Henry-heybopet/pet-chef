@@ -47,8 +47,7 @@ async function run() {
         carb_pct: r.carb_pct,
         fiber_pct: r.fiber_pct,
         water_content_pct: r.water_content_pct,
-        b_pack: r.b_pack,
-        c_pack: r.c_pack
+        b_pack: r.b_pack
       };
       
       const params = [
@@ -67,6 +66,7 @@ async function run() {
     console.log(`✅ Successfully synced ${recipesDb.length} refreshed recipes to PostgreSQL database!`);
   } catch (err) {
     console.error("❌ Failed to sync recipes to database:", err.message);
+    process.exitCode = 1;
   }
 }
 

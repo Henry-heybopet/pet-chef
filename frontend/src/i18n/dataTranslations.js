@@ -155,13 +155,6 @@ const R = { // Recipe names
 '成犬/护肝基础营养包B':['Adult Liver Care Pack B','Leberpflegepaket B für erwachsene Hunde','Pack foie adulte B','Pack hepático adulto B','Pacchetto fegato adulto B','成犬肝臓ケアパックB','성견 간 관리 팩 B'],
 '老年犬轻负担营养包B':['Senior Light Pack B','Schonpaket B für Senioren','Pack léger senior B','Pack ligero senior B','Pacchetto leggero senior B','シニア軽負担パックB','노령견 저부담 팩 B'],
 '低敏单一蛋白营养包B':['Hypoallergenic Single-Protein Pack B','Hypoallergenes Einzelproteinpaket B','Pack B mono-protéine hypoallergénique','Pack B monoproteico hipoalergénico','Pacchetto B monoproteico ipoallergenico','低アレルゲン単一たんぱくパックB','저알레르기 단일 단백질 팩 B'],
-'脑发育支持功能包C':['Brain Development Pack C','Gehirnentwicklungspaket C','Pack développement cérébral C','Pack desarrollo cerebral C','Pacchetto sviluppo cerebrale C','脳発達サポートパックC','두뇌 발달 지원 팩 C'],
-'美毛护肤支持功能包C':['Coat and Skin Pack C','Fell- und Hautpaket C','Pack peau et pelage C','Pack piel y pelo C','Pacchetto pelle e pelo C','被毛・皮膚サポートパックC','피모·피부 지원 팩 C'],
-'护肝支持功能包C':['Liver Support Pack C','Leberunterstützungspaket C','Pack soutien hépatique C','Pack apoyo hepático C','Pacchetto supporto epatico C','肝臓サポートパックC','간 지원 팩 C'],
-'肠胃健康支持功能包C':['Digestive Support Pack C','Verdauungspaket C','Pack digestif C','Pack digestivo C','Pacchetto digestivo C','消化サポートパックC','소화기 지원 팩 C'],
-'关节支持功能包C':['Joint Support Pack C','Gelenkpaket C','Pack articulations C','Pack articulaciones C','Pacchetto articolazioni C','関節サポートパックC','관절 지원 팩 C'],
-'心脏健康支持功能包C':['Heart Support Pack C','Herzpaket C','Pack cardiaque C','Pack cardíaco C','Pacchetto cardiaco C','心臓サポートパックC','심장 지원 팩 C'],
-'抗炎免疫支持功能包C':['Anti-inflammatory Immune Pack C','Entzündungshemmendes Immunpaket C','Pack immunité anti-inflammatoire C','Pack inmune antiinflamatorio C','Pacchetto immunitario antinfiammatorio C','抗炎症・免疫サポートパックC','항염·면역 지원 팩 C'],
 '用于小型/中型幼犬，高营养密度，强化高矿物与钙磷比。':['For small and medium puppies; nutrient-dense with balanced minerals and calcium-phosphorus ratio.','Für kleine und mittlere Welpen; nährstoffreich mit ausgewogenem Calcium-Phosphor-Verhältnis.','Pour chiots petits et moyens ; riche en nutriments avec rapport calcium-phosphore équilibré.','Para cachorros pequeños y medianos; alta densidad nutricional y calcio-fósforo equilibrado.','Per cuccioli piccoli e medi; alta densità nutrizionale e rapporto calcio-fosforo equilibrato.','小・中型の子犬向け。高栄養密度でミネラルとカルシウム・リン比を調整。','소·중형 강아지용 고영양 밀도 배합으로 미네랄과 칼슘·인 비율을 조절합니다.'],
 '专为大型犬幼犬设计，精准限制钙含量，窄钙磷比以支持骨骼健康发育。':['For large-breed puppies; controlled calcium supports healthy bone development.','Für große Welpen; kontrolliertes Calcium unterstützt gesunde Knochenentwicklung.','Pour grands chiots ; calcium contrôlé pour un développement osseux sain.','Para cachorros grandes; calcio controlado para un desarrollo óseo sano.','Per cuccioli grandi; calcio controllato per uno sviluppo osseo sano.','大型子犬向け。カルシウムを管理し健全な骨の発達を支えます。','대형 강아지용으로 칼슘을 정밀 조절해 건강한 뼈 발달을 돕습니다.'],
 '成犬日常均衡维护款，平稳微量元素平衡。':['Balanced daily maintenance for adult dogs with steady trace minerals.','Ausgewogene tägliche Versorgung erwachsener Hunde mit stabilen Spurenelementen.','Entretien quotidien équilibré de l’adulte avec oligo-éléments stables.','Mantenimiento diario equilibrado para adultos con oligoelementos estables.','Mantenimento quotidiano equilibrato per adulti con oligoelementi stabili.','成犬の日常維持向け。微量元素をバランスよく補います。','성견의 일상 균형 유지와 미량 원소 보충을 돕습니다.'],
@@ -269,13 +262,6 @@ const PACK_SUMMARY = {
   '成犬/护肝基础营养包B': '低矿物盐负担设计，适合肝脏养护或消化道敏感群体。',
   '老年犬轻负担营养包B': '老年犬专属，限制磷与多余钙，轻负担易水解。',
   '低敏单一蛋白营养包B': '不添加任何动物骨肉粉载体，纯矿物游离态以防过敏。',
-  '脑发育支持功能包C': 'DHA藻油 / 胆碱 / 牛磺酸，支持幼犬神经传导。',
-  '美毛护肤支持功能包C': '天然卵磷脂 / 有机锌 / 生物素，强化皮脂屏障。',
-  '护肝支持功能包C': '天然水飞蓟素 / 胆碱 / 姜黄素，抗氧化护肝。',
-  '肠胃健康支持功能包C': '果寡糖益生元 / 酵母后生元，调理胃肠微生态。',
-  '关节支持功能包C': '高浓度葡萄糖胺 / 软骨素 / MSM，关节润滑保护。',
-  '心脏健康支持功能包C': '天然辅酶Q10 / L-肉碱 / 纯牛磺酸，强健心肌。',
-  '抗炎免疫支持功能包C': '酵母β-葡聚糖 / 蓝莓花青素，清除自由基抗衰。',
 };
 export function tData(zhName, lang) {
   if (!lang || lang === 'zh') return zhName;

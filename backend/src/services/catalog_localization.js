@@ -22,7 +22,6 @@ function sourcePresentation(recipe, locale = 'zh') {
     ingredients: Object.fromEntries(Object.keys(recipe.ingredients || {}).map(name => [name, { name }])),
     ingredient_benefits: {},
     b_pack: recipe.b_pack || '无',
-    c_pack: recipe.c_pack || '无',
     translation_status: locale === 'zh' ? 'source' : 'fallback',
     fallback_locale: locale === 'zh' ? null : 'zh',
   };
@@ -83,7 +82,6 @@ async function attachCatalogPresentations(recipes, requestedLocale) {
           ingredients,
           ingredient_benefits: ingredientBenefits,
           b_pack: localizePack(recipe.b_pack),
-          c_pack: localizePack(recipe.c_pack),
           translation_status: complete ? 'translated' : 'fallback',
           fallback_locale: complete ? null : 'zh',
         },
