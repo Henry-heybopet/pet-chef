@@ -1310,6 +1310,25 @@ body {
   margin: 0;
 }
 
+.cooking-device-name-button {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cooking-device-name-button strong {
+  overflow-wrap: anywhere;
+}
+
+.cooking-device-name-button small {
+  color: var(--theme-fresh);
+  font-size: 11px;
+}
+
 .cooking-records-section {
   padding-bottom: 54px;
 }
@@ -1734,6 +1753,58 @@ body {
   display: flex;
   gap: 10px;
   margin-top: 16px;
+}
+
+.cooking-device-picker-list {
+  display: grid !important;
+  gap: 10px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.cooking-device-picker-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--theme-border);
+  border-radius: 14px;
+  background: var(--theme-surface-soft);
+  color: var(--theme-text-primary);
+  text-align: left;
+}
+
+.cooking-device-picker-list button:disabled {
+  opacity: 0.5;
+}
+
+.cooking-device-picker-list span {
+  color: var(--theme-text-secondary);
+  font-size: 12px;
+}
+
+.cooking-rename-card label,
+.cooking-rename-card label span {
+  display: block;
+}
+
+.cooking-rename-card input {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--theme-border);
+  border-radius: 12px;
+  background: var(--theme-surface-soft);
+  color: var(--theme-text-primary);
+  font: inherit;
+}
+
+.cooking-rename-card small {
+  display: block;
+  margin-top: 7px;
+  color: var(--theme-text-secondary);
 }
 
 .cooking-start-actions {

@@ -131,6 +131,13 @@ class HeyboTuyaWeb extends WebPlugin {
     return { success: true, devId };
   }
 
+  async renameDevice({ devId, name }) {
+    const device = this.devices.find(item => item.devId === devId);
+    if (!device) throw new Error('Device not found');
+    device.name = name;
+    return { success: true, devId, name };
+  }
+
   async startBleScan() {
     if (this.activeBleTimeout) clearTimeout(this.activeBleTimeout);
     

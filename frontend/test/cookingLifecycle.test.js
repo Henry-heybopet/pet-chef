@@ -44,6 +44,23 @@ test('倒计时拒绝超过计划时长及提前归零的旧DP8', () => {
   }), 899);
 });
 
+test('已有本地时钟时持续递减，不被间歇上报的DP8卡住', () => {
+  assert.equal(resolveCookingRemainingSeconds({
+    totalSeconds: 180,
+    reportedRemaining: 150,
+    elapsedSeconds: 31,
+    isActive: true,
+    hasLocalClock: true,
+  }), 149);
+  assert.equal(resolveCookingRemainingSeconds({
+    totalSeconds: 180,
+    reportedRemaining: 150,
+    elapsedSeconds: 32,
+    isActive: true,
+    hasLocalClock: true,
+  }), 148);
+});
+
 test('只有运行中的本地截止时间到达后才触发自动完成', () => {
   assert.equal(shouldAutoCompleteCooking({ totalSeconds: 780, elapsedMs: 779999, isRunning: true }), false);
   assert.equal(shouldAutoCompleteCooking({ totalSeconds: 780, elapsedMs: 780000, isRunning: true }), true);

@@ -415,6 +415,42 @@ public class HeyboTuyaPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void renameDevice(PluginCall call) {
+        if (!ensureInitialized(call)) return;
+
+        String devId = call.getString("devId");
+        String name = call.getString("name");
+        if (TextUtils.isEmpty(devId)) {
+            call.reject("devId is required.");
+            return;
+        }
+        if (TextUtils.isEmpty(name) || name.trim().length() > 30) {
+            call.reject("name must contain 1 to 30 characters.");
+            return;
+        }
+
+        String trimmedName = name.trim();
+        IThingDevice device = ThingHomeSdk.newDeviceInstance(devId);
+        device.renameDevice(trimmedName, new IResultCallback() {
+            @Override
+            public void onSuccess() {
+                JSObject result = new JSObject();
+                result.put("success", true);
+                result.put("devId", devId);
+                result.put("name", trimmedName);
+                call.resolve(result);
+                device.onDestroy();
+            }
+
+            @Override
+            public void onError(String code, String error) {
+                call.reject("Rename device failed: " + code + " " + error);
+                device.onDestroy();
+            }
+        });
+    }
+
+    @PluginMethod
     public void unbindDevice(PluginCall call) {
         if (!ensureInitialized(call)) return;
 

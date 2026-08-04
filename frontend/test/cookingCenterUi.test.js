@@ -37,6 +37,14 @@ const androidCommandSource = fs.readFileSync(
   path.join(frontendRoot, 'android/app/src/main/java/com/heybopet/petchef/device/DeviceCommand.java'),
   'utf8',
 );
+const androidPluginSource = fs.readFileSync(
+  path.join(frontendRoot, 'android/app/src/main/java/com/heybopet/petchef/HeyboTuyaPlugin.java'),
+  'utf8',
+);
+const iosPluginSource = fs.readFileSync(
+  path.join(frontendRoot, 'ios/App/App/HeyboTuyaPlugin.swift'),
+  'utf8',
+);
 
 test('启动前确认只保留幼童和宠物安全项', () => {
   const checksBlock = cookingSource.match(/const START_CHECKS = \[([\s\S]*?)\];/)?.[1] || '';
@@ -107,4 +115,27 @@ test('实机使用DP7计划时长且App在计划截止时主动复位停机', ()
   assert.match(androidCommandSource, /dps\.put\(DP_COOK_TIME, cookTime\)/);
   assert.doesNotMatch(androidCommandSource, /dps\.put\(DP_COOK_START_PAUSE_RESET, "start"\)/);
   assert.match(androidAdapterSource, /publishDps\(DeviceCommand\.diyCooking[\s\S]*?publishDps\(DeviceCommand\.cookingAction\(devId, "start"\), callback\)/);
+});
+
+test('App倒计时使用请求时间和本地时钟，不被间歇DP8上报卡住', () => {
+  assert.match(cookingSource, /const requestedAtMs = Date\.now\(\)/);
+  assert.match(cookingSource, /const startedAtMs = requestedAtMs/);
+  assert.match(cookingSource, /hasLocalClock: Boolean\(runStartedAt \|\| runElapsedMs > 0\)/);
+});
+
+test('多台鲜食机从一键烹饪进入时必须先选择设备', () => {
+  assert.match(cookingSource, /function DeviceSelectionModal/);
+  assert.match(cookingSource, /if \(devices\.length === 1\)/);
+  assert.match(cookingSource, /setDevicePickerOpen\(true\)/);
+  assert.match(cookingSource, /setSelectedDevId\(device\.devId \|\| device\.tuya_device_id\)/);
+  assert.doesNotMatch(cookingSource, /if \(recipeContext && selectedDevice && !detailDevice\) setDetailDevice\(selectedDevice\)/);
+});
+
+test('设备名称可编辑并同步Web、Android和iOS Tuya SDK', () => {
+  assert.match(cookingSource, /function RenameDeviceModal/);
+  assert.match(cookingSource, /HeyboTuya\.renameDevice\(\{ devId, name \}\)/);
+  assert.match(cookingSource, /api\.registerDevice\(\{ tuya_device_id: devId, device_name: name \}/);
+  assert.match(nativeBridgeSource, /async renameDevice\(\{ devId, name \}\)/);
+  assert.match(androidPluginSource, /device\.renameDevice\(trimmedName/);
+  assert.match(iosPluginSource, /device\.updateName\(name/);
 });

@@ -21,6 +21,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
         CAPPluginMethod(name: "getActivatorToken", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startWifiPairing", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopPairing", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "renameDevice", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "unbindDevice", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startBleScan", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopBleScan", returnType: CAPPluginReturnPromise),
@@ -294,6 +295,30 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
                 call.resolve(["success": true, "devId": devId])
             }, failure: { error in
                 call.reject("Unbind device failed: \(error?.localizedDescription ?? "unknown error")")
+            })
+        }
+    }
+
+    @objc func renameDevice(_ call: CAPPluginCall) {
+        guard let devId = call.getString("devId"), !devId.isEmpty else {
+            call.reject("devId is required")
+            return
+        }
+        let name = (call.getString("name") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.count <= 30 else {
+            call.reject("name must contain 1 to 30 characters")
+            return
+        }
+
+        DispatchQueue.main.async {
+            guard let device = ThingSmartDevice(deviceId: devId) else {
+                call.reject("Failed to initialize ThingSmartDevice for devId: \(devId)")
+                return
+            }
+            device.updateName(name, success: {
+                call.resolve(["success": true, "devId": devId, "name": name])
+            }, failure: { error in
+                call.reject("Rename device failed: \(error?.localizedDescription ?? "unknown error")")
             })
         }
     }

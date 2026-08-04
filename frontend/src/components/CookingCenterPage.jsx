@@ -811,6 +811,61 @@ function SafetyStartModal({ lidOpen, onCancel, onConfirm }) {
   );
 }
 
+function DeviceSelectionModal({ devices, onCancel, onSelect }) {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
+  return (
+    <div className="cooking-sheet-mask">
+      <div className="cooking-confirm-card cooking-device-picker">
+        <h2>{t('selectCookerForCooking')}</h2>
+        <p>{t('selectCookerForCookingHelp')}</p>
+        <div className="cooking-device-picker-list">
+          {devices.map(device => {
+            const view = getDeviceView(device, t);
+            return (
+              <button key={view.devId} type="button" disabled={!view.online} onClick={() => onSelect(device)}>
+                <strong>{view.name}</strong>
+                <span>{view.status}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div><GhostButton onClick={onCancel}>{t('cancelBtn')}</GhostButton></div>
+      </div>
+    </div>
+  );
+}
+
+function RenameDeviceModal({ device, saving, onCancel, onConfirm }) {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
+  const [name, setName] = useState(() => getDeviceView(device, t).name);
+  const trimmedName = name.trim();
+  return (
+    <div className="cooking-sheet-mask">
+      <div className="cooking-confirm-card cooking-rename-card">
+        <h2>{t('renameCooker')}</h2>
+        <label>
+          <span>{t('cookerName')}</span>
+          <input
+            type="text"
+            value={name}
+            maxLength={30}
+            autoFocus
+            onChange={event => setName(event.target.value)}
+            placeholder={t('cookerNamePlaceholder')}
+          />
+        </label>
+        <small>{t('cookerNameLimit')}</small>
+        <div>
+          <GhostButton disabled={saving} onClick={onCancel}>{t('cancelBtn')}</GhostButton>
+          <PrimaryButton disabled={saving || !trimmedName} onClick={() => onConfirm(trimmedName)}>{t('saveBtn')}</PrimaryButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, runStartedAt, runElapsedMs, nowTick, onBack, onChooseRecipe, onStart, onPause, onResume, onStop }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
@@ -830,6 +885,7 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
     elapsedSeconds: elapsedMs / 1000,
     isActive,
     isDone: view.statusCode === 'done',
+    hasLocalClock: Boolean(runStartedAt || runElapsedMs > 0),
   });
   const progressPercent = view.statusCode === 'done'
     ? 100
@@ -944,6 +1000,9 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [startConfirmOpen, setStartConfirmOpen] = useState(false);
   const [unbindTarget, setUnbindTarget] = useState(null);
+  const [renameTarget, setRenameTarget] = useState(null);
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [devicePickerOpen, setDevicePickerOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [runStartedAt, setRunStartedAt] = useState(0);
   const [runElapsedMs, setRunElapsedMs] = useState(0);
@@ -955,6 +1014,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const cookingRef = useRef(null);
   const completionHandlerRef = useRef(null);
   const selectedDeviceDpsRef = useRef({});
+  const recipeEntryHandledRef = useRef(false);
   const mountedRef = useRef(true);
   cookingRef.current = getRecipeCookingParams(recipeContext);
 
@@ -1292,7 +1352,8 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     const runtimeDps = { 1: true, 3: 'diy', 5: 'cooking', 7: cookTime, 9: temperature, 102: power, 107: 'start', 108: speed };
     selectedDeviceDpsRef.current = { ...withoutReportedRemaining(currentDps), ...runtimeDps };
     const sessionId = uniqueEventId('session');
-    const requestedAtIso = new Date().toISOString();
+    const requestedAtMs = Date.now();
+    const requestedAtIso = new Date(requestedAtMs).toISOString();
     const operationContext = {
       session_id: sessionId,
       tuya_device_id: selectedDevice.devId,
@@ -1326,8 +1387,8 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       setMessage(error?.message || t('deviceCommandFailed'));
       return;
     }
-    const startedAtMs = Date.now();
-    const startedAtIso = new Date(startedAtMs).toISOString();
+    const startedAtMs = requestedAtMs;
+    const startedAtIso = requestedAtIso;
     saveCookingRuntime(selectedDevice.devId, runtimeDps, {
       sessionId,
       startedAt: startedAtIso,
@@ -1617,9 +1678,39 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     setDetailDevice(null);
   };
 
+  const handleRename = async name => {
+    if (!renameTarget || renameSaving) return;
+    const devId = renameTarget.devId || renameTarget.tuya_device_id;
+    setRenameSaving(true);
+    try {
+      await HeyboTuya.renameDevice({ devId, name });
+      await api.registerDevice({ tuya_device_id: devId, device_name: name }, authToken);
+      setDevices(prev => prev.map(device => (device.devId || device.tuya_device_id) === devId
+        ? { ...device, name, device_name: name }
+        : device));
+      setDetailDevice(current => current && (current.devId || current.tuya_device_id) === devId
+        ? { ...current, name, device_name: name }
+        : current);
+      setRenameTarget(null);
+      setMessage(t('renameCookerSuccess'));
+    } catch (error) {
+      setMessage(lang === 'zh' && error?.message ? error.message : t('renameCookerFailed'));
+    } finally {
+      setRenameSaving(false);
+    }
+  };
+
   useEffect(() => {
-    if (recipeContext && selectedDevice && !detailDevice) setDetailDevice(selectedDevice);
-  }, [recipeContext, selectedDevice?.devId]);
+    if (!recipeContext || !devices.length || recipeEntryHandledRef.current) return;
+    recipeEntryHandledRef.current = true;
+    if (devices.length === 1) {
+      setSelectedDevId(devices[0].devId || devices[0].tuya_device_id);
+      setDetailDevice(devices[0]);
+      return;
+    }
+    setDetailDevice(null);
+    setDevicePickerOpen(true);
+  }, [recipeContext, devices]);
 
   const hasDevice = devices.length > 0;
   const view = getDeviceView(selectedDevice, t);
@@ -1645,7 +1736,10 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
             return (
               <div key={item.devId} className={`cooking-device-card ${item.devId === view.devId ? 'is-active' : ''}`} onClick={() => { setSelectedDevId(item.devId); setDetailDevice(device); }}>
                 <div className="cooking-device-card-title">
-                  <strong>{item.name}</strong>
+                  <button className="cooking-device-name-button" type="button" onClick={event => { event.stopPropagation(); setRenameTarget(device); }}>
+                    <strong>{item.name}</strong>
+                    <small>{t('edit')}</small>
+                  </button>
                   <GhostButton danger onClick={event => { event.stopPropagation(); setUnbindTarget(device); }}>{t('unbind')}</GhostButton>
                 </div>
                 <span>{item.status}</span>
@@ -1688,6 +1782,12 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       )}
       {feedbackRecord && <FeedbackModal record={feedbackRecord} saving={feedbackSaving} onCancel={() => setFeedbackRecord(null)} onConfirm={handleFeedbackSave} />}
       {startConfirmOpen && <SafetyStartModal lidOpen={isLidOpenFault(parseDps(selectedDevice))} onCancel={() => setStartConfirmOpen(false)} onConfirm={handleStartCooking} />}
+      {devicePickerOpen && <DeviceSelectionModal devices={devices} onCancel={() => setDevicePickerOpen(false)} onSelect={device => {
+        setSelectedDevId(device.devId || device.tuya_device_id);
+        setDetailDevice(device);
+        setDevicePickerOpen(false);
+      }} />}
+      {renameTarget && <RenameDeviceModal device={renameTarget} saving={renameSaving} onCancel={() => setRenameTarget(null)} onConfirm={handleRename} />}
 
       {unbindTarget && (
         <div className="cooking-sheet-mask">

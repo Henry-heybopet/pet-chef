@@ -19,16 +19,19 @@ export function resolveCookingRemainingSeconds({
   elapsedSeconds = 0,
   isActive = false,
   isDone = false,
+  hasLocalClock = false,
 }) {
   const total = Math.max(0, Number(totalSeconds) || 0);
   const reported = Number(reportedRemaining);
+  const localRemaining = Math.max(0, total - Math.floor(Number(elapsedSeconds) || 0));
   const validReported = isActive
     && Number.isFinite(reported)
     && reported > 0
     && reported <= total;
 
+  if (isActive && hasLocalClock) return localRemaining;
   if (validReported) return Math.ceil(reported);
-  if (isActive) return Math.max(0, total - Math.floor(Number(elapsedSeconds) || 0));
+  if (isActive) return localRemaining;
   return isDone ? 0 : total;
 }
 
