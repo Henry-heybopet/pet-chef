@@ -118,6 +118,7 @@ const T = {
   'expand': ['展开','Expand','Erweitern','Développer','Expandir','Espandi','展開','펼치기'],
   'collapse': ['收起','Collapse','Einklappen','Réduire','Contraer','Riduci','折りたたむ','접기'],
   'select': ['选择','Select','Wählen','Choisir','Elegir','Scegli','選択','선택'],
+  'createPetBeforeRecipe': ['请先添加宠物档案，再选择食谱。','Add a pet profile before selecting a recipe.','Erstellen Sie ein Tierprofil, bevor Sie ein Rezept auswählen.','Ajoutez un profil animal avant de choisir une recette.','Añada un perfil de mascota antes de seleccionar una receta.','Aggiungi un profilo animale prima di scegliere una ricetta.','レシピを選ぶ前にペットプロフィールを追加してください。','레시피를 선택하기 전에 반려동물 프로필을 추가해 주세요.'],
   'totalRecipes': ['共 {n} 个食谱','Total {n} recipes','{n} Rezepte gesamt','{n} recettes au total','{n} recetas en total','{n} ricette in totale','全{n}レシピ','총 {n}개 레시피'],
   'aiGenerating': ['AI 正在定制专属食谱...','AI generating custom recipe...','KI erstellt Rezept...','IA crée une recette...','IA creando receta...','IA sta creando ricetta...','AIがレシピを作成中...','AI가 레시피를 생성 중...'],
   'noRecipes': ['暂无该分类的食谱','No recipes in this category','Keine Rezepte verfügbar','Aucune recette disponible','Sin recetas disponibles','Nessuna ricetta disponibile','このカテゴリにレシピがありません','이 카테고리에 레시피가 없습니다'],

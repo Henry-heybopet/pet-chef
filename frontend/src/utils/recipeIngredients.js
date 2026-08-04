@@ -39,3 +39,25 @@ export function sortRecipeIngredientEntries(entries = []) {
 export function sortRecipeIngredientList(items = []) {
   return [...items].sort((a, b) => compareIngredients(a?.name || '', a?.pct, b?.name || '', b?.pct));
 }
+
+export function formatRecipeIngredientPercentages(values = []) {
+  const numericValues = values.map(value => {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : 0;
+  });
+  const total = numericValues.reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return numericValues.map(() => '0.00%');
+
+  const exactBasisPoints = numericValues.map(value => (value / total) * 10000);
+  const basisPoints = exactBasisPoints.map(Math.floor);
+  let remainder = 10000 - basisPoints.reduce((sum, value) => sum + value, 0);
+  const remainderOrder = exactBasisPoints
+    .map((value, index) => ({ index, remainder: value - basisPoints[index] }))
+    .sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+
+  for (let index = 0; index < remainder; index += 1) {
+    basisPoints[remainderOrder[index].index] += 1;
+  }
+
+  return basisPoints.map(value => `${(value / 100).toFixed(2)}%`);
+}

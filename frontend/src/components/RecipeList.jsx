@@ -6,6 +6,7 @@ import { useTranslation } from '../i18n/translations';
 import { tData, tTag } from '../i18n/dataTranslations';
 import { resolveRecipeImageUrl } from '../utils/recipeImage';
 import {
+  formatRecipeIngredientPercentages,
   getIngredientCategory,
   INGREDIENT_CATEGORY_COLORS,
   sortRecipeIngredientEntries,
@@ -15,6 +16,7 @@ function RecipeCard({ recipe, onSelect, t, lang }) {
   const [expanded, setExpanded] = useState(false);
   const ingredients = sortRecipeIngredientEntries(Object.entries(recipe.ingredients || {}));
   const totalPct = ingredients.reduce((s, [, v]) => s + (typeof v === 'number' ? v : 0), 0);
+  const displayPercentages = formatRecipeIngredientPercentages(ingredients.map(([, pct]) => pct));
   const displayName = recipe.presentation?.name || tData(recipe.name, lang);
   const ingredientName = name => recipe.presentation?.ingredients?.[name]?.name || tData(name, lang);
   const imageUrl = resolveRecipeImageUrl(recipe.img);
@@ -43,7 +45,7 @@ function RecipeCard({ recipe, onSelect, t, lang }) {
           ) : (
             <div style={{ padding: '14px 14px 0' }}>
               <div style={{ color: 'var(--theme-nutrition)', fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{displayName}</div>
-              {ingredients.map(([name, pct]) => {
+              {ingredients.map(([name, pct], index) => {
                 if (typeof pct !== 'number') return null;
                 const ratio = pct / totalPct;
                 const cat = getIngredientCategory(name);
@@ -51,7 +53,7 @@ function RecipeCard({ recipe, onSelect, t, lang }) {
                   <div key={name} style={{ marginBottom: 7 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
                       <span style={{ color: 'var(--text-main)' }}>{ingredientName(name)}</span>
-                      <span style={{ color: INGREDIENT_CATEGORY_COLORS[cat], fontWeight: 600 }}>{Math.round(ratio * 100)}%</span>
+                      <span style={{ color: INGREDIENT_CATEGORY_COLORS[cat], fontWeight: 600 }}>{displayPercentages[index]}</span>
                     </div>
                     <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 4, height: 5, overflow: 'hidden' }}>
                       <div style={{ width: `${ratio * 100}%`, height: '100%', background: INGREDIENT_CATEGORY_COLORS[cat], borderRadius: 4, transition: 'width 0.6s ease' }} />

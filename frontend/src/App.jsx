@@ -954,6 +954,11 @@ function AppInner({ theme, onToggleTheme }) {
   };
 
   const handleSelectRecipe = (recipe) => {
+    if (!profile) {
+      window.alert(t('createPetBeforeRecipe'));
+      setScreen('pet_management');
+      return;
+    }
     setSelectedRecipe(recipe);
     setRecipeMakeReturnScreen(screen === 'ai_analysis' ? 'ai_analysis' : 'recipe_list');
     setScreen('recipe_make');
@@ -999,6 +1004,13 @@ function AppInner({ theme, onToggleTheme }) {
     if (screen === 'pet_details') setScreen('pet_management');
     return true;
   };
+
+  useEffect(() => {
+    window.__petChefHandleBack = goBack;
+    return () => {
+      delete window.__petChefHandleBack;
+    };
+  }, [screen, entrySource, recipeMakeReturnScreen]);
 
   const handleTouchStart = (event) => {
     const touch = event.touches?.[0];
