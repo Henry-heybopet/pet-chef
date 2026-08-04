@@ -60,6 +60,14 @@ export const adminModules = [
     firstVersion: ['食谱目录', '优先级标签', '审核状态占位'],
   },
   {
+    id: 'nutrition_packs',
+    name: '全价营养包管理',
+    priority: 'P0',
+    ownerRole: 'nutrition_editor',
+    summary: '独立维护基础型和功能支持型全价营养包的配比、指标和图片。',
+    firstVersion: ['九类营养包目录', '配比与营养指标编辑', '审核状态'],
+  },
+  {
     id: 'products',
     name: '商品管理',
     priority: 'P1',

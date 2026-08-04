@@ -50,6 +50,13 @@ function asArray(value) {
   return [];
 }
 
+function normalizePriceInput(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const match = text.match(/\d+(?:\.\d+)?/);
+  return match ? match[0] : text;
+}
+
 const STATUS_OPTIONS = [
   { label: 'Active', value: 'active' },
   { label: 'Draft', value: 'draft' },
@@ -88,6 +95,7 @@ const ADMIN_MODULES = [
   { key: 'pets', label: '🐶 宠物档案 Pets' },
   { key: 'devices', label: '🔌 智能设备 Devices' },
   { key: 'recipes', label: '🍲 食谱配方 Recipes' },
+  { key: 'nutrition_packs', label: '🧴 全价营养包配方' },
   { key: 'products', label: '🛒 商品 & 溯源 Mall' },
   { key: 'orders', label: '📦 订单对账 Orders' },
   { key: 'medical', label: '🏥 医疗病例 Medical' },
@@ -121,17 +129,25 @@ function formatAdminTime(value) {
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false });
 }
 
-const NUTRITION_FIELDS = [
+const RECIPE_NUTRITION_FIELDS = [
   ['protein_pct', '粗蛋白：≥', '%'],
   ['fat_pct', '粗脂肪：≥', '%'],
   ['fiber_pct', '粗纤维：≤', '%'],
   ['water_content_pct', '水分：≤', '%'],
   ['ash_pct', '粗灰分：≤', '%'],
+  ['calories_per_100g', '100克能量密度', '千卡'],
+];
+
+const PACK_NUTRITION_FIELDS = [
   ['calcium_pct', '钙：≥', '%'],
   ['phosphorus_pct', '总磷：≥', '%'],
   ['chloride_pct', '水溶性氯化物：≥', '%'],
   ['lysine_pct', '赖氨酸：≥', '%'],
-  ['calories_per_100g', '100克能量密度', '千卡'],
+];
+
+const PACK_GROUPS = [
+  { key: 'base', label: '第一类：基础全价营养包' },
+  { key: 'functional', label: '第二类：功能支持型全价营养包' },
 ];
 
 const NUTRITION_FALLBACK_KEYS = {
@@ -185,20 +201,6 @@ function calculateDraftEnergy(rows) {
   };
 }
 
-function bPackToRows(value) {
-  if (value && typeof value === 'object' && !Array.isArray(value)) return objectToRows(value);
-  if (typeof value !== 'string') return [];
-  return value.split(/\s+\/\s+/).map((part, index) => {
-    const clean = part.trim();
-    const match = clean.match(/^(.*?)(\d+(?:\.\d+)?)\s*$/);
-    if (!match) return { name: clean, percent: '' };
-    const rawName = index === 0
-      ? match[1].trim().replace(/^[^：]+[：]\s*/, '')
-      : match[1].trim();
-    return { name: rawName || clean, percent: match[2] };
-  }).filter(row => row.name);
-}
-
 function rowsToObject(rows) {
   return rows.reduce((acc, row) => {
     const name = row.name.trim();
@@ -212,9 +214,9 @@ function sumRows(rows) {
 }
 
 function validateBPackRows(rows) {
-  if (!rows.length) return 'B包不能为空';
+  if (!rows.length) return '全价营养配比不能为空';
   if (rows.some(row => !row.name.trim() || !Number.isFinite(Number(row.percent)) || Number(row.percent) <= 0)) {
-    return 'B包每一行都必须填写成分名称和大于0的数值';
+    return '全价营养配比每一行都必须填写成分名称和大于0的数值';
   }
   const text = rows.map(row => row.name).join(' ');
   const missing = [
@@ -225,11 +227,19 @@ function validateBPackRows(rows) {
     [/微量元素|维矿|预混|铁|铜|锌|锰|碘|硒/, '微量元素'],
     [/Omega[-\s]?3|鱼油|藻油|DHA|EPA|脂肪酸/i, '必需脂肪酸'],
   ].filter(([pattern]) => !pattern.test(text)).map(([, label]) => label);
-  return missing.length ? `B包缺少明确来源：${missing.join('、')}` : '';
+  return missing.length ? `全价营养配比缺少明确来源：${missing.join('、')}` : '';
 }
 
 function sortRecipesById(items) {
   return [...items].sort((a, b) => String(a.id).localeCompare(String(b.id), 'en', { numeric: true }));
+}
+
+function sortNutritionPacks(items) {
+  const order = ['base', 'functional'];
+  return [...items].sort((a, b) => {
+    const groupDiff = order.indexOf(a.pack_group) - order.indexOf(b.pack_group);
+    return groupDiff || String(a.id).localeCompare(String(b.id), 'zh-CN', { numeric: true });
+  });
 }
 
 function normalizeSearchText(value) {
@@ -278,8 +288,7 @@ function normalizeWaterRatioPercent(value) {
 function toRecipeDraft(recipe) {
   const nutrition = recipe.nutrition_snapshot || {};
   const cookingProfile = recipeCookingProfile(recipe);
-  const bPackValue = nutrition.b_pack || recipe.b_pack || {};
-  const nutritionFields = NUTRITION_FIELDS.reduce((acc, [key]) => {
+  const nutritionFields = RECIPE_NUTRITION_FIELDS.reduce((acc, [key]) => {
     acc[key] = String(getNutritionValue(recipe, nutrition, key) ?? '');
     return acc;
   }, {});
@@ -296,8 +305,7 @@ function toRecipeDraft(recipe) {
     version: recipe.version || 1,
     health_tags: asArray(recipe.health_tags || recipe.tags).join('、'),
     ingredientsRows: recipeIngredientRows(recipe),
-    bPackRows: bPackToRows(bPackValue),
-    productPricing: String(nutrition.product_pricing || ''),
+    productPricing: normalizePriceInput(nutrition.product_pricing),
     nutritionFields,
     nutritionSnapshot: nutrition,
     cookingProfile,
@@ -314,7 +322,6 @@ function toRecipeDraft(recipe) {
 }
 
 function buildRecipePayload(draft) {
-  const bPackObject = rowsToObject(draft.bPackRows);
   const calculatedEnergy = calculateDraftEnergy(draft.ingredientsRows);
   const nutritionValues = Object.fromEntries(
     Object.entries(draft.nutritionFields).map(([key, value]) => [key, value === '' ? null : Number(value)])
@@ -323,7 +330,6 @@ function buildRecipePayload(draft) {
   const nutritionSnapshot = {
     ...(draft.nutritionSnapshot || {}),
     ...nutritionValues,
-    b_pack: bPackObject,
     product_pricing: draft.productPricing.trim(),
   };
   const cookingProfile = {
@@ -348,11 +354,49 @@ function buildRecipePayload(draft) {
     version: Number(draft.version) || 1,
     health_tags: draft.health_tags.split(/[、,，;；\s]+/).map(item => item.trim()).filter(Boolean),
     ingredients: rowsToObject(draft.ingredientsRows),
-    b_pack: Object.entries(bPackObject).map(([name, percent]) => `${name} ${percent}`).join(' / '),
     ...nutritionValues,
     nutrition_snapshot: nutritionSnapshot,
     cooking_profile: cookingProfile,
   };
+}
+
+function toNutritionPackDraft(pack) {
+  const nutrition = pack.nutrition_snapshot || {};
+  return {
+    name: pack.name || '',
+    pack_group: pack.pack_group || 'base',
+    life_stage: pack.life_stage || '成年犬',
+    health_tags: asArray(pack.health_tags).join('、'),
+    productPricing: normalizePriceInput(pack.product_pricing),
+    status: pack.status || 'draft',
+    version: Number(pack.version) || 1,
+    compositionRows: objectToRows(pack.composition || {}),
+    nutritionFields: Object.fromEntries(PACK_NUTRITION_FIELDS.map(([key]) => [
+      key,
+      nutrition[key] === undefined || nutrition[key] === null ? '' : String(nutrition[key]),
+    ])),
+  };
+}
+
+function buildNutritionPackPayload(draft) {
+  return {
+    name: draft.name.trim(),
+    pack_group: draft.pack_group,
+    life_stage: draft.life_stage,
+    health_tags: draft.health_tags.split(/[、,，;；\s]+/).map(item => item.trim()).filter(Boolean),
+    product_pricing: draft.productPricing.trim() || null,
+    status: draft.status,
+    version: Number(draft.version) || 1,
+    composition: rowsToObject(draft.compositionRows),
+    ...Object.fromEntries(Object.entries(draft.nutritionFields).map(([key, value]) => [
+      key,
+      value === '' ? null : Number(value),
+    ])),
+  };
+}
+
+function isNutritionPackDraftDirty(pack, draft) {
+  return JSON.stringify(draft) !== JSON.stringify(toNutritionPackDraft(pack));
 }
 
 function normalizePet(pet) {
@@ -398,7 +442,7 @@ function DetailRow({ label, value }) {
 function App() {
   // 1. 全局状态
   const [activeRegion, setActiveRegion] = useState('CN'); // CN, US, EU
-  const [activeTab, setActiveTab] = useState('dashboard'); // dashboard, users, pets, devices, recipes, products, orders, medical, doctors, faults
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [adminToken, setAdminToken] = useState(() => localStorage.getItem(ADMIN_TOKEN_KEY) || '');
   const [adminSession, setAdminSession] = useState(null);
   const [adminAuthLoading, setAdminAuthLoading] = useState(Boolean(adminToken));
@@ -423,10 +467,21 @@ function App() {
   const [recipesLoading, setRecipesLoading] = useState(false);
   const [recipeError, setRecipeError] = useState('');
   const [savingRecipe, setSavingRecipe] = useState(false);
+  const [deletingRecipeId, setDeletingRecipeId] = useState('');
   const [recipeDrafts, setRecipeDrafts] = useState({});
   const [recipeRowErrors, setRecipeRowErrors] = useState({});
   const [recipeSearch, setRecipeSearch] = useState('');
   const [uploadingRecipeId, setUploadingRecipeId] = useState('');
+  const [nutritionPacks, setNutritionPacks] = useState([]);
+  const [nutritionPackDrafts, setNutritionPackDrafts] = useState({});
+  const [nutritionPackSource, setNutritionPackSource] = useState('loading');
+  const [nutritionPacksLoading, setNutritionPacksLoading] = useState(false);
+  const [nutritionPackError, setNutritionPackError] = useState('');
+  const [nutritionPackRowErrors, setNutritionPackRowErrors] = useState({});
+  const [nutritionPackSearch, setNutritionPackSearch] = useState('');
+  const [savingNutritionPackId, setSavingNutritionPackId] = useState('');
+  const [deletingNutritionPackId, setDeletingNutritionPackId] = useState('');
+  const [uploadingNutritionPackId, setUploadingNutritionPackId] = useState('');
   const [pets, setPets] = useState([]);
   const [petSource, setPetSource] = useState('loading');
   const [petError, setPetError] = useState('');
@@ -470,6 +525,8 @@ function App() {
     localStorage.removeItem(ADMIN_TOKEN_KEY);
     setAdminToken('');
     setAdminSession(null);
+    setAdminLoginForm(prev => ({ ...prev, password: '' }));
+    setActiveTab('dashboard');
   };
 
   const loadAdminSession = async (token = adminToken) => {
@@ -572,6 +629,16 @@ function App() {
     });
   }, [recipes, recipeDrafts, recipeSearch]);
 
+  const filteredNutritionPacks = useMemo(() => {
+    const query = normalizeSearchText(nutritionPackSearch);
+    if (!query) return nutritionPacks;
+    return nutritionPacks.filter(pack => {
+      const draft = nutritionPackDrafts[pack.id] || toNutritionPackDraft(pack);
+      return [draft.name, draft.health_tags, pack.pack_id || pack.id, pack.category_code, draft.life_stage]
+        .some(value => normalizeSearchText(value).includes(query));
+    });
+  }, [nutritionPacks, nutritionPackDrafts, nutritionPackSearch]);
+
   const filteredMedical = useMemo(() => {
     const petIds = new Set(filteredPets.map(p => p.id));
     return mockMedicalRecords.filter(m => petIds.has(m.pet_id));
@@ -617,6 +684,26 @@ function App() {
       setRecipeError(error.message);
     } finally {
       setRecipesLoading(false);
+    }
+  };
+
+  const loadNutritionPacks = async () => {
+    setNutritionPacksLoading(true);
+    setNutritionPackError('');
+    try {
+      const res = await adminFetch('/api/admin/nutrition-packs');
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '加载全价营养包失败');
+      const packs = sortNutritionPacks(data.packs || []);
+      setNutritionPacks(packs);
+      setNutritionPackDrafts(Object.fromEntries(packs.map(pack => [pack.id, toNutritionPackDraft(pack)])));
+      setNutritionPackSource(data.source || 'pg');
+    } catch (error) {
+      setNutritionPacks([]);
+      setNutritionPackSource('pg_error');
+      setNutritionPackError(error.message);
+    } finally {
+      setNutritionPacksLoading(false);
     }
   };
 
@@ -708,10 +795,140 @@ function App() {
     if (!adminSession) return;
     if (canAccessModule('users')) loadUsers();
     if (canAccessModule('recipes')) loadRecipes();
+    if (canAccessModule('nutrition_packs')) loadNutritionPacks();
     if (canAccessModule('pets')) loadPets();
     if (canAccessModule('devices')) loadDevices();
     if (canAccessModule('subadmins')) loadSubadmins();
   }, [adminSession]);
+
+  const updateNutritionPackDraft = (packId, updater) => {
+    setNutritionPackDrafts(prev => {
+      const current = prev[packId] || toNutritionPackDraft(nutritionPacks.find(pack => pack.id === packId) || {});
+      return { ...prev, [packId]: typeof updater === 'function' ? updater(current) : { ...current, ...updater } };
+    });
+  };
+
+  const updateNutritionPackRow = (packId, index, field, value) => {
+    updateNutritionPackDraft(packId, draft => ({
+      ...draft,
+      compositionRows: draft.compositionRows.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row),
+    }));
+  };
+
+  const addNutritionPackRow = (packId) => {
+    updateNutritionPackDraft(packId, draft => ({
+      ...draft,
+      compositionRows: [...draft.compositionRows, { name: '', percent: '' }],
+    }));
+  };
+
+  const removeNutritionPackRow = (packId, index) => {
+    updateNutritionPackDraft(packId, draft => ({
+      ...draft,
+      compositionRows: draft.compositionRows.filter((_, rowIndex) => rowIndex !== index),
+    }));
+  };
+
+  const saveNutritionPack = async (pack) => {
+    const draft = nutritionPackDrafts[pack.id] || toNutritionPackDraft(pack);
+    const validationError = !draft.name.trim()
+      ? '全价营养包名字不能为空'
+      : draft.status === 'active' ? validateBPackRows(draft.compositionRows) : '';
+    setNutritionPackRowErrors(prev => ({ ...prev, [pack.id]: validationError }));
+    if (validationError) return;
+    setSavingNutritionPackId(pack.id);
+    try {
+      const res = await adminFetch(`/api/admin/nutrition-packs/${pack.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildNutritionPackPayload(draft)),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '保存失败');
+      setNutritionPacks(prev => prev.map(item => item.id === data.pack.id ? data.pack : item));
+      setNutritionPackDrafts(prev => ({ ...prev, [data.pack.id]: toNutritionPackDraft(data.pack) }));
+      setNutritionPackRowErrors(prev => ({ ...prev, [pack.id]: '' }));
+    } catch (error) {
+      setNutritionPackRowErrors(prev => ({ ...prev, [pack.id]: error.message }));
+    } finally {
+      setSavingNutritionPackId('');
+    }
+  };
+
+  const deleteNutritionPack = async (pack) => {
+    if (!window.confirm(`确定删除全价营养包“${pack.name}”吗？删除后不可恢复。`)) return;
+    setDeletingNutritionPackId(pack.id);
+    setNutritionPackRowErrors(prev => ({ ...prev, [pack.id]: '' }));
+    try {
+      const res = await adminFetch(`/api/admin/nutrition-packs/${pack.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '删除失败');
+      setNutritionPacks(prev => prev.filter(item => item.id !== pack.id));
+      setNutritionPackDrafts(prev => {
+        const next = { ...prev };
+        delete next[pack.id];
+        return next;
+      });
+      setNutritionPackRowErrors(prev => {
+        const next = { ...prev };
+        delete next[pack.id];
+        return next;
+      });
+    } catch (error) {
+      setNutritionPackRowErrors(prev => ({ ...prev, [pack.id]: error.message }));
+    } finally {
+      setDeletingNutritionPackId('');
+    }
+  };
+
+  const addNutritionPack = async () => {
+    setSavingNutritionPackId('new');
+    setNutritionPackError('');
+    setNutritionPackSearch('');
+    try {
+      const res = await adminFetch('/api/admin/nutrition-packs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '新增全价营养包失败');
+      setNutritionPacks(prev => [data.pack, ...prev]);
+      setNutritionPackDrafts(prev => ({ ...prev, [data.pack.id]: toNutritionPackDraft(data.pack) }));
+      setNutritionPackSource(data.source || 'pg');
+    } catch (error) {
+      setNutritionPackError(error.message);
+    } finally {
+      setSavingNutritionPackId('');
+    }
+  };
+
+  const uploadNutritionPackImage = async (pack, file) => {
+    if (!file) return;
+    setUploadingNutritionPackId(pack.id);
+    setNutritionPackRowErrors(prev => ({ ...prev, [pack.id]: '' }));
+    try {
+      const imageData = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('读取图片失败'));
+        reader.readAsDataURL(file);
+      });
+      const res = await adminFetch(`/api/admin/nutrition-packs/${pack.id}/image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_data: imageData }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '上传图片失败');
+      setNutritionPacks(prev => prev.map(item => item.id === data.pack.id ? data.pack : item));
+      setNutritionPackDrafts(prev => ({ ...prev, [data.pack.id]: toNutritionPackDraft(data.pack) }));
+    } catch (error) {
+      setNutritionPackRowErrors(prev => ({ ...prev, [pack.id]: error.message }));
+    } finally {
+      setUploadingNutritionPackId('');
+    }
+  };
 
   const openRecipeEditor = (recipe) => {
     const cookingProfile = recipeCookingProfile(recipe);
@@ -815,8 +1032,6 @@ function App() {
 
   const validateRecipeDraft = (draft) => {
     if (!draft.name.trim()) return '食谱名字不能为空';
-    const bPackError = validateBPackRows(draft.bPackRows);
-    if (draft.status === 'active' && bPackError) return bPackError;
     return '';
   };
 
@@ -836,7 +1051,7 @@ function App() {
       });
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || '保存失败');
-      setRecipes(prev => sortRecipesById(prev.map(item => item.id === data.recipe.id ? data.recipe : item)));
+      setRecipes(prev => prev.map(item => item.id === data.recipe.id ? data.recipe : item));
       setRecipeDrafts(prev => ({ ...prev, [data.recipe.id]: toRecipeDraft(data.recipe) }));
       setRecipeSource(data.source || 'pg');
       setRecipeRowErrors(prev => ({ ...prev, [recipe.id]: '' }));
@@ -844,6 +1059,32 @@ function App() {
       setRecipeRowErrors(prev => ({ ...prev, [recipe.id]: error.message }));
     } finally {
       setSavingRecipe(false);
+    }
+  };
+
+  const deleteRecipeRow = async (recipe) => {
+    if (!window.confirm(`确定删除食谱“${recipe.name}”吗？删除后不可恢复。`)) return;
+    setDeletingRecipeId(recipe.id);
+    setRecipeRowErrors(prev => ({ ...prev, [recipe.id]: '' }));
+    try {
+      const res = await adminFetch(`/api/admin/recipes/${recipe.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '删除失败');
+      setRecipes(prev => prev.filter(item => item.id !== recipe.id));
+      setRecipeDrafts(prev => {
+        const next = { ...prev };
+        delete next[recipe.id];
+        return next;
+      });
+      setRecipeRowErrors(prev => {
+        const next = { ...prev };
+        delete next[recipe.id];
+        return next;
+      });
+    } catch (error) {
+      setRecipeRowErrors(prev => ({ ...prev, [recipe.id]: error.message }));
+    } finally {
+      setDeletingRecipeId('');
     }
   };
 
@@ -865,7 +1106,7 @@ function App() {
       });
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || '上传图片失败');
-      setRecipes(prev => sortRecipesById(prev.map(item => item.id === data.recipe.id ? data.recipe : item)));
+      setRecipes(prev => prev.map(item => item.id === data.recipe.id ? data.recipe : item));
       setRecipeDrafts(prev => ({ ...prev, [data.recipe.id]: toRecipeDraft(data.recipe) }));
     } catch (error) {
       setRecipeRowErrors(prev => ({ ...prev, [recipe.id]: error.message }));
@@ -877,6 +1118,7 @@ function App() {
   const addRecipe = async () => {
     setSavingRecipe('new');
     setRecipeError('');
+    setRecipeSearch('');
     try {
       const res = await adminFetch('/api/admin/recipes', {
         method: 'POST',
@@ -885,7 +1127,7 @@ function App() {
       });
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || '新增食谱失败');
-      setRecipes(prev => sortRecipesById([...prev, data.recipe]));
+      setRecipes(prev => [data.recipe, ...prev]);
       setRecipeDrafts(prev => ({ ...prev, [data.recipe.id]: toRecipeDraft(data.recipe) }));
       setRecipeSource(data.source || 'pg');
     } catch (error) {
@@ -1097,7 +1339,7 @@ function App() {
         </div>
         <nav aria-label="核心管理板块" className="sidebar-nav">
           {visibleModules.map(module => (
-            <button key={module.key} className={`nav-btn ${activeTab === module.key ? 'active' : ''}`} onClick={() => setActiveTab(module.key)}>
+            <button key={module.key} className={`nav-btn ${module.key === 'nutrition_packs' ? 'nutrition-pack-nav' : ''} ${activeTab === module.key ? 'active' : ''}`} onClick={() => setActiveTab(module.key)}>
               <span>{moduleLabel(module)}</span>
             </button>
           ))}
@@ -1607,7 +1849,6 @@ function App() {
                   <span>食谱照片</span>
                   <span>食谱详情</span>
                   <span>食材配比</span>
-                  <span>配套全价营养包B</span>
                   <span>营养成份</span>
                   <span>低温烹饪参数</span>
                 </div>
@@ -1617,7 +1858,6 @@ function App() {
                   const isDirty = isRecipeDraftDirty(recipe, draft);
                   const imageUrl = resolveRecipeImage(draft.img);
                   const ingredientTotal = sumRows(draft.ingredientsRows);
-                  const bPackTotal = sumRows(draft.bPackRows);
                   const calculatedEnergy = calculateDraftEnergy(draft.ingredientsRows);
                   const rowError = recipeRowErrors[recipe.id];
                 return (
@@ -1639,6 +1879,9 @@ function App() {
                       </label>
                       <button type="button" className={`action-btn recipe-photo-save ${isDirty ? 'unsaved' : ''}`} disabled={savingRecipe === recipe.id || recipeSource !== 'pg'} onClick={() => saveRecipeRow(recipe)}>
                         {savingRecipe === recipe.id ? '保存中...' : isDirty ? '请点击保存' : '已保存'}
+                      </button>
+                      <button type="button" className="recipe-photo-delete" disabled={deletingRecipeId === recipe.id || recipeSource !== 'pg'} onClick={() => deleteRecipeRow(recipe)}>
+                        {deletingRecipeId === recipe.id ? '删除中...' : '删除'}
                       </button>
                       {rowError && <p className="inline-error">{rowError}</p>}
                     </div>
@@ -1665,7 +1908,13 @@ function App() {
                         </select>
                       </label>
                       <label><span>健康标签</span><input value={draft.health_tags} onChange={e => updateRecipeDraft(recipe.id, { health_tags: e.target.value })} placeholder="美毛、低敏" /></label>
-                      <label><span>产品定价</span><input value={draft.productPricing} onChange={e => updateRecipeDraft(recipe.id, { productPricing: e.target.value })} placeholder="例如：¥19.9 / 200克" /></label>
+                      <label>
+                        <span>产品定价</span>
+                        <div className="unit-input price-unit-input">
+                          <input type="number" min="0" step="0.01" value={draft.productPricing} onChange={e => updateRecipeDraft(recipe.id, { productPricing: e.target.value })} placeholder="xx" />
+                          <em>元 /150克/包</em>
+                        </div>
+                      </label>
                     </div>
 
                     <div className="recipe-list-cell">
@@ -1694,20 +1943,8 @@ function App() {
                       <button type="button" className="small-action-btn" onClick={() => addRecipeRow(recipe.id, 'ingredientsRows')}>增加一行</button>
                     </div>
 
-                    <div className="recipe-list-cell">
-                      <div className={Math.abs(bPackTotal - 10) > 0.01 ? 'ratio-total error' : 'ratio-total'}>合计 {bPackTotal.toFixed(1)}%</div>
-                      {draft.bPackRows.map((row, index) => (
-                        <div className="ratio-row" key={`${recipe.id}-bpack-${index}`}>
-                          <input value={row.name} onChange={e => updateRecipeRow(recipe.id, 'bPackRows', index, 'name', e.target.value)} placeholder="营养素名称" />
-                          <input type="number" step="0.1" value={row.percent} onChange={e => updateRecipeRow(recipe.id, 'bPackRows', index, 'percent', e.target.value)} placeholder="%" />
-                          <button type="button" onClick={() => removeRecipeRow(recipe.id, 'bPackRows', index)}>−</button>
-                        </div>
-                      ))}
-                      <button type="button" className="small-action-btn" onClick={() => addRecipeRow(recipe.id, 'bPackRows')}>增加一行</button>
-                    </div>
-
                     <div className="recipe-nutrition-cell">
-                      {NUTRITION_FIELDS.map(([key, label, unit]) => (
+                      {RECIPE_NUTRITION_FIELDS.map(([key, label, unit]) => (
                         <label key={key}>
                           <span>{label}</span>
                           <input
@@ -1795,6 +2032,164 @@ function App() {
               })}
               </div>
             </div>
+          </section>
+        )}
+
+        {activeTab === 'nutrition_packs' && (
+          <section className="module-section">
+            <div className="table-header">
+              <div>
+                <h3>全价营养包配方目录</h3>
+                <p>
+                  正式表 nutrition_packs：{nutritionPacks.length} 个 · 数据源：{nutritionPackSource}
+                  {nutritionPackSource !== 'pg' && <span className="inline-warning"> 当前数据库加载失败，不能保存正式数据库</span>}
+                </p>
+                {nutritionPackError && <p className="inline-error">{nutritionPackError}</p>}
+              </div>
+              <div className="table-actions">
+                <label className="recipe-search-box">
+                  <span>检索</span>
+                  <input
+                    value={nutritionPackSearch}
+                    onChange={e => setNutritionPackSearch(e.target.value)}
+                    placeholder="营养包名字 / 类型 / 说明"
+                  />
+                  <em>{filteredNutritionPacks.length}/{nutritionPacks.length}</em>
+                </label>
+                <button className="action-btn" onClick={loadNutritionPacks} disabled={nutritionPacksLoading}>
+                  {nutritionPacksLoading ? '加载中...' : '刷新全价营养包'}
+                </button>
+                <button className="action-btn secondary" onClick={addNutritionPack} disabled={savingNutritionPackId === 'new' || nutritionPackSource !== 'pg'}>
+                  {savingNutritionPackId === 'new' ? '新增中...' : '增加全价营养包'}
+                </button>
+              </div>
+            </div>
+
+            {PACK_GROUPS.map(group => {
+              const groupPacks = filteredNutritionPacks.filter(pack => pack.pack_group === group.key);
+              return (
+                <div className="nutrition-pack-group" key={group.key}>
+                  <div className="nutrition-pack-group-heading">
+                    <h4>{group.label}</h4>
+                    <span>{groupPacks.length} 个</span>
+                  </div>
+                  <div className="recipe-table-scroll">
+                    <div className="nutrition-pack-edit-table">
+                      <div className="nutrition-pack-edit-head">
+                        <span>全价营养包照片</span>
+                        <span>全价营养包详情</span>
+                        <span>全价营养配比</span>
+                        <span>营养成份</span>
+                      </div>
+                      {groupPacks.map(pack => {
+                        const draft = nutritionPackDrafts[pack.id] || toNutritionPackDraft(pack);
+                        const isDirty = isNutritionPackDraftDirty(pack, draft);
+                        const total = sumRows(draft.compositionRows);
+                        const rowError = nutritionPackRowErrors[pack.id];
+                        const imageUrl = resolveRecipeImage(pack.img);
+                        return (
+                          <article className="nutrition-pack-edit-row" key={pack.id}>
+                            <div className="recipe-photo-cell">
+                              {imageUrl
+                                ? <img src={imageUrl} alt={draft.name || pack.id} />
+                                : <div className="recipe-image-placeholder">无图片</div>}
+                              <label className="small-action-btn upload-btn">
+                                {uploadingNutritionPackId === pack.id ? '上传中...' : '上传新图片'}
+                                <input
+                                  type="file"
+                                  accept="image/png,image/jpeg,image/webp"
+                                  disabled={uploadingNutritionPackId === pack.id || nutritionPackSource !== 'pg'}
+                                  onChange={e => uploadNutritionPackImage(pack, e.target.files?.[0])}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                className={`action-btn recipe-photo-save ${isDirty ? 'unsaved' : ''}`}
+                                disabled={savingNutritionPackId === pack.id || nutritionPackSource !== 'pg'}
+                                onClick={() => saveNutritionPack(pack)}
+                              >
+                                {savingNutritionPackId === pack.id ? '保存中...' : isDirty ? '请点击保存' : '已保存'}
+                              </button>
+                              <button
+                                type="button"
+                                className="recipe-photo-delete"
+                                disabled={deletingNutritionPackId === pack.id || nutritionPackSource !== 'pg'}
+                                onClick={() => deleteNutritionPack(pack)}
+                              >
+                                {deletingNutritionPackId === pack.id ? '删除中...' : '删除'}
+                              </button>
+                              {rowError && <p className="inline-error">{rowError}</p>}
+                            </div>
+
+                            <div className="recipe-detail-cell nutrition-pack-detail-cell">
+                              <span>pack_id</span><code>{pack.pack_id || pack.id}</code>
+                              <label><span>营养包名字</span><input value={draft.name} onChange={e => updateNutritionPackDraft(pack.id, { name: e.target.value })} /></label>
+                              <label>
+                                <span>营养包状态</span>
+                                <select value={draft.status} onChange={e => updateNutritionPackDraft(pack.id, { status: e.target.value })}>
+                                  {STATUS_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                </select>
+                              </label>
+                              <label>
+                                <span>营养包分类</span>
+                                <select value={draft.pack_group} onChange={e => updateNutritionPackDraft(pack.id, { pack_group: e.target.value })}>
+                                  {PACK_GROUPS.map(option => <option key={option.key} value={option.key}>{option.key === 'base' ? '基础全价营养包' : '功能支持型全价营养包'}</option>)}
+                                </select>
+                              </label>
+                              <label>
+                                <span>生命阶段</span>
+                                <select value={draft.life_stage} onChange={e => updateNutritionPackDraft(pack.id, { life_stage: e.target.value })}>
+                                  {LIFE_STAGE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                                </select>
+                              </label>
+                              <label><span>健康标签</span><input value={draft.health_tags} onChange={e => updateNutritionPackDraft(pack.id, { health_tags: e.target.value })} placeholder="脑发育、关节保护" /></label>
+                              <label>
+                                <span>产品定价</span>
+                                <div className="unit-input price-unit-input">
+                                  <input type="number" min="0" step="0.01" value={draft.productPricing} onChange={e => updateNutritionPackDraft(pack.id, { productPricing: e.target.value })} placeholder="xx" />
+                                  <em>元 /10克/包</em>
+                                </div>
+                              </label>
+                            </div>
+
+                            <div className="recipe-list-cell">
+                              <div className="ratio-total">合计 {total.toFixed(1)}%</div>
+                              {draft.compositionRows.map((row, index) => (
+                                <div className="ratio-row" key={`${pack.id}-composition-${index}`}>
+                                  <input value={row.name} onChange={e => updateNutritionPackRow(pack.id, index, 'name', e.target.value)} placeholder="营养成分名称" />
+                                  <input type="number" min="0" step="0.1" value={row.percent} onChange={e => updateNutritionPackRow(pack.id, index, 'percent', e.target.value)} placeholder="%" />
+                                  <button type="button" onClick={() => removeNutritionPackRow(pack.id, index)}>−</button>
+                                </div>
+                              ))}
+                              <button type="button" className="small-action-btn" onClick={() => addNutritionPackRow(pack.id)}>增加一行</button>
+                            </div>
+
+                            <div className="recipe-nutrition-cell">
+                              {PACK_NUTRITION_FIELDS.map(([key, label, unit]) => (
+                                <label key={key}>
+                                  <span>{label}</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={draft.nutritionFields[key]}
+                                    onChange={e => updateNutritionPackDraft(pack.id, current => ({
+                                      ...current,
+                                      nutritionFields: { ...current.nutritionFields, [key]: e.target.value },
+                                    }))}
+                                  />
+                                  <em>{unit}</em>
+                                </label>
+                              ))}
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </section>
         )}
 
