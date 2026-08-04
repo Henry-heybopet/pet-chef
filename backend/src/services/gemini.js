@@ -11,7 +11,7 @@ async function callDeepSeekAPI(systemPrompt, userPrompt) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not configured');
   const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
-  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro';
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -215,23 +215,20 @@ async function compareRecipeSelection(dogProfile, currentSelection, proposedSele
 当前配方组成：
 - A鲜食基础包: ${currentSelection.a_recipe_name} (食材: ${currentSelection.a_ingredients || '无'})
 - B全价营养包: ${currentSelection.b_pack_name}
-- C功能支持包: ${currentSelection.c_pack_names ? currentSelection.c_pack_names.join('、') : '无'}
 
 用户计划更换为的新配方：
 - A鲜食基础包: ${proposedSelection.a_recipe_name} (食材: ${proposedSelection.a_ingredients || '无'})
 - B全价营养包: ${proposedSelection.b_pack_name}
-- C功能支持包: ${proposedSelection.c_pack_names ? proposedSelection.c_pack_names.join('、') : '无'}
 
 分析要点：
 1. A包变化：如果蛋白质来源改变（例如从鸡肉换到牛肉），分析脂肪、蛋白质及致敏风险。若A包改变，必须计算当前A包和新A包的配方营养得分（范围严格限制在 85% 到 100% 之间）。
 2. B包变化（核心警告）：B包根据食谱和犬只匹配。若用户强制切换B包（例如从“大型幼犬稳骨控钙B包”换成“普通幼犬B包”），必须警示“大型犬生长期控制钙磷比极其关键，随意更换可能增加骨骼发育异常的风险”。
-3. C包变化：说明增减C包（如关节支持包、肠胃健康包）对犬只的实际功效差异。
 
 请返回如下JSON（严格JSON，无其他文字，不要直接抄写模版里的数字，必须客观评分）：
 {
   "has_warning": true/false,
   "warning_level": "none/info/warning",
-  "warning_text": "B包/C包变化的警示提示信息",
+  "warning_text": "B包变化的警示提示信息",
   "a_comparison": {
     "show_dialog": true/false (只要用户更换了A鲜食基础包且新A包与原A包名称不同，这里必须为true),
     "current_score": [请给出当前A包的契合度评分，必须为85-100之间的整数，根据犬只体质与食谱成分的契合度科学估算],
@@ -544,18 +541,6 @@ function getLocalComparisonWarning(dogProfile, current, proposed, locale = 'zh')
     }
   }
 
-  // 3. C包切换
-  if (current.c_pack_names && proposed.c_pack_names) {
-    const addedC = proposed.c_pack_names.filter(x => !current.c_pack_names.includes(x));
-    const removedC = current.c_pack_names.filter(x => !proposed.c_pack_names.includes(x));
-    if (removedC.length > 0) {
-      warningText += ` 提示：移除了 ${removedC.join('、')}，对应的特定功能强化（如关节或肠胃支持）将会减弱。`;
-      level = level === 'none' ? 'info' : level;
-      hasWarning = true;
-      warningItems.push({ code: 'C_PACK_REMOVED' });
-    }
-  }
-
   if (!warningText) {
     warningText = '配置已更新，配方成分平衡满足需求。';
   }
@@ -583,128 +568,6 @@ async function compareRecipeSelectionBatch(dogProfile, currentSelection, propose
       getLocalComparisonWarning(dogProfile, currentSelection, proposed, locale),
     ])),
   };
-  /* istanbul ignore next -- retained temporarily for compatibility reference */
-  const currentScore = calculateAScore(dogProfile, currentSelection.a_recipe_name);
-  
-  const enrichedProposed = proposedSelections.map(p => {
-    const score = calculateAScore(dogProfile, p.a_recipe_name);
-    return { ...p, computed_score: score };
-  });
-
-  const prompt = `请分析以下犬只的多个候选配方更换，评估每个配方相对于当前配方的营养学利弊与适宜性。
-
-犬只基础与健康信息：
-- 品种: ${dogProfile.breedName || '未知品种'}
-- 年龄: ${dogProfile.age}岁
-- 体重: ${dogProfile.weight}kg (目标体重: ${dogProfile.targetWeight || dogProfile.weight}kg)
-- 体况评分 (BCS): ${dogProfile.bcs || 5}分 (1-9分制，5分理想，>5超重/肥胖，<5消瘦)
-- 喂养目标/功能需求: ${dogProfile.goals && dogProfile.goals.length > 0 ? dogProfile.goals.join('、') : '无'}
-- 过敏史/过敏源: ${dogProfile.allergens && dogProfile.allergens.length > 0 ? dogProfile.allergens.join('、') : '无'}
-- 健康标签/特殊情况: ${dogProfile.healthTags && dogProfile.healthTags.length > 0 ? dogProfile.healthTags.join('、') : '无'}
-
-当前配方选择：
-- A鲜食基础包: ${currentSelection.a_recipe_name} (得分: ${currentScore}分)
-- B全价营养包: ${currentSelection.b_pack_name}
-- C功能支持包: ${currentSelection.c_pack_names && currentSelection.c_pack_names.length > 0 ? currentSelection.c_pack_names.join('、') : '无'}
-
-请对比以下各个候选更换配方，我们已经通过规则引擎计算出了它们的营养适配得分。
-你必须基于上述宠物的详尽健康参数（特别是过敏源、肥胖程度、脏器状况），为每个候选配方生成对应的营养横向对比分析和得分原因解释。
-
-候选更换配方及得分列表：
-${enrichedProposed.map((p, idx) => `
-候选 [${idx + 1}]：
-- 新A鲜食包: ${p.a_recipe_name} (得分: ${p.computed_score}分)
-- 新B全价包: ${p.b_pack_name}
-- 新C功能包: ${p.c_pack_names && p.c_pack_names.length > 0 ? p.c_pack_names.join('、') : '无'}
-`).join('\n')}
-
-你的具体任务：
-对于每个候选配方，生成：
-1. comparison_details：横向对比新旧配方的主要营养特点、蛋白质来源、脂肪含量、消化率差异等（80字以内，专业客观，语言通俗易懂）。
-2. score_reason：结合宠物具体健康指标（如过敏、BCS、脏器状态、年龄），合理解释该分数的制定逻辑与合理性（80字以内，逻辑自洽，指出明显的利弊，说明为何加分或扣分）。
-3. 如果新配方中含有宠物的过敏原（如燕麦），或者高脂肪配方（如牛肉）被换给超重犬，或者高重金属食材（如金枪鱼等海鱼）被推荐给肝肾有问题的犬，必须生成明显的警示语（has_warning: true，warning_level: "warning" 或 "info"）。
-
-请以如下JSON格式返回（严格JSON，不要包含任何MarkDown标记、额外换行或多余注释）：
-{
-  "comparisons": {
-    "${enrichedProposed[0]?.a_recipe_name || 'example'}": {
-      "has_warning": true/false,
-      "warning_level": "none/info/warning",
-      "warning_text": "具体的警示语，若无则为空字符串",
-      "a_comparison": {
-        "show_dialog": true,
-        "current_score": ${currentScore},
-        "proposed_score": ${enrichedProposed[0]?.computed_score || 90},
-        "comparison_details": "营养横向对比...",
-        "score_reason": "得分原因解释..."
-      }
-    }
-    // 对其余所有候选配方也一并返回
-  }
-}`;
-
-  try {
-    const apiKey = process.env.DEEPSEEK_API_KEY;
-    if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not configured');
-    const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
-    const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
-
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-          { role: 'system', content: NUTRITION_EXPERT_PROMPT },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.0, // 锁定模型温度 0.0，提高输出确定性
-        response_format: { type: 'json_object' }
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`DeepSeek API error (${response.status}): ${errorText}`);
-    }
-
-    const data = await response.json();
-    const text = data.choices[0].message.content;
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (parsed && parsed.comparisons) {
-        const comparisons = {};
-        enrichedProposed.forEach(proposed => {
-          const comp = parsed.comparisons[proposed.a_recipe_name] || getLocalComparisonWarning(dogProfile, currentSelection, proposed);
-          comparisons[proposed.a_recipe_name] = {
-            ...comp,
-            a_comparison: {
-              ...(comp.a_comparison || {}),
-              show_dialog: true,
-              current_score: currentScore,
-              proposed_score: proposed.computed_score,
-            },
-          };
-        });
-        return { comparisons };
-      }
-      return parsed;
-    }
-    throw new Error('No JSON found in response');
-  } catch (err) {
-    console.error('DeepSeek compareRecipeSelectionBatch error:', err.message);
-    
-    // 本地降级回退
-    const comparisons = {};
-    enrichedProposed.forEach(proposed => {
-      comparisons[proposed.a_recipe_name] = getLocalComparisonWarning(dogProfile, currentSelection, proposed);
-    });
-    return { comparisons };
-  }
 }
 
 module.exports = { analyzeBreedNutrition, generateAIRecipe, compareRecipeSelection, compareRecipeSelectionBatch, getLocalComparisonWarning };

@@ -1,4 +1,5 @@
 const { ingredientsDb } = require('../data/ingredients_db');
+const { matchIngredientRecord } = require('./recipe_ingredient_analysis');
 
 const ACTIVITY_FACTORS = { low: 0.85, medium: 1, high: 1.15, working: 1.3, very_high: 1.3 };
 const GOAL_FACTORS = {
@@ -41,12 +42,14 @@ function normalizePet(pet = {}) {
     activityLevel: pet.activity_level || pet.activityLevel || 'medium',
     feedingGoal: pet.feeding_goal || pet.feedingGoal || 'maintenance',
     neutered: Boolean(pet.neutered),
+    bcs: numberFrom(pet.bcs, pet.body_condition_score) || null,
+    requestedEnergyKcal: numberFrom(pet.energy_target_kcal, pet.energyTargetKcal) || null,
   };
 }
 
 function dailyEnergyNeed(pet) {
   const normalized = normalizePet(pet);
-  const { weight, targetWeight, ageMonths, stage, activityLevel, feedingGoal, neutered } = normalized;
+  const { weight, targetWeight, ageMonths, stage, activityLevel, feedingGoal, neutered, bcs, requestedEnergyKcal } = normalized;
   const puppy = stage === 'puppy';
   const rer = weight ? Math.round(70 * Math.pow(weight, 0.75)) : 0;
   const lifeFactor = puppy ? (ageMonths < 4 ? 3 : 2) : stage === 'senior' ? 1.4 : 1.6;
@@ -56,15 +59,23 @@ function dailyEnergyNeed(pet) {
   const targetAdjustment = !puppy && weight && targetWeight ? Math.max(0.9, Math.min(1.1, targetWeight / weight)) : 1;
   const neuterFactor = neutered ? 0.9 : 1;
   const targetWeightConflict = Boolean(puppy && weight && targetWeight && targetWeight < weight);
-  const dailyKcal = Math.round(rer * lifeFactor * activity * goal * targetAdjustment * neuterFactor);
+  const formulaKcal = Math.round(rer * lifeFactor * activity * goal * targetAdjustment * neuterFactor);
+  const minKcal = Math.round(formulaKcal * 0.85);
+  const maxKcal = Math.round(formulaKcal * 1.15);
+  const dailyKcal = requestedEnergyKcal
+    ? Math.round(Math.max(minKcal, Math.min(maxKcal, requestedEnergyKcal)))
+    : formulaKcal;
 
   return {
     stage_label: puppy ? '幼犬' : stage === 'senior' ? '老年犬' : '成犬',
     stage_code: stage,
     rer_kcal: rer,
     daily_kcal: dailyKcal,
-    min_kcal: Math.round(dailyKcal * 0.85),
-    max_kcal: Math.round(dailyKcal * 1.15),
+    formula_daily_kcal: formulaKcal,
+    min_kcal: minKcal,
+    max_kcal: maxKcal,
+    energy_target_source: requestedEnergyKcal ? 'heybo_agent' : 'deterministic_formula',
+    bcs,
     meals_per_day: puppy ? (ageMonths < 6 ? 4 : 3) : 2,
     age_months: ageMonths || null,
     current_weight_kg: weight || null,
@@ -99,7 +110,8 @@ function recipeEnergyDensity(recipe, ingredientMap = ingredientsDb) {
   const unknown = [];
   entries.forEach(([name, ratioValue]) => {
     const ratio = Number(ratioValue);
-    const kcal = Number(ingredientMap[name]?.calories_per_100g);
+    const matched = matchIngredientRecord(name, ingredientMap)?.record;
+    const kcal = Number(matched?.calories_per_100g ?? matched?.kcal_per_100g);
     if (Number.isFinite(kcal) && kcal >= 0) {
       weightedKcal += ratio * kcal;
       coveredRatio += ratio;
@@ -195,5 +207,6 @@ module.exports = {
   referenceFeedingPlanForPet,
   recommendationScoreFromValidation,
   recipeEnergyDensity,
+  normalizePet,
   _constants: { REFERENCE_VOLUME_PCT, HARD_VOLUME_PCT, RECOMMENDATION_SCORE_WEIGHTS },
 };

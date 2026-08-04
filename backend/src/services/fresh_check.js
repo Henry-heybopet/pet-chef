@@ -1,7 +1,7 @@
 const { analyzeFreshCheck, lookupFreshCheckIngredientFacts, recognizeFreshCheckRecipe } = require('./deepseek');
 const { listBPackOptions, getIngredientMap } = require('./nutrition_repository');
 const { breedsDb } = require('../data/breeds_db');
-const { dailyEnergyNeed } = require('./nutrition_energy');
+const { dailyEnergyNeed, normalizePet } = require('./nutrition_energy');
 const { matchIngredientRecord } = require('./recipe_ingredient_analysis');
 
 const FORBIDDEN = ['木糖醇', '巧克力', '可可', '咖啡', '咖啡因', '酒精', '葡萄', '葡萄干', '洋葱', '大蒜', '韭菜', '葱', '夏威夷果', '牛油果', '熟骨', '骨头', '尖锐骨'];
@@ -133,10 +133,7 @@ function finding(level, title, reason, adjustment, code, domain = 'nutrition', f
 }
 
 function petLifeStage(pet) {
-  const months = Number(pet.age_months || 0);
-  if (pet.life_stage === 'puppy' || (months > 0 && months < 12)) return 'puppy';
-  if (pet.life_stage === 'senior' || months >= 96) return 'senior';
-  return 'adult';
+  return normalizePet(pet).stage;
 }
 
 function petBodySize(pet) {
@@ -394,7 +391,7 @@ function petSuitability({ pet, findings, macros, energyScore, selectedBPack }) {
   const profileCompleteness = weight && (stage === 'puppy' || targetWeight) ? 1 : weight ? 0.75 : 0.35;
   const weightEarned = 15 * (energyScore / 100 * 0.75 + profileCompleteness * 0.25) * (targetWeightConflict ? 0.7 : 1);
 
-  const activityKnown = ['low', 'medium', 'high', 'working'].includes(pet.activity_level);
+  const activityKnown = ['low', 'medium', 'high', 'working', 'very_high'].includes(pet.activity_level || pet.activityLevel);
   const goalKnown = Boolean(pet.feeding_goal);
   const activityEarned = (activityKnown ? 6 : 3) + (typeof pet.neutered === 'boolean' ? 2 : 0) + (goalKnown ? 2 : 1);
 

@@ -14,10 +14,12 @@ const { validateIngredientSafety, hasToxicIngredients, hasCautionIngredients, ge
 const { startCooking, pauseCooking, stopCooking, getDeviceStatus, getDeviceDetails } = require('./services/tuya');
 const { calcCookingParams, calcDailyIntake, calcRecipeFeedingPlan, calcIngredientGrams } = require('./services/cooking_engine');
 const { recommendationScoreFromValidation, referenceFeedingPlanForPet } = require('./services/nutrition_energy');
+const { buildRecommendationSignals } = require('./services/recommendation_signals');
+const { cacheContextHash, isRecommendationCacheValid, publicPetContext, recommendWithHeyboAgent, fallbackRanking, PROMPT_VERSION } = require('./services/ai_recommendation');
 const heyboRoutes = require('./routes/heybo');
 const { getCorsOrigins, printRegionSummary, getEnvironment } = require('./config/region_config');
 const { listRecipes, listAdminRecipes, getRecipeById, getRecipeNames, createRecipe, updateRecipe, buildRecipeIndexByName, getIngredientMap } = require('./services/nutrition_repository');
-const { evaluateRecipe } = require('./services/fresh_check');
+const { evaluateRecipe, getFreshCheckBPackOptions } = require('./services/fresh_check');
 const store = require('./services/heybo_store');
 const { generateToken, verifyToken } = require('./services/auth');
 const petRepository = require('./services/pet_repository');
@@ -31,7 +33,7 @@ const { uploadsDir, recipeUploadsDir } = require('./config/uploads');
 const app = express();
 app.set('trust proxy', 1);
 const runtimeDataDir = path.resolve(__dirname, '../.data');
-const AI_RECOMMENDATION_CACHE_VERSION = 17;
+const AI_RECOMMENDATION_CACHE_VERSION = PROMPT_VERSION;
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(recipeUploadsDir, { recursive: true });
 fs.mkdirSync(runtimeDataDir, { recursive: true });
@@ -108,7 +110,6 @@ app.get('/api/v1/recipes', async (req, res) => {
     r.category,
     r.name,
     r.b_pack,
-    r.c_pack,
     ...(r.health_tags || []),
     ...(r.tags || []),
   ].some(value => String(value || '').includes(marker));
@@ -607,7 +608,7 @@ function compareCachePath(petCacheId) {
   return path.join(runtimeDataDir, `compare_cache_${petCacheId}.json`);
 }
 
-function buildRecipeFeedingPlan(pet, recipe, ingredientMap, locale = 'zh') {
+function buildRecipeFeedingPlan(pet, recipe, ingredientMap, locale = 'zh', selectedBPack = null) {
   const plan = calcRecipeFeedingPlan(pet, recipe, ingredientMap);
   if (!plan.daily_grams) return plan;
   const ingredients = calcIngredientGrams(recipe.ingredients, plan.daily_grams)
@@ -618,11 +619,7 @@ function buildRecipeFeedingPlan(pet, recipe, ingredientMap, locale = 'zh') {
     ingredients,
     mealIntent: 'long_term',
     ingredientMap,
-    selectedBPack: {
-      name: String(recipe.b_pack || '').split('：')[0] || 'AI推荐全价营养包B',
-      description: recipe.b_pack || '',
-      category: recipe.category,
-    },
+    selectedBPack,
   });
   const scoreByKey = Object.fromEntries(report.scores.map(item => [item.key, item.value]));
   const dangerCodes = report.findings.filter(item => item.level === 'danger').map(item => item.code);
@@ -639,8 +636,8 @@ function buildRecipeFeedingPlan(pet, recipe, ingredientMap, locale = 'zh') {
   };
 }
 
-function buildRecipeFeedingPlans(pet, recipes, ingredientMap, locale = 'zh') {
-  return Object.fromEntries(recipes.map(recipe => [recipe.id, buildRecipeFeedingPlan(pet, recipe, ingredientMap, locale)]));
+function buildRecipeFeedingPlans(pet, recipes, ingredientMap, locale = 'zh', selectedBPack = null) {
+  return Object.fromEntries(recipes.map(recipe => [recipe.id, buildRecipeFeedingPlan(pet, recipe, ingredientMap, locale, selectedBPack)]));
 }
 
 function applyEnergyFeasibilityToComparisons(comparisons, recipes, plans) {
@@ -651,15 +648,13 @@ function applyEnergyFeasibilityToComparisons(comparisons, recipes, plans) {
     const plan = recipe ? plans[recipe.id] : null;
     if (!plan || !comparison?.a_comparison) return [name, comparison];
     const proposedScore = Number(comparison.a_comparison.proposed_score);
-    const deterministicScore = Number.isFinite(Number(plan.recommendation_score)) ? Number(plan.recommendation_score) : plan.feasibility_score;
     return [name, {
       ...comparison,
       energy_feasibility: plan,
       a_comparison: {
         ...comparison.a_comparison,
-        ai_proposed_score: Number.isFinite(proposedScore) ? proposedScore : null,
-        proposed_score: deterministicScore,
-        score_model: plan.recommendation_score_model || 'energy_feasibility',
+        proposed_score: Number.isFinite(proposedScore) ? proposedScore : Number(plan.recommendation_score || plan.feasibility_score),
+        score_model: Number.isFinite(proposedScore) ? 'heybo_agent' : 'fresh_check_fallback',
       },
     }];
   }));
@@ -706,7 +701,7 @@ app.post('/api/v1/recommend/compare', async (req, res) => {
     try {
       const cacheData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
       const cacheAgeMs = Date.now() - (cacheData.timestamp || 0);
-      const isExpired = cacheAgeMs > 30 * 24 * 60 * 60 * 1000;
+      const isExpired = cacheAgeMs > 10 * 24 * 60 * 60 * 1000;
       const isOldVersion = cacheData.cache_version !== AI_RECOMMENDATION_CACHE_VERSION;
       const isDirty = dogProfile.pet_updated_at
         ? normalizeCacheTimestamp(cacheData.pet_updated_at) !== normalizeCacheTimestamp(dogProfile.pet_updated_at)
@@ -777,7 +772,7 @@ app.post('/api/v1/recommend/compare/batch', async (req, res) => {
 });
 
 // ============================================================
-// POST /api/v1/ai-analysis — Gemini AI 分析犬种营养需求（正式路径只收 pet_id）
+// POST /api/v1/ai-analysis — HeyboPet Agent 分析犬种营养需求（正式路径只收 pet_id）
 // body: { pet_id, lang }
 // ============================================================
 app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
@@ -787,220 +782,114 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
   }
   const dogProfile = resolved.dogProfile;
   const requestedLocale = normalizeLocale(req.body?.lang);
-  const {
-    breedId, breedName, age = 3, weight = 15, customBreedName,
-    id, name, feedingGoal, goals = [], bcs, allergens = []
-  } = dogProfile;
-
-  const breed = breedsDb.find(b => b.id === breedId || b.name === breedName || breedName?.includes(b.name) || b.name.includes(breedName));
   const { recipes } = await listRecipes();
   const ingredientLibrary = await getIngredientMap();
-  const recipeFeedingPlans = buildRecipeFeedingPlans(resolved.pet || dogProfile, recipes, ingredientLibrary.ingredients, requestedLocale);
-  const referenceFeedingPlan = referenceFeedingPlanForPet(resolved.pet || dogProfile);
-  const profileLifeStage = dogProfile.lifeStage || (age < 1 ? 'puppy' : age >= 8 ? 'senior' : 'adult');
-  const targetCategory = profileLifeStage === 'puppy'
-    ? (weight >= 25 ? '控钙幼犬（大型幼犬）' : '幼犬通用')
-    : profileLifeStage === 'senior' ? '老年犬通用' : '成犬通用';
-  const categoryRecipes = recipes.filter(recipe => recipe.category === targetCategory);
-  const baselineRecipe = categoryRecipes[0] || recipes[0];
-  const intake = recipeFeedingPlans[baselineRecipe?.id] || calcDailyIntake(breed, weight, age);
-
-  const petCacheId = safeCacheId(dogProfile.pet_id || id || name || 'default');
+  const basePet = resolved.pet || dogProfile;
+  const bPackResult = await getFreshCheckBPackOptions(basePet);
+  const enabledBPacks = bPackResult.options.filter(option => option.enabled);
+  let selectedBPack = enabledBPacks.find(option => option.recommended) || enabledBPacks[0] || null;
+  const initialPlans = buildRecipeFeedingPlans(basePet, recipes, ingredientLibrary.ingredients, requestedLocale, selectedBPack);
+  const energyEnvelope = referenceFeedingPlanForPet(basePet);
+  const userId = getOptionalUserId(req);
+  let feedingRecords = [];
+  let healthRecords = [];
+  if (userId) {
+    const household = store.ensureDefaultHousehold(userId);
+    feedingRecords = store.listByHousehold('feeding_records', userId, household.id).filter(record => String(record.pet_id) === String(dogProfile.pet_id || dogProfile.id));
+    healthRecords = store.listByHousehold('health_records', userId, household.id).filter(record => String(record.pet_id) === String(dogProfile.pet_id || dogProfile.id));
+  }
+  const signals = buildRecommendationSignals({ feedingRecords, healthRecords });
+  const candidates = recipes.map(recipe => {
+    const plan = initialPlans[recipe.id];
+    return {
+      recipe_id: String(recipe.id), name: recipe.name, category: recipe.category,
+      ingredients: recipe.ingredients, kcal_per_gram: plan.kcal_per_gram,
+      daily_grams: plan.daily_grams, validation_scores: plan.validation_scores,
+      danger_codes: plan.danger_codes,
+      warning_codes: plan.warning_codes, hard_blocked: (plan.danger_codes || []).length > 0,
+      rule_score: plan.recommendation_score, b_pack_category: selectedBPack?.category || null,
+    };
+  });
+  const contextHash = cacheContextHash({ pet: publicPetContext(dogProfile), recipes, bPacks: bPackResult.options });
+  const petCacheId = safeCacheId(`${userId || 'anonymous'}_${dogProfile.pet_id || dogProfile.id || 'default'}`);
   const cacheFilePath = compareCachePath(petCacheId);
-  let comparisons = null;
-  let cacheValid = false;
-  let cacheNeedsWrite = false;
-  let cachedAnalyses = {};
-  let cachedComparisonsByLocale = {};
-
   if (fs.existsSync(cacheFilePath)) {
     try {
       const cacheData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
-      const cacheAgeMs = Date.now() - (cacheData.timestamp || 0);
-      const isExpired = cacheAgeMs > 30 * 24 * 60 * 60 * 1000;
-      const isOldVersion = cacheData.cache_version !== AI_RECOMMENDATION_CACHE_VERSION;
-      const isDirty = dogProfile.pet_updated_at
-        ? normalizeCacheTimestamp(cacheData.pet_updated_at) !== normalizeCacheTimestamp(dogProfile.pet_updated_at)
-        : !isProfileEqual(cacheData.dogProfile, dogProfile);
-
-      if (!isExpired && !isDirty && !isOldVersion) {
-        cachedComparisonsByLocale = cacheData.comparisons_by_locale || {};
-        comparisons = cachedComparisonsByLocale[requestedLocale] || null;
-        cacheValid = true;
-        cachedAnalyses = cacheData.analyses_by_locale || {};
-        const cachedAnalysis = cachedAiNutritionAnalysis(cacheData, requestedLocale);
-        if (cachedAnalysis && comparisons) {
-          console.log(`[AI Analysis Cache Hit File] Served valid ${requestedLocale} cache for pet ${petCacheId}`);
-          return res.json({
-            success: true,
-            locale: requestedLocale,
-            analysis: {
-              ...cachedAnalysis,
-              ...intake,
-              reference_feeding_plan: referenceFeedingPlan,
-              locale: requestedLocale,
-            },
-            comparisons,
-            cache_hit: true
-          });
-        }
-        cacheNeedsWrite = true;
-        console.log(`[AI Analysis Cache Partial Hit] Reusing comparisons only for pet ${petCacheId}`);
-      } else {
-        console.log(`[Cache Invalidated] isExpired: ${isExpired}, isDirty: ${isDirty} for pet ${petCacheId}`);
+      if (isRecommendationCacheValid(cacheData, { contextHash, feedbackCount: feedingRecords.length })) {
+        return res.json({ ...cacheData.response, cache_hit: true, analysis: { ...cacheData.response.analysis, cache_hit: true } });
       }
     } catch (err) {
       console.error('[Cache Parsing Error]', err.message);
     }
   }
 
-  let analysis = null;
+  let recommendation;
+  let recommendationSource = 'heybo_agent';
+  let fallbackReason = null;
   try {
-    analysis = await analyzeBreedNutrition(
-      breedName || breed?.name,
-      age,
-      weight,
-      customBreedName,
-      bcs,
-      goals,
-      allergens,
-      requestedLocale
-    );
-  } catch (e) {
-    console.error('AI analysis failed, using fallback:', e.message);
-  }
-
-  if (!analysis || !aiNutritionPresentationIsValid(analysis, requestedLocale)) {
-    if (analysis) console.warn('[AI Analysis] rejected response in wrong locale', { requested_locale: requestedLocale });
-    analysis = buildAiNutritionFallback({
-      requestedLocale,
-      age,
-      weight,
-      intake,
-      averageWeight: breed?.weight_avg,
-    });
-  } else {
-    analysis = {
-      ...analysis,
+    recommendation = await recommendWithHeyboAgent({
       locale: requestedLocale,
-      translation_status: requestedLocale === 'zh' ? 'source' : 'ai_translated',
-      life_stage_code: { 幼犬: 'puppy', 成年犬: 'adult', 老年犬: 'senior' }[analysis.life_stage] || analysis.life_stage_code || 'adult',
+      pet: publicPetContext(dogProfile),
+      energy: { rer_kcal: energyEnvelope.rer_kcal, formula_daily_kcal: energyEnvelope.formula_daily_kcal, min_kcal: energyEnvelope.min_kcal, max_kcal: energyEnvelope.max_kcal },
+      feedback: signals,
+      b_packs: bPackResult.options.map(option => ({ category: option.category, enabled: option.enabled, recommended: option.recommended, reason_code: option.reason_code })),
+      candidates,
+    });
+  } catch (error) {
+    recommendationSource = 'rule_fallback';
+    fallbackReason = error.message;
+    recommendation = {
+      selected_daily_kcal: energyEnvelope.formula_daily_kcal,
+      summary: '智能分析暂时不可用，当前结果基于宠物档案和营养安全规则生成。',
+      key_nutrition_needs: [], cautions: [], factors_used: ['宠物档案', 'Fresh Check 营养安全规则'],
+      ranked_recipes: fallbackRanking(candidates), meta: { model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro' },
     };
+    console.error('[HeyboPet Agent fallback]', error.message);
   }
 
-  const mergedAnalysis = { ...analysis, ...intake };
-
-  if (!comparisons) {
-    const lifeStage = mergedAnalysis.life_stage || '成年犬';
-
-    let recommendedBName = '成犬维护营养包B';
-    if (lifeStage === '幼犬') {
-      recommendedBName = weight >= 25 ? '大型幼犬稳骨控钙营养包B' : '幼犬成长营养包B';
-    } else if (lifeStage === '老年犬') {
-      recommendedBName = '老年犬轻负担营养包B';
-    } else {
-      const goalsList = feedingGoal ? [feedingGoal] : (goals || []);
-      if (goalsList.includes('美毛')) recommendedBName = '成犬/美毛基础营养包B';
-      else if (goalsList.includes('护肝')) recommendedBName = '成犬/护肝基础营养包B';
-      else if (goalsList.includes('低敏')) recommendedBName = '低敏单一蛋白营养包B';
-    }
-
-    const recommendedCList = [];
-    if (lifeStage === '幼犬') {
-      recommendedCList.push('脑发育支持功能包C');
-    }
-    const goalsList = feedingGoal ? [feedingGoal] : (goals || []);
-    if (goalsList.includes('美毛') || goalsList.includes('皮毛')) {
-      recommendedCList.push('美毛护肤支持功能包C');
-    }
-    if (goalsList.includes('护肝')) {
-      recommendedCList.push('护肝支持功能包C');
-    }
-    if (goalsList.includes('低敏') || goalsList.includes('肠胃') || goalsList.includes('消化')) {
-      recommendedCList.push('肠胃健康支持功能包C');
-    }
-    if (lifeStage === '老年犬' || goalsList.includes('关节') || goalsList.includes('护关节')) {
-      recommendedCList.push('关节支持功能包C');
-    }
-    if (lifeStage === '老年犬' || goalsList.includes('抗炎') || goalsList.includes('免疫')) {
-      recommendedCList.push('抗炎免疫支持功能包C');
-    }
-    const defaultCList = [...new Set(recommendedCList)].slice(0, 1);
-
-    const currentSelection = {
-      a_recipe_name: baselineRecipe?.name || '',
-      b_pack_name: recommendedBName,
-      c_pack_names: defaultCList
+  const agentBCategory = recommendation.ranked_recipes.find(item => item.eligible && item.b_pack_category)?.b_pack_category;
+  selectedBPack = enabledBPacks.find(option => option.category === agentBCategory) || selectedBPack;
+  const selectedPet = { ...basePet, energy_target_kcal: recommendation.selected_daily_kcal };
+  const recipeFeedingPlans = buildRecipeFeedingPlans(selectedPet, recipes, ingredientLibrary.ingredients, requestedLocale, selectedBPack);
+  const referenceFeedingPlan = referenceFeedingPlanForPet(selectedPet);
+  const recipeById = new Map(recipes.map(recipe => [String(recipe.id), recipe]));
+  const comparisons = {};
+  recommendation.ranked_recipes.forEach((item, rank) => {
+    const recipe = recipeById.get(String(item.recipe_id));
+    if (!recipe) return;
+    comparisons[recipe.name] = {
+      has_warning: !item.eligible || (recipeFeedingPlans[recipe.id]?.warning_codes || []).length > 0,
+      warning_level: !item.eligible ? 'warning' : 'none', warning_text: item.tradeoffs?.join('；') || '',
+      energy_feasibility: recipeFeedingPlans[recipe.id], rank: rank + 1, suitability: item.suitability,
+      a_comparison: { show_dialog: true, proposed_score: Math.round(Number(item.score)), score_model: recommendationSource, comparison_details: item.reason, score_reason: item.reason },
     };
-
-    const proposedSelections = categoryRecipes.slice(0, 10).map(r => ({
-      a_recipe_name: r.name,
-      b_pack_name: recommendedBName,
-      c_pack_names: defaultCList
-    }));
-
-    const scoringDogProfile = {
-      ...dogProfile,
-      recipeIndexByName: buildRecipeIndexByName(recipes),
-    };
-
-    try {
-      const result = await compareRecipeSelectionBatch(scoringDogProfile, currentSelection, proposedSelections, requestedLocale);
-      comparisons = result.comparisons;
-      cacheNeedsWrite = true;
-    } catch (err) {
-      console.error('Failed to pre-compute comparisons:', err.message);
-      comparisons = {};
-      const { getLocalComparisonWarning } = require('./services/gemini');
-      proposedSelections.forEach(p => {
-        comparisons[p.a_recipe_name] = getLocalComparisonWarning(scoringDogProfile, currentSelection, p, requestedLocale);
-      });
-      cacheNeedsWrite = true;
-    }
-  }
-
-  comparisons = applyEnergyFeasibilityToComparisons(comparisons, recipes, recipeFeedingPlans);
-  const mergedAnalysisWithPlans = {
-    ...mergedAnalysis,
-    translation_status: requestedLocale === 'zh'
-      ? 'source'
-      : Object.values(recipeFeedingPlans).every(plan => plan.validation_translation_status === 'translated')
-        ? mergedAnalysis.translation_status
-        : 'partial',
-    daily_energy: {
-      rer_kcal: intake.rer_kcal,
-      daily_kcal: intake.daily_kcal,
-      min_kcal: intake.min_kcal,
-      max_kcal: intake.max_kcal,
-      note: intake.note,
-      note_code: intake.note_code,
-    },
-    recipe_feeding_plans: recipeFeedingPlans,
-    reference_feeding_plan: referenceFeedingPlan,
+  });
+  const stageCode = referenceFeedingPlan.stage_code;
+  const analyzedAt = new Date().toISOString();
+  const analysis = {
+    breed_intro: recommendation.summary,
+    life_stage: stageCode === 'puppy' ? '幼犬' : stageCode === 'senior' ? '老年犬' : '成年犬',
+    life_stage_code: stageCode, activity_level: dogProfile.activityLevel || 'medium',
+    nutrition_analysis: recommendation.summary, key_nutrition_needs: recommendation.key_nutrition_needs || [], cautions: recommendation.cautions || [],
+    factors_used: recommendation.factors_used || [], recommendation_source: recommendationSource,
+    recommendation_source_label: recommendationSource === 'heybo_agent' ? 'HeyboPet Agent 个体化推荐' : 'HeyboPet 基础推荐',
+    fallback_message: recommendationSource === 'rule_fallback' ? recommendation.summary : null,
+    fallback_reason: fallbackReason, analyzed_at: analyzedAt, cache_hit: false,
+    selected_b_pack: selectedBPack, ranked_recipe_ids: recommendation.ranked_recipes.map(item => item.recipe_id),
+    daily_grams: referenceFeedingPlan.daily_grams, per_meal_grams: referenceFeedingPlan.per_meal_grams, meals_per_day: referenceFeedingPlan.meals_per_day,
+    daily_energy: referenceFeedingPlan, recipe_feeding_plans: recipeFeedingPlans, reference_feeding_plan: referenceFeedingPlan,
+    agent_meta: recommendation.meta,
   };
-
-  if (cacheNeedsWrite) {
-    fs.writeFileSync(cacheFilePath, JSON.stringify({
-      cache_version: AI_RECOMMENDATION_CACHE_VERSION,
-      timestamp: Date.now(),
-      pet_id: dogProfile.pet_id || dogProfile.id,
-      pet_updated_at: normalizeCacheTimestamp(dogProfile.pet_updated_at),
-      dogProfile: dogProfile,
-      analyses_by_locale: { ...cachedAnalyses, [requestedLocale]: mergedAnalysisWithPlans },
-      analysis: mergedAnalysisWithPlans,
-      analysis_locale: requestedLocale,
-      comparisons_by_locale: { ...cachedComparisonsByLocale, [requestedLocale]: comparisons }
-    }, null, 2), 'utf8');
-    console.log(`[Cache Written File] Saved analysis cache for pet ${petCacheId}`);
-  }
-
-  res.json({
+  const responsePayload = {
     success: true,
     locale: requestedLocale,
-    analysis: mergedAnalysisWithPlans,
-    comparisons: comparisons,
+    analysis,
+    comparisons,
     cache_hit: false
-  });
+  };
+  fs.writeFileSync(cacheFilePath, JSON.stringify({ cache_version: AI_RECOMMENDATION_CACHE_VERSION, context_hash: contextHash, timestamp: Date.now(), pet_updated_at: dogProfile.pet_updated_at || null, feedback_count_at_analysis: feedingRecords.length, response: responsePayload }, null, 2), 'utf8');
+  res.json(responsePayload);
 });
 
 // ============================================================
@@ -1248,7 +1137,7 @@ app.get('/api/v1/debug-env', (req, res) => {
     TUYA_DEVICE_ID: process.env.TUYA_DEVICE_ID ? `${process.env.TUYA_DEVICE_ID.substring(0, 6)}...` : 'MISSING',
     TUYA_BASE_URL: process.env.TUYA_BASE_URL || 'MISSING (default: tuyacn.com)',
     DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ? 'CONFIGURED' : 'MISSING',
-    DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
+    DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro',
     NODE_ENV: process.env.NODE_ENV || 'undefined',
     VERCEL: process.env.VERCEL || 'undefined',
   });

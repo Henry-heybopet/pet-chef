@@ -82,7 +82,7 @@ const REGION_CONFIGS = Object.freeze({
 
     // --- DeepSeek AI ---
     ai: {
-      model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro',
       api_key_env: 'DEEPSEEK_API_KEY',
     },
   },
@@ -148,7 +148,7 @@ const REGION_CONFIGS = Object.freeze({
     },
 
     ai: {
-      model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro',
       api_key_env: 'DEEPSEEK_API_KEY',
     },
   },
@@ -216,7 +216,7 @@ const REGION_CONFIGS = Object.freeze({
     },
 
     ai: {
-      model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro',
       api_key_env: 'DEEPSEEK_API_KEY',
     },
   },

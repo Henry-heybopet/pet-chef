@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  getDefaultCPackName,
+  recommendationTier,
   splitTopItems,
 } from '../src/utils/recommendationDisplay.js';
 
@@ -15,8 +15,8 @@ test('keeps only the first three recommendations visible by default', () => {
   assert.deepEqual(recipes, ['一', '二', '三', '四', '五']);
 });
 
-test('selects the default C pack from the pet life stage', () => {
-  assert.equal(getDefaultCPackName('幼犬'), '脑发育支持功能包C');
-  assert.equal(getDefaultCPackName('成犬'), '美毛护肤支持功能包C');
-  assert.equal(getDefaultCPackName('老年犬'), '关节支持功能包C');
+test('maps recommendation percentages to suitability levels', () => {
+  assert.equal(recommendationTier(85), 'high');
+  assert.equal(recommendationTier(70), 'medium');
+  assert.equal(recommendationTier(69), 'low');
 });

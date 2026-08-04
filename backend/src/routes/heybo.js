@@ -22,6 +22,7 @@ const { getUserById, getDefaultHouseholdForUser, publicUser } = require('../serv
 const petRepository = require('../services/pet_repository');
 const { buildFreshMatchAnalysis } = require('../services/fresh_match');
 const { recognizeFreshCheck, buildFreshCheckAnalysis } = require('../services/fresh_check');
+const { safeCacheId, cachedEnergyTarget } = require('../services/ai_recommendation');
 const { translatePresentationFields } = require('../services/deepseek');
 const { normalizeLocale, localizeSemanticResultWithAi } = require('../services/localization');
 const { storeAnalysis, getAnalysis, getRendered, storeRendered } = require('../services/localization_cache');
@@ -242,7 +243,14 @@ router.post('/fresh-check/analyze', authMiddleware, asyncHandler(async (req, res
   if (pet.species && pet.species !== 'dog') return res.status(400).json({ success: false, error: localizedError('dogOnly', locale) });
   const ingredients = Array.isArray(req.body?.ingredients) ? req.body.ingredients : [];
   if (!ingredients.length) return res.status(400).json({ success: false, error: localizedError('ingredientRequired', locale) });
-  const result = await buildFreshCheckAnalysis({ pet, ingredients, meal_intent: req.body?.meal_intent, b_pack_category: req.body?.b_pack_category });
+  const household = store.ensureDefaultHousehold(user.id);
+  const feedbackCount = store.listByHousehold('feeding_records', user.id, household.id).filter(record => String(record.pet_id) === String(pet.id)).length;
+  let energyTarget = null;
+  try {
+    const cachePath = path.resolve(__dirname, '../../.data', `compare_cache_${safeCacheId(`${user.id}_${pet.id}`)}.json`);
+    if (fs.existsSync(cachePath)) energyTarget = cachedEnergyTarget(JSON.parse(fs.readFileSync(cachePath, 'utf8')), { petUpdatedAt: pet.updated_at, feedbackCount });
+  } catch (_) { /* Fresh Check safely falls back to the shared deterministic formula. */ }
+  const result = await buildFreshCheckAnalysis({ pet: energyTarget ? { ...pet, energy_target_kcal: energyTarget } : pet, ingredients, meal_intent: req.body?.meal_intent, b_pack_category: req.body?.b_pack_category });
   if (!result.recipe.ingredients.length) return res.status(400).json({ success: false, error: localizedError('invalidIngredient', locale) });
   const analysis_id = storeAnalysis({ userId: user.id, kind: 'fresh-check', result });
   const localized = await localizeSemanticResultWithAi(result, locale, translatePresentationFields);

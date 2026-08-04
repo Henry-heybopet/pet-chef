@@ -13,7 +13,7 @@ function protectPuppyTargetWeight(data, ageMonths, weight) {
 async function evaluatePetBCS({ breedName, ageMonths, weight }) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
-  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro';
 
   if (!apiKey) {
     throw new Error('DEEPSEEK_API_KEY is not configured');
@@ -81,7 +81,7 @@ async function evaluatePetBCS({ breedName, ageMonths, weight }) {
 async function analyzeFreshMatch({ pet, ingredients, safety_check, nutrition_gap }) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
-  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro';
 
   if (!apiKey) {
     throw new Error('DEEPSEEK_API_KEY is not configured');
@@ -150,7 +150,7 @@ async function analyzeFreshMatch({ pet, ingredients, safety_check, nutrition_gap
 async function classifyFreshMatchIngredients({ ingredients }) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
-  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro';
 
   if (!apiKey) {
     throw new Error('DEEPSEEK_API_KEY is not configured');
@@ -215,7 +215,7 @@ async function freshCheckCompletion(system, user) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not configured');
   const response = await axios.post(`${process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1'}/chat/completions`, {
-    model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash', messages: [{ role: 'system', content: system }, { role: 'user', content: user }], temperature: 0, response_format: { type: 'json_object' },
+    model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro', messages: [{ role: 'system', content: system }, { role: 'user', content: user }], temperature: 0, response_format: { type: 'json_object' },
   }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 18000 });
   return JSON.parse(String(response.data.choices?.[0]?.message?.content || '{}').replace(/^```json\s*/i, '').replace(/```$/i, '').trim());
 }
@@ -237,7 +237,7 @@ async function recognizeFreshCheckRecipe({ text }) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not configured');
   const response = await axios.post(`${process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1'}/chat/completions`, {
-    model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
+    model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro',
     messages: [{ role: 'system', content: '你是宠物鲜食食谱识别助手。只识别文本中明确出现的食材与克重；不确定时不要猜测。只返回 JSON。' }, { role: 'user', content }],
     temperature: 0, response_format: { type: 'json_object' },
   }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 18000 });

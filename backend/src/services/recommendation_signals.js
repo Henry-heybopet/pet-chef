@@ -8,7 +8,7 @@ function toTimestamp(value) {
 }
 
 function inWindow(record, windowDays, now = new Date()) {
-  const at = toTimestamp(record.measured_at || record.meal_time || record.created_at || record.paid_at);
+  const at = toTimestamp(record.fed_at || record.measured_at || record.meal_time || record.created_at || record.paid_at);
   if (!at) return false;
   return now.getTime() - at <= windowDays * MS_PER_DAY;
 }
@@ -59,18 +59,51 @@ function extractFeedingSignals(feedingRecords = [], options = {}) {
   const recent30 = feedingRecords.filter(record => inWindow(record, 30, now));
   const recipeCounts = countBy(feedingRecords.map(record => record.recipe_id));
 
+  const recipeFeedback = Object.values(feedingRecords.reduce((acc, record) => {
+    const id = record.recipe_id;
+    if (!id) return acc;
+    const item = acc[id] || { recipe_id: id, record_count: 0, records_14d: 0, records_30d: 0, palatability_scores: [], normal_stool_count: 0, abnormal_stool_count: 0 };
+    item.record_count += 1;
+    if (inWindow(record, 14, now)) item.records_14d += 1;
+    if (inWindow(record, 30, now)) item.records_30d += 1;
+    const palatability = palatabilityScore(record.palatability, record.appetite_score);
+    if (palatability !== null) item.palatability_scores.push(palatability);
+    if (record.stool_status) {
+      if (/正常|normal/i.test(record.stool_status)) item.normal_stool_count += 1;
+      else item.abnormal_stool_count += 1;
+    }
+    acc[id] = item;
+    return acc;
+  }, {})).map(item => ({
+    recipe_id: item.recipe_id, record_count: item.record_count, records_14d: item.records_14d, records_30d: item.records_30d,
+    palatability_score: roundNullable(average(item.palatability_scores), 2),
+    normal_stool_count: item.normal_stool_count, abnormal_stool_count: item.abnormal_stool_count,
+    acceptance_positive: average(item.palatability_scores) >= 3.5 && item.abnormal_stool_count === 0,
+  }));
+
   return {
     feeding_record_count: feedingRecords.length,
-    avg_grams_14d: roundNullable(average(recent14.map(record => record.grams)), 1),
-    avg_grams_30d: roundNullable(average(recent30.map(record => record.grams)), 1),
-    appetite_score_14d: roundNullable(average(recent14.map(record => record.appetite_score)), 2),
+    avg_grams_14d: roundNullable(average(recent14.map(record => record.amount_g ?? record.grams)), 1),
+    avg_grams_30d: roundNullable(average(recent30.map(record => record.amount_g ?? record.grams)), 1),
+    appetite_score_14d: roundNullable(average(recent14.map(record => palatabilityScore(record.palatability, record.appetite_score))), 2),
     stool_score_14d: roundNullable(average(recent14.map(record => record.stool_score)), 2),
     energy_score_14d: roundNullable(average(recent14.map(record => record.energy_score)), 2),
     allergy_observation_count_30d: recent30.filter(record => record.allergy_observed === true).length,
     preferred_recipe_ids: topKeys(recipeCounts, 5),
     preference_tags: derivePreferenceTags(recent30),
     caution_tags: deriveFeedingCautionTags(recent30),
+    recipe_feedback: recipeFeedback,
   };
+}
+
+function palatabilityScore(value, numericValue) {
+  if (Number.isFinite(Number(numericValue))) return Number(numericValue);
+  const text = String(value || '');
+  if (/光盘|finished|全部|吃完/i.test(text)) return 4;
+  if (/一半|half/i.test(text)) return 3;
+  if (/挑食|picky/i.test(text)) return 2;
+  if (/不吃|refus/i.test(text)) return 1;
+  return null;
 }
 
 function extractPurchaseSignals(orders = []) {
@@ -164,6 +197,7 @@ function deriveFeedingCautionTags(records = []) {
   const tags = [];
   const stool = average(records.map(record => record.stool_score));
   if (stool !== null && (stool <= 2 || stool >= 5)) tags.push('stool_watch');
+  if (records.some(record => record.stool_status && !/正常|normal/i.test(record.stool_status))) tags.push('stool_watch');
   if (records.some(record => record.allergy_observed === true)) tags.push('possible_allergen');
   return unique(tags);
 }

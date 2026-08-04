@@ -78,6 +78,14 @@ test('A包百分比不足100时按比例归一，单餐食材克数仍与单餐�
   assert.equal(ingredientList.reduce((sum, item) => sum + (item.grams || 0), 0), 153);
 });
 
+test('HeyboPet Agent只可在确定性安全区间内选能量且Fresh Check共用结果', () => {
+  const pet = { age_months: 36, current_weight_kg: 20, life_stage: 'adult', activity_level: 'medium', energy_target_kcal: 900 };
+  const energy = dailyEnergyNeed(pet);
+  assert.equal(energy.daily_kcal, Math.min(900, energy.max_kcal));
+  assert.equal(energy.energy_target_source, 'heybo_agent');
+  assert.deepEqual(freshCheck.dailyEnergyNeed(pet), energy);
+});
+
 test('17个月33.5kg已绝育拉布拉多回归图七能量结果', () => {
   const need = dailyEnergyNeed({
     breed: '拉布拉多',
