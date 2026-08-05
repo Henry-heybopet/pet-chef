@@ -153,6 +153,10 @@ export const api = {
     const q = new URLSearchParams(params).toString();
     return get(`/api/recipes${q ? '?' + q : ''}`);
   },
+  getNutritionPacks: async (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return get(`/api/nutrition-packs${q ? '?' + q : ''}`);
+  },
   recommend: (petId, token) => authedPost('/api/recommend', { pet_id: petId }, token),
   compareSelection: (body, token) => authedPost('/api/recommend/compare', body, token),
   aiAnalysis: (petId, lang, token) => authedPost('/api/ai-analysis', { pet_id: petId, lang }, token),

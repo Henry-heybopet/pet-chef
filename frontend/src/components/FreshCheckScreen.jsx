@@ -70,12 +70,12 @@ export function FreshCheckResultScreen({ result, authToken, onResultUpdate, onAd
   const bPack = result?.b_pack || {};
   const recommended = (bPack.options || []).find(option => option.recommended && option.enabled);
   const [showBPack, setShowBPack] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState(bPack.selected?.category_code || recommended?.category_code || '');
+  const [selectedPackId, setSelectedPackId] = useState(bPack.selected?.pack_id || recommended?.pack_id || '');
   const [applying, setApplying] = useState(false);
   const [localizing, setLocalizing] = useState(false);
   useEffect(() => {
-    setSelectedCategory(bPack.selected?.category_code || recommended?.category_code || '');
-  }, [bPack.selected?.category_code, recommended?.category_code]);
+    setSelectedPackId(bPack.selected?.pack_id || recommended?.pack_id || '');
+  }, [bPack.selected?.pack_id, recommended?.pack_id]);
   useEffect(() => {
     if (!result?.analysis_id || result.locale === lang) return undefined;
     let active = true;
@@ -100,17 +100,17 @@ export function FreshCheckResultScreen({ result, authToken, onResultUpdate, onAd
   const enabledPacks = (bPack.options || []).filter(option => option.enabled);
   const disabledPacks = (bPack.options || []).filter(option => !option.enabled);
   const applyBPack = async () => {
-    if (!selectedCategory) return;
+    if (!selectedPackId) return;
     setApplying(true);
     try {
-      const next = await api.freshCheckAnalyze({ pet_id: result.pet.id, ingredients: result.recipe.ingredients, meal_intent: result.recipe.meal_intent, b_pack_category: selectedCategory, locale: lang }, authToken);
+      const next = await api.freshCheckAnalyze({ pet_id: result.pet.id, ingredients: result.recipe.ingredients, meal_intent: result.recipe.meal_intent, pack_id: selectedPackId, locale: lang }, authToken);
       if (!next?.success) throw new Error(next?.error || t('freshCheckBPackApplyFailed'));
       onResultUpdate(next);
       setShowBPack(false);
     } catch (error) { window.alert(error.message || t('freshCheckBPackApplyFailed')); } finally { setApplying(false); }
   };
   const FindingList = ({ items }) => items.map((item, index) => { const level = item.risk_level || item.level; return <article className={`fresh-check-finding risk-${level === 'notice' ? 'warning' : level}`} key={`${item.risk_code || item.code || 'finding'}-${index}`}><strong>{item.title}</strong><p><b>{t('why')}</b>{item.reason}</p><p><b>{t('howAdjust')}</b>{item.adjustment}</p></article>; });
-  const PackOption = ({ option }) => <label className={option.enabled ? '' : 'is-disabled'}><input type="radio" name="fresh-b-pack" value={option.category_code} checked={selectedCategory === option.category_code} disabled={!option.enabled} onChange={() => setSelectedCategory(option.category_code)} /><span><strong>{option.name}{option.recommended && <em>{t('recommended')}</em>}</strong><small>{option.category} · {option.reason}</small>{option.enabled && <small className="fresh-b-pack-dose">{t('bPackDoseRule')}</small>}</span></label>;
+  const PackOption = ({ option }) => <label className={option.enabled ? '' : 'is-disabled'}><input type="radio" name="fresh-b-pack" value={option.pack_id} checked={selectedPackId === option.pack_id} disabled={!option.enabled} onChange={() => setSelectedPackId(option.pack_id)} /><span><strong>{option.name}{option.recommended && <em>{t('recommended')}</em>}</strong><small>{option.category} · {option.reason}</small>{option.enabled && <small className="fresh-b-pack-dose">{t('bPackDoseRule')}</small>}</span></label>;
 
   return <div className="fresh-check-page fresh-result-page animate-fade">
     <header className="fresh-hero"><h1>{t('freshCheckResult')}</h1><div className="fresh-kicker">{result.pet?.name} · {result.recipe?.total_weight_g || 0} g{localizing ? ' · …' : ''}</div></header>
@@ -122,9 +122,9 @@ export function FreshCheckResultScreen({ result, authToken, onResultUpdate, onAd
       {showBPack && <div className="fresh-b-pack-options">
         <h2>{t('selectBPack')}</h2>
         <p>{t('bPackUsageDescription')}</p>
-        {enabledPacks.map(option => <PackOption option={option} key={option.category_code} />)}
-        {disabledPacks.length > 0 && <details className="fresh-b-pack-disabled"><summary>{t('incompatibleBPackCount', { n: disabledPacks.length })}</summary>{disabledPacks.map(option => <PackOption option={option} key={option.category_code} />)}</details>}
-        <button type="button" className="fresh-submit" disabled={!selectedCategory || applying} onClick={applyBPack}>{applying ? t('applying') : t('confirmBPack')}</button>
+        {enabledPacks.map(option => <PackOption option={option} key={option.pack_id} />)}
+        {disabledPacks.length > 0 && <details className="fresh-b-pack-disabled"><summary>{t('incompatibleBPackCount', { n: disabledPacks.length })}</summary>{disabledPacks.map(option => <PackOption option={option} key={option.pack_id} />)}</details>}
+        <button type="button" className="fresh-submit" disabled={!selectedPackId || applying} onClick={applyBPack}>{applying ? t('applying') : t('confirmBPack')}</button>
       </div>}
     </section>}
     <section className="fresh-result-card fresh-check-needs">

@@ -7,7 +7,7 @@ import { api } from '../api';
 import { demoRecipes } from '../data/demoRecipes';
 import { resolveRecipeImageUrl } from '../utils/recipeImage';
 import { sortRecipeIngredientEntries } from '../utils/recipeIngredients';
-import { splitTopItems } from '../utils/recommendationDisplay';
+import { filterRankedRecipes, splitTopItems } from '../utils/recommendationDisplay';
 import FreshCheckRadar from './FreshCheckRadar';
 
 // Nutrition needs translation map for rule-engine fallback
@@ -108,6 +108,30 @@ const SCORE_LABEL_KEYS = {
   nutrition: 'freshScoreNutrition',
   long_term: 'freshScoreLongTerm',
   energy: 'freshScoreEnergy',
+};
+
+const NUTRITION_PACK_IDS = {
+  puppy: 'dog_pack_001',
+  largePuppy: 'dog_pack_002',
+  adult: 'dog_pack_003',
+  senior: 'dog_pack_004',
+  brain: 'dog_pack_005',
+  joint: 'dog_pack_006',
+  coat: 'dog_pack_007',
+  liver: 'dog_pack_008',
+  hypoallergenic: 'dog_pack_009',
+};
+
+const NUTRITION_PACK_FALLBACK_NAMES = {
+  dog_pack_001: '幼犬通用全价营养包',
+  dog_pack_002: '大型幼犬控钙全价营养包',
+  dog_pack_003: '成年犬通用全价营养包',
+  dog_pack_004: '老年犬通用全价营养包',
+  dog_pack_005: '脑发育功能支持全价营养包',
+  dog_pack_006: '关节保护功能支持全价营养包',
+  dog_pack_007: '美毛护肤功能支持全价营养包',
+  dog_pack_008: '护肝功能支持全价营养包',
+  dog_pack_009: '低敏无动物蛋白全价营养包',
 };
 
 function validationReasonText(deduction, t) {
@@ -472,6 +496,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
   const t = useTranslation(lang);
   const { analysis, breedName, age, weight } = profile;
   const [catalogRecipes, setCatalogRecipes] = React.useState(demoRecipes);
+  const [bPacks, setBPacks] = React.useState([]);
 
   React.useEffect(() => {
     let active = true;
@@ -496,6 +521,16 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     return () => { active = false; };
   }, [lang]);
 
+  React.useEffect(() => {
+    let active = true;
+    api.getNutritionPacks({ locale: lang })
+      .then(result => {
+        if (active && result?.success) setBPacks(result.packs || []);
+      })
+      .catch(error => console.warn('[NutritionPackCatalog] catalog unavailable:', error?.message || 'unknown'));
+    return () => { active = false; };
+  }, [lang]);
+
   const lifeStageLabel = { '幼犬': `🐾 ${t('puppyStage')}`, '成年犬': `🐕 ${t('adultStage')}`, '老年犬': `🦴 ${t('seniorStage')}` }[analysis?.life_stage] || `🐕 ${t('adultStage')}`;
   const activityLabel = { low: t('activityLow'), medium: t('activityMedium'), high: t('activityHigh'), very_high: t('activityWorking') }[analysis?.activity_level] || t('activityMedium');
 
@@ -509,14 +544,16 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     return analysis.breed_intro;
   })();
 
-  // 所有 A 基础包都交给 HeyboPet Agent 排序；生命阶段由 B 包与安全边界适配。
+  // 只展示后端按宠物生命阶段筛选并由 HeyboPet Agent 完整评分的 A 基础包。
   const categoryRecipes = React.useMemo(() => {
-    return catalogRecipes;
-  }, [catalogRecipes]);
+    return filterRankedRecipes(catalogRecipes, analysis?.ranked_recipe_ids || []);
+  }, [analysis?.ranked_recipe_ids, catalogRecipes]);
 
   const defaultSelectedAId = React.useMemo(() => {
+    const rankedId = (analysis?.ranked_recipe_ids || []).find(id => categoryRecipes.some(recipe => recipe.id === id));
+    if (rankedId) return rankedId;
     return getBestScoredRecipeId(categoryRecipes, profile?.comparisons);
-  }, [categoryRecipes, profile?.comparisons]);
+  }, [analysis?.ranked_recipe_ids, categoryRecipes, profile?.comparisons]);
 
   // 2. 状态管理
   // 当前选中的 A 包食谱 ID (必选, 单选)
@@ -528,29 +565,33 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
 
   const isLargePuppy = profile?.bodySize === 'large' || profile?.bodySize === 'giant' || weight >= 25;
 
-  const getAllowedBPackNames = React.useCallback(() => {
+  const getAllowedBPackIds = React.useCallback(() => {
     if (analysis?.life_stage === '幼犬') {
-      return [isLargePuppy ? '大型幼犬稳骨控钙营养包B' : '幼犬成长营养包B'];
+      return [isLargePuppy ? NUTRITION_PACK_IDS.largePuppy : NUTRITION_PACK_IDS.puppy, NUTRITION_PACK_IDS.brain];
     }
     if (analysis?.life_stage === '老年犬') {
-      return ['老年犬轻负担营养包B'];
+      return [NUTRITION_PACK_IDS.senior, NUTRITION_PACK_IDS.joint];
     }
-    return ['成犬维护营养包B', '成犬/美毛基础营养包B', '成犬/护肝基础营养包B', '低敏单一蛋白营养包B'];
+    return [NUTRITION_PACK_IDS.adult, NUTRITION_PACK_IDS.joint, NUTRITION_PACK_IDS.coat, NUTRITION_PACK_IDS.liver, NUTRITION_PACK_IDS.hypoallergenic];
   }, [analysis?.life_stage, isLargePuppy]);
 
-  const recommendedBName = React.useMemo(() => {
-    return analysis?.selected_b_pack?.name || getAllowedBPackNames()[0];
-  }, [analysis?.selected_b_pack?.name, getAllowedBPackNames]);
+  const recommendedBId = React.useMemo(() => {
+    const allowed = getAllowedBPackIds();
+    const aiPackId = analysis?.selected_b_pack?.pack_id;
+    return allowed.includes(aiPackId) ? aiPackId : allowed[0];
+  }, [analysis?.selected_b_pack?.pack_id, getAllowedBPackIds]);
 
   // 当前选中的 B 包
-  const [selectedBName, setSelectedBName] = React.useState(recommendedBName);
+  const [selectedBId, setSelectedBId] = React.useState(recommendedBId);
+  const selectedBPack = React.useMemo(() => bPacks.find(pack => pack.pack_id === selectedBId), [bPacks, selectedBId]);
+  const selectedBName = selectedBPack?.canonical_name || selectedBPack?.name || NUTRITION_PACK_FALLBACK_NAMES[selectedBId] || '全价营养包';
 
   React.useEffect(() => {
-    const allowed = getAllowedBPackNames();
-    if (!allowed.includes(selectedBName)) {
-      setSelectedBName(allowed[0]);
+    const allowed = getAllowedBPackIds();
+    if (!allowed.includes(selectedBId)) {
+      setSelectedBId(allowed[0]);
     }
-  }, [getAllowedBPackNames, selectedBName]);
+  }, [getAllowedBPackIds, selectedBId]);
 
   // 弹窗与控制状态
   const [showBSelector, setShowBSelector] = React.useState(false);
@@ -560,17 +601,6 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
   const [hoveredCard, setHoveredCard] = React.useState(null);
   const [isComparing, setIsComparing] = React.useState(false);
   const [showOtherARecipes, setShowOtherARecipes] = React.useState(false);
-
-  // B包定义
-  const bPacks = [
-    { name: '幼犬成长营养包B', desc: '用于小型/中型幼犬，高营养密度，强化高矿物与钙磷比。' },
-    { name: '大型幼犬稳骨控钙营养包B', desc: '专为大型犬幼犬设计，精准限制钙含量，窄钙磷比以支持骨骼健康发育。' },
-    { name: '成犬维护营养包B', desc: '成犬日常均衡维护款，平稳微量元素平衡。' },
-    { name: '成犬/美毛基础营养包B', desc: '成犬美毛基础，高含量Omega-3及不饱和油脂配比。' },
-    { name: '成犬/护肝基础营养包B', desc: '低矿物盐负担设计，适合肝脏养护或消化道敏感群体。' },
-    { name: '老年犬轻负担营养包B', desc: '老年犬专属，限制磷与多余钙，轻负担易水解。' },
-    { name: '低敏单一蛋白营养包B', desc: '不添加任何动物骨肉粉载体，纯矿物游离态以防过敏。' }
-  ];
 
   // 缓存与预取比对数据状态
   const [comparisonsCache, setComparisonsCache] = React.useState(() => {
@@ -664,10 +694,12 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
       lang,
       currentSelection: {
         a_recipe_name: currentA,
+        pack_id: selectedBId,
         b_pack_name: selectedBName
       },
       proposedSelection: {
         a_recipe_name: proposedA,
+        pack_id: selectedBId,
         b_pack_name: nextB
       }
     };
@@ -686,8 +718,6 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
           reason: res.comparison.a_comparison.score_reason,
           onConfirm: () => {
             setSelectedAId(nextAId);
-            setSelectedBName(nextB);
-            setSelectedCList(nextC);
             if (res.comparison.has_warning) {
               setWarningData({
                 text: res.comparison.warning_text,
@@ -702,14 +732,10 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
           text: res.comparison.warning_text,
           pendingAction: () => {
             setSelectedAId(nextAId);
-            setSelectedBName(nextB);
-            setSelectedCList(nextC);
           }
         });
       } else if (res.success) {
         setSelectedAId(nextAId);
-        setSelectedBName(nextB);
-        setSelectedCList(nextC);
       }
     } catch (e) {
       setIsComparing(false);
@@ -766,15 +792,19 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
   };
 
   const scoredCategoryRecipes = React.useMemo(() => {
+    const aiRank = new Map((analysis?.ranked_recipe_ids || []).map((id, index) => [id, index]));
     return categoryRecipes
-      .map((recipe, index) => ({ recipe, index, score: getRecipeScore(recipe, comparisonsCache) }))
+      .map((recipe, index) => ({ recipe, index, aiRank: aiRank.get(recipe.id), score: getRecipeScore(recipe, comparisonsCache) }))
       .sort((a, b) => {
+        if (a.aiRank !== undefined || b.aiRank !== undefined) {
+          return (a.aiRank ?? Number.MAX_SAFE_INTEGER) - (b.aiRank ?? Number.MAX_SAFE_INTEGER);
+        }
         const scoreA = a.score ?? -1;
         const scoreB = b.score ?? -1;
         if (scoreB !== scoreA) return scoreB - scoreA;
         return a.index - b.index;
       });
-  }, [categoryRecipes, comparisonsCache]);
+  }, [analysis?.ranked_recipe_ids, categoryRecipes, comparisonsCache]);
 
   const {
     primary: primaryARecipes,
@@ -961,11 +991,11 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
               <div className="card glass" style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', justifyContent: 'space-between', border: '1px solid var(--secondary)' }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {tData(selectedBName, lang)}
+                    {selectedBPack?.name || NUTRITION_PACK_FALLBACK_NAMES[selectedBId] || '全价营养包'}
                     <span style={{ fontSize: 9, background: 'rgba(255,0,163,0.15)', color: 'var(--secondary)', padding: '1px 5px', borderRadius: 4 }}>{t('currentSelection')}</span>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 6, lineHeight: 1.4, maxWidth: '80%' }}>
-                    {tData(bPacks.find(b => b.name === selectedBName)?.desc, lang)}
+                    {selectedBPack?.description || ''}
                   </div>
                 </div>
                 <button className="btn btn-secondary" style={{ flex: '0 0 76px', width: 76, padding: '4px 10px', fontSize: 11, height: 'fit-content', whiteSpace: 'nowrap' }} onClick={() => setShowBSelector(true)}>
@@ -981,7 +1011,8 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
                 ...activeRecipeObj,
                 feeding_plan: activeFeedingPlan,
                 customB: selectedBName,
-                composition_summary: `A基础包（${activeRecipeObj.name}）+ B营养包（${selectedBName}）`
+                pack_id: selectedBId,
+                composition_summary: `A基础食材包（${activeRecipeObj.name}）+ 全价营养包（${selectedBName}）`
               };
               onSelectRecipe(finalRecipe);
             }}>
@@ -1001,10 +1032,10 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
               {bPacks.map(b => {
-                const isSelected = selectedBName === b.name;
-                const isAllowed = getAllowedBPackNames().includes(b.name);
+                const isSelected = selectedBId === b.pack_id;
+                const isAllowed = getAllowedBPackIds().includes(b.pack_id) && b.available;
                 return (
-                  <div key={b.name} style={{
+                  <div key={b.pack_id} style={{
                     padding: '12px 16px',
                     borderRadius: 10,
                     background: isSelected ? 'rgba(255,0,163,0.08)' : isAllowed ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.015)',
@@ -1015,11 +1046,11 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
                   }} onClick={() => {
                     if (!isAllowed) return;
                     setShowBSelector(false);
-                    setSelectedBName(b.name);
+                    setSelectedBId(b.pack_id);
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? 'var(--secondary)' : '#fff' }}>
-                        {tData(b.name, lang)}
+                        {b.name}
                       </span>
                       {isSelected && (
                         <span style={{ fontSize: 9, background: 'rgba(255,0,163,0.15)', color: 'var(--secondary)', padding: '2px 6px', borderRadius: 4 }}>{t('currentSelection')}</span>
@@ -1029,7 +1060,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
                       )}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 6, lineHeight: 1.4 }}>
-                      {tData(b.desc, lang)}
+                      {b.description}
                     </div>
                   </div>
                 );
