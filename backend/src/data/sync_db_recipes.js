@@ -13,6 +13,7 @@ async function run() {
     console.log("Database connected. Syncing active recipes to table 'recipes'...");
     
     // Upsert canonical data without deleting rows or overwriting administrator-uploaded images.
+    // Legacy root-level image paths are migrated to versioned catalog URLs.
     for (const r of recipesDb) {
       const sql = `
         INSERT INTO recipes (
@@ -34,7 +35,10 @@ async function run() {
           cooking_profile = EXCLUDED.cooking_profile,
           nutrition_snapshot = EXCLUDED.nutrition_snapshot,
           img = CASE
-            WHEN recipes.img IS NULL OR BTRIM(recipes.img) = '' THEN EXCLUDED.img
+            WHEN recipes.img IS NULL
+              OR BTRIM(recipes.img) = ''
+              OR recipes.img ~ '^/[^/]+\\.(png|jpe?g|webp)$'
+              THEN EXCLUDED.img
             ELSE recipes.img
           END,
           status = EXCLUDED.status,

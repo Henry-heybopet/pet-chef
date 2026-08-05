@@ -29,16 +29,22 @@ const adminAccounts = require('./services/admin_accounts');
 const { normalizeLocale, aiNutritionPresentationIsValid, buildAiNutritionFallback, cachedAiNutritionAnalysis, validationDetailsTranslationStatus } = require('./services/localization');
 const { attachCatalogPresentations } = require('./services/catalog_localization');
 const { localizeComparison } = require('./services/comparison_localization');
-const { uploadsDir, recipeUploadsDir, nutritionPackUploadsDir } = require('./config/uploads');
+const { uploadsDir, recipeCatalogDir, recipeUploadsDir, nutritionPackUploadsDir } = require('./config/uploads');
 
 const app = express();
 app.set('trust proxy', 1);
 const runtimeDataDir = path.resolve(__dirname, '../.data');
+const recipeCatalogSeedDir = path.resolve(__dirname, 'assets/recipe-images');
 const AI_RECOMMENDATION_CACHE_VERSION = PROMPT_VERSION;
 fs.mkdirSync(uploadsDir, { recursive: true });
+fs.mkdirSync(recipeCatalogDir, { recursive: true });
 fs.mkdirSync(recipeUploadsDir, { recursive: true });
 fs.mkdirSync(nutritionPackUploadsDir, { recursive: true });
 fs.mkdirSync(runtimeDataDir, { recursive: true });
+for (const filename of fs.readdirSync(recipeCatalogSeedDir)) {
+  const target = path.join(recipeCatalogDir, filename);
+  if (!fs.existsSync(target)) fs.copyFileSync(path.join(recipeCatalogSeedDir, filename), target);
+}
 
 // 路由兼容性中间件：自动将 /api/xxx 转发至 /api/v1/xxx （防止生产环境 Nginx 或 Capacitor 容器导致 404）
 app.use((req, res, next) => {
@@ -55,6 +61,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'idempotency-key', 'x-device-id', 'x-heybo-payment-mock-secret'],
 }));
 
+const immutableImageOptions = { maxAge: '1y', immutable: true, etag: true };
+app.use('/uploads/recipe-catalog', express.static(recipeCatalogDir, immutableImageOptions));
+app.use('/uploads/recipes', express.static(recipeUploadsDir, immutableImageOptions));
 app.use('/uploads', express.static(uploadsDir));
 
 app.use(express.json({
@@ -922,7 +931,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       rule_score: plan.recommendation_score, b_pack_category: selectedBPack?.category || null,
     };
   });
-  const contextHash = cacheContextHash({ pet: publicPetContext(dogProfile), recipes: candidateRecipes, bPacks: bPackResult.options });
+  const contextHash = cacheContextHash({ pet: publicPetContext(dogProfile), recipes: candidateRecipes, bPacks: bPackResult.options, locale: requestedLocale });
   const petCacheId = safeCacheId(`${userId || 'anonymous'}_${dogProfile.pet_id || dogProfile.id || 'default'}`);
   const cacheFilePath = compareCachePath(petCacheId);
   if (fs.existsSync(cacheFilePath)) {
@@ -951,11 +960,19 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
   } catch (error) {
     recommendationSource = 'rule_fallback';
     fallbackReason = error.message;
+    const localizedFallback = buildAiNutritionFallback({
+      requestedLocale,
+      age: dogProfile.age ?? (Number(dogProfile.age_months) / 12),
+      weight: dogProfile.weight || dogProfile.current_weight_kg,
+      intake: referenceFeedingPlan,
+    });
     recommendation = {
       selected_daily_kcal: energyEnvelope.formula_daily_kcal,
-      summary: '智能分析暂时不可用，当前结果基于宠物档案和营养安全规则生成。',
-      key_nutrition_needs: [], cautions: [], factors_used: ['宠物档案', 'Fresh Check 营养安全规则'],
-      ranked_recipes: fallbackRanking(candidates), meta: { model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash' },
+      summary: localizedFallback.nutrition_analysis,
+      key_nutrition_needs: localizedFallback.key_nutrition_needs,
+      cautions: localizedFallback.cautions,
+      factors_used: [],
+      ranked_recipes: fallbackRanking(candidates, requestedLocale), meta: { model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash' },
     };
     console.error('[HeyboPet Agent fallback]', error.message);
   }
@@ -991,6 +1008,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
   const stageCode = referenceFeedingPlan.stage_code;
   const analyzedAt = new Date().toISOString();
   const analysis = {
+    locale: requestedLocale,
     breed_intro: recommendation.summary,
     life_stage: stageCode === 'puppy' ? '幼犬' : stageCode === 'senior' ? '老年犬' : '成年犬',
     life_stage_code: stageCode, activity_level: dogProfile.activityLevel || 'medium',

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { MODEL, REQUEST_TIMEOUT_MS, PROMPT_VERSION, isRecommendationCacheValid, cachedEnergyTarget, filterRecipesForLifeStage, fallbackRanking, applyRuleScoreCeilings, _test } = require('../src/services/ai_recommendation');
+const { MODEL, REQUEST_TIMEOUT_MS, PROMPT_VERSION, cacheContextHash, isRecommendationCacheValid, cachedEnergyTarget, filterRecipesForLifeStage, fallbackRanking, applyRuleScoreCeilings, _test } = require('../src/services/ai_recommendation');
 const { recipesDb } = require('../src/data/recipes_db');
 
 test('synchronous recommendation defaults stay inside the nginx request budget', () => {
@@ -33,7 +33,7 @@ test('cached energy target shares the valid HeyboPet Agent target with Fresh Che
 });
 
 test('AI must score every A candidate and the backend sorts the complete result', () => {
-  assert.equal(PROMPT_VERSION, 'heybo-agent-ab-v5');
+  assert.equal(PROMPT_VERSION, 'heybo-agent-ab-v6-i18n');
   assert.throws(() => _test.validateAgentResult({ selected_daily_kcal: 600, ranked_recipes: [{ recipe_id: 'a', score: 90, eligible: true }] }, {
     candidateIds: ['a', 'b'], hardBlockedIds: new Set(), minKcal: 500, maxKcal: 700, allowedBPacks: new Set(),
   }), /every candidate/);
@@ -50,6 +50,13 @@ test('AI must score every A candidate and the backend sorts the complete result'
   const fallback = fallbackRanking([{ recipe_id: 'danger', hard_blocked: true, rule_score: 90 }, { recipe_id: 'safe', hard_blocked: false, rule_score: 80 }]);
   assert.equal(fallback[0].recipe_id, 'safe');
   assert.equal(fallback[1].eligible, false);
+});
+
+test('recommendation cache and deterministic fallback are isolated by locale', () => {
+  const input = { pet: { id: 'pet-1' }, recipes: [], bPacks: [] };
+  assert.notEqual(cacheContextHash({ ...input, locale: 'zh' }), cacheContextHash({ ...input, locale: 'en' }));
+  assert.match(fallbackRanking([{ recipe_id: 'safe', hard_blocked: false, rule_score: 80 }], 'ja')[0].reason, /[\u3040-\u30ff]/u);
+  assert.doesNotMatch(fallbackRanking([{ recipe_id: 'safe', hard_blocked: false, rule_score: 80 }], 'en')[0].reason, /[\u3400-\u9fff]/u);
 });
 
 test('every supplied life-stage candidate is required before selecting the top ten', () => {

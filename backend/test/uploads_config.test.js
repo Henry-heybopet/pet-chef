@@ -18,6 +18,7 @@ test('shared upload directory uses one absolute root and relative public avatar 
     const config = loadConfig(root);
     assert.equal(config.uploadsDir, root);
     assert.equal(config.avatarDir, path.join(root, 'avatars'));
+    assert.equal(config.recipeCatalogDir, path.join(root, 'recipe-catalog'));
     assert.equal(config.recipeUploadsDir, path.join(root, 'recipes'));
     assert.equal(config.avatarPublicUrl('pet.jpg'), '/uploads/avatars/pet.jpg');
     assert.throws(() => loadConfig('relative/uploads'), /must be an absolute path/);

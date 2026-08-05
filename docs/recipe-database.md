@@ -3,6 +3,9 @@
 ## 数据源与变更记录
 
 - **食谱原件处理**：原来的 `犬用食谱.docx` / `犬用食谱Disable.docx` 为旧版非结构化二进制，已从 App 静态资源中移除；当前以 `docs/source/犬用鲜食配方_A+B_40种优化版_营养合规审查（0630）.xlsx` 和本文件结构化数据为准。
+- **食谱图片交付**：40 张正式图片存放在 `backend/src/assets/recipe-images`，由 `/uploads/recipe-catalog/` 提供。文件名包含 SHA-256 前 12 位，响应使用一年 immutable 缓存；Admin 上传图片继续使用 `/uploads/recipes/<recipe_id>-<timestamp>.<ext>`。App 登录后低并发预取 API 当前返回的图片 URL，同一 URL 由 WebView HTTP 缓存直接复用。
+- **部署顺序**：先部署后端并确认版本化图片 HTTP 200，再运行 `cd backend && npm run db:sync` 将旧根路径迁移为版本化 URL，最后部署不再内置食谱图的前端/APK。数据库同步只替换空图片和旧根路径，不覆盖 Admin 已上传的 `/uploads/recipes/` 图片。
+- **回滚**：保留旧版本后端/前端构建；如需回滚代码，数据库中的 `/uploads/recipe-catalog/` URL 仍由旧后端前先保留的部署版本提供。不要在回滚窗口内删除服务器旧图片。
 - **核心优化规则**：
   - **后台编辑**：食谱详情中的“产品定价”作为运营编辑文本保存在 `nutrition_snapshot.product_pricing`，当前不建立食谱与商城 SKU 的价格联动；正式 SKU 售价仍由商城商品数据负责。
   - **食材刷新**：完全剔除高风险豆类（如青豆等），新增优质单一蛋白及膳食纤维物料（如金枪鱼白肉、兔里脊、鸭小胸、全熟燕麦片、山药丁、冬瓜丁、西兰花等）。

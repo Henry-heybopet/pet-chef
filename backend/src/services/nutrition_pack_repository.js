@@ -421,7 +421,9 @@ async function listBPackOptionsFromNutritionPacks() {
 async function listConsumerNutritionPacks(locale = 'zh') {
   const normalizedLocale = ['zh', 'en', 'de', 'fr', 'es', 'it', 'ja', 'ko'].includes(locale) ? locale : 'zh';
   const { packs, source } = await listNutritionPacks({ fallback: true });
-  let translations = new Map();
+  let translations = new Map(NUTRITION_PACK_TRANSLATIONS
+    .filter(row => row.locale === normalizedLocale)
+    .map(row => [row.pack_id, row]));
   if (source === 'pg' && normalizedLocale !== 'zh') {
     try {
       const result = await query(
@@ -430,7 +432,7 @@ async function listConsumerNutritionPacks(locale = 'zh') {
          WHERE locale = $1`,
         [normalizedLocale]
       );
-      translations = new Map(result.rows.map(row => [row.pack_id, row]));
+      translations = new Map([...translations, ...result.rows.map(row => [row.pack_id, row])]);
     } catch (error) {
       console.warn('[NutritionPackRepo] translated pack catalog unavailable:', error.message);
     }

@@ -12,11 +12,14 @@ function assertTargetScript(text, locale) {
 }
 
 test('all catalog recipes, ingredient benefits, and packs have seven foreign presentations', async () => {
-  const { demoRecipes } = await import('../../frontend/src/data/demoRecipes.js');
-  const { hasBenefitTranslation, hasDataTranslation, tBenefit, tData, tPack } = await import('../../frontend/src/i18n/dataTranslations.js');
+  const { recipesDb } = require('../src/data/recipes_db');
+  const { hasBenefitTranslation, hasDataTranslation, tBenefit, tData, tPack, translatedRecipePresentation } = await import('../../frontend/src/i18n/dataTranslations.js');
+
+  assert.equal(translatedRecipePresentation({ presentation: { name: '中文回退', translation_status: 'fallback' } }, 'en'), null);
+  assert.equal(translatedRecipePresentation({ presentation: { name: 'Localized', translation_status: 'translated' } }, 'en').name, 'Localized');
 
   for (const locale of foreignLocales) {
-    for (const recipe of demoRecipes) {
+    for (const recipe of recipesDb) {
       assert.equal(hasDataTranslation(recipe.name, locale), true, `missing ${locale} recipe translation: ${recipe.name}`);
       assertTargetScript(tData(recipe.name, locale), locale);
       for (const [ingredient, benefit] of Object.entries(recipe.ingredient_benefits || {})) {
@@ -62,4 +65,12 @@ test('semantic comparison renders independently for every supported locale', () 
 test('Japanese AI presentation rejects Chinese-only text', () => {
   assert.equal(aiNutritionPresentationIsValid({ nutrition_analysis: '这是一段中文营养说明。' }, 'ja'), false);
   assert.equal(aiNutritionPresentationIsValid({ nutrition_analysis: 'これは日本語の栄養説明です。' }, 'ja'), true);
+  assert.equal(aiNutritionPresentationIsValid({
+    summary: 'これは日本語の栄養説明です。',
+    ranked_recipes: [{ reason: '高动物蛋白，营养全面，长期可行' }],
+  }, 'ja'), false);
+  assert.equal(aiNutritionPresentationIsValid({
+    summary: 'This is an English nutrition summary.',
+    factors_used: ['体重与BCS'],
+  }, 'en'), false);
 });

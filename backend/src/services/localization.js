@@ -619,13 +619,18 @@ function aiNutritionPresentationIsValid(analysis, requestedLocale) {
   const fields = [
     analysis?.breed_intro,
     analysis?.activity_desc,
+    analysis?.summary,
     analysis?.nutrition_analysis,
     ...(analysis?.key_nutrition_needs || []),
     ...(analysis?.cautions || []),
     ...(analysis?.recommended_categories || []),
+    ...(analysis?.factors_used || []),
+    ...(analysis?.ranked_recipes || []).flatMap(item => [item.reason, ...(item.positive_factors || []), ...(item.tradeoffs || [])]),
   ].filter(Boolean).map(String);
   if (locale === 'zh') return true;
-  if (locale === 'ja') return fields.length > 0 && /[\u3040-\u30ff]/.test(fields.join(' '));
+  if (locale === 'ja') return fields.length > 0
+    && /[\u3040-\u30ff]/.test(fields.join(' '))
+    && fields.every(value => !containsHan(value) || /[\u3040-\u30ff]/.test(value));
   return fields.every(value => !containsHan(value));
 }
 
