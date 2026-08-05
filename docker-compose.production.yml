@@ -1,0 +1,123 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: petchef-backend:2.0.0-cn
+    container_name: petchef-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-30d}
+      SMS_VERIFICATION_SECRET: ${SMS_VERIFICATION_SECRET:?SMS_VERIFICATION_SECRET is required}
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${ALIBABA_CLOUD_ACCESS_KEY_ID:?ALIBABA_CLOUD_ACCESS_KEY_ID is required}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET:?ALIBABA_CLOUD_ACCESS_KEY_SECRET is required}
+      ALIYUN_SMS_ENDPOINT: ${ALIYUN_SMS_ENDPOINT:-dysmsapi.aliyuncs.com}
+      ALIYUN_SMS_SIGN_NAME: ${ALIYUN_SMS_SIGN_NAME:?ALIYUN_SMS_SIGN_NAME is required}
+      ALIYUN_SMS_TEMPLATE_CODE: ${ALIYUN_SMS_TEMPLATE_CODE:?ALIYUN_SMS_TEMPLATE_CODE is required}
+      TERMS_VERSION: ${TERMS_VERSION:-2026-08-05}
+      PRIVACY_VERSION: ${PRIVACY_VERSION:-2026-08-05}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY is required}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-pro}
+      TUYA_ACCESS_ID: ${TUYA_ACCESS_ID:?TUYA_ACCESS_ID is required}
+      TUYA_SECRET: ${TUYA_SECRET:?TUYA_SECRET is required}
+      TUYA_DEVICE_ID: ${TUYA_DEVICE_ID:-}
+      TUYA_BASE_URL: ${TUYA_BASE_URL:-https://openapi.tuyacn.com}
+      DATABASE_URL: postgresql://petchef:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/petchef?schema=public
+      ADMIN_SUPER_USERNAME: ${ADMIN_SUPER_USERNAME:?ADMIN_SUPER_USERNAME is required}
+      ADMIN_SUPER_PASSWORD: ${ADMIN_SUPER_PASSWORD:?ADMIN_SUPER_PASSWORD is required}
+      ANDROID_LATEST_VERSION_CODE: ${ANDROID_LATEST_VERSION_CODE:-3}
+      ANDROID_MINIMUM_VERSION_CODE: ${ANDROID_MINIMUM_VERSION_CODE:-1}
+      ANDROID_LATEST_VERSION_NAME: ${ANDROID_LATEST_VERSION_NAME:-2.0.1}
+      ANDROID_UPDATE_URL: ${ANDROID_UPDATE_URL:-https://petchef.heybopet.cn}
+      ANDROID_RELEASE_NOTES: ${ANDROID_RELEASE_NOTES:-Pet Chef 国内正式版}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./.data:/app/.data
+      - ./uploads:/app/public/uploads
+    networks:
+      - petchef-net
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64M
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    image: petchef-nginx:2.0.0-cn
+    container_name: petchef-nginx
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - petchef-net
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  db:
+    image: postgres:15-alpine
+    container_name: petchef-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: petchef
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: petchef
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - petchef-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U petchef -d petchef"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  pgdata:
+
+networks:
+  petchef-net:
+    driver: bridge

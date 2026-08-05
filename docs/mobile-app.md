@@ -53,11 +53,13 @@ npm run cap:android
 
 Web 本地开发可以继续使用 Vite 的 `/api` 代理。
 
-当前生产构建已经默认连接 Heybo Pet 线上后端：
+国内生产构建连接 Heybo Pet 国内线上后端：
 
 ```bash
-VITE_API_URL=https://petchef.heybopet.com
+VITE_API_URL=https://petchef.heybopet.cn
 ```
+
+海外 Release 使用 `https://petchef.heybopet.com`，必须单独覆盖 `VITE_API_URL` 并使用不同的产物文件名。国内与海外 APK 不得互相覆盖或混用。
 
 移动 App 运行在手机里时，不能依赖本机浏览器代理，需要设置真实可访问的后端地址：
 
@@ -81,6 +83,8 @@ VITE_API_URL=http://192.168.1.20:3001
 ## Android 版本升级与签名
 
 Android 正式包名固定为 `com.heybopet.petchef`。覆盖升级必须同时满足：包名不变、签名证书一致、`versionCode` 递增。V2.0 起使用长期 Release 证书，证书及密码必须离线或放入密码管理器，不能提交 Git。
+
+当前国内 Release 为 `versionCode=3`、`versionName=2.0.1`；已发布的海外 `2.0.0` 产物保持不变。
 
 ```bash
 cd frontend

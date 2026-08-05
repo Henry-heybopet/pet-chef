@@ -104,6 +104,18 @@ function ThemeToggle({ theme, onToggle }) {
   );
 }
 
+function FilingFooter() {
+  const { lang } = useLanguage();
+  const t = useTranslation(lang);
+  return (
+    <footer className="filing-footer">
+      <a href="https://beian.miit.gov.cn" target="_blank" rel="noreferrer">{t('websiteIcpFiling')}</a>
+      <span aria-hidden="true">·</span>
+      <a href="https://beian.miit.gov.cn" target="_blank" rel="noreferrer">{t('appIcpFiling')}</a>
+    </footer>
+  );
+}
+
 function AuthWidget({ user, token, authPrompt, authPromptMessage, onLogin, onLogout }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
@@ -427,6 +439,7 @@ function HomeScreen({ onDogEntry, onAIEntry, onDeviceEntry, authUser, authToken,
           <div style={{ marginLeft: 'auto', color: 'var(--theme-recipe)', fontSize: 20 }}>→</div>
         </button>
       </div>
+      <FilingFooter />
     </div>
   );
 }
