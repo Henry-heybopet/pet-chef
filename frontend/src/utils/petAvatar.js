@@ -1,3 +1,5 @@
+import { cacheImageUrl, PET_AVATAR_CACHE, pruneImageCache } from './persistentImageCache.js';
+
 const API_BASE = import.meta.env.VITE_API_URL || '';
 const GENERIC_PET_AVATAR = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 128 128%22%3E%3Crect width=%22128%22 height=%22128%22 rx=%2264%22 fill=%22%23141b24%22/%3E%3Ccircle cx=%2242%22 cy=%2250%22 r=%2210%22 fill=%22%2300e6ff%22 opacity=%22.8%22/%3E%3Ccircle cx=%2264%22 cy=%2240%22 r=%2211%22 fill=%22%2300e6ff%22 opacity=%22.8%22/%3E%3Ccircle cx=%2286%22 cy=%2250%22 r=%2210%22 fill=%22%2300e6ff%22 opacity=%22.8%22/%3E%3Cellipse cx=%2264%22 cy=%2277%22 rx=%2232%22 ry=%2224%22 fill=%22%2300e6ff%22 opacity=%22.9%22/%3E%3C/svg%3E';
 
@@ -58,4 +60,19 @@ export function handlePetAvatarError(event, pet = {}, context = 'img') {
 
 export function hasUploadedPetAvatar(pet = {}) {
   return Boolean(uploadedAvatar(pet));
+}
+
+export async function prefetchPetAvatars(pets = [], breeds = [], options = {}) {
+  const urls = [...new Set(pets.map(pet => getPetAvatarUrl(pet, breeds))
+    .filter(url => url && !String(url).startsWith('data:')))];
+  const results = await Promise.all(urls.map(url => cacheImageUrl(url, {
+    cacheName: PET_AVATAR_CACHE,
+    timeoutMs: options.timeoutMs || 20000,
+  })));
+  await pruneImageCache(PET_AVATAR_CACHE, urls);
+  return {
+    total: urls.length,
+    loaded: results.filter(Boolean).length,
+    failed: results.filter(value => !value).length,
+  };
 }

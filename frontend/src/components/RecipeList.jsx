@@ -1,10 +1,12 @@
 // RecipeList.jsx — Recipe waterfall list (i18n)
 import React, { useState, useEffect } from 'react';
 import TopBar from './TopBar';
+import CachedImage from './CachedImage';
 import { api } from '../api/index';
 import { useTranslation } from '../i18n/translations';
-import { tData, tTag } from '../i18n/dataTranslations';
+import { tData, tTag, translatedRecipePresentation } from '../i18n/dataTranslations';
 import { resolveRecipeImageUrl } from '../utils/recipeImage';
+import { RECIPE_IMAGE_CACHE } from '../utils/persistentImageCache';
 import {
   formatRecipeIngredientPercentages,
   getIngredientCategory,
@@ -17,8 +19,9 @@ function RecipeCard({ recipe, onSelect, t, lang }) {
   const ingredients = sortRecipeIngredientEntries(Object.entries(recipe.ingredients || {}));
   const totalPct = ingredients.reduce((s, [, v]) => s + (typeof v === 'number' ? v : 0), 0);
   const displayPercentages = formatRecipeIngredientPercentages(ingredients.map(([, pct]) => pct));
-  const displayName = recipe.presentation?.name || tData(recipe.name, lang);
-  const ingredientName = name => recipe.presentation?.ingredients?.[name]?.name || tData(name, lang);
+  const presentation = translatedRecipePresentation(recipe, lang);
+  const displayName = presentation?.name || tData(recipe.name, lang);
+  const ingredientName = name => presentation?.ingredients?.[name]?.name || tData(name, lang);
   const imageUrl = resolveRecipeImageUrl(recipe.img);
 
   return (
@@ -28,8 +31,7 @@ function RecipeCard({ recipe, onSelect, t, lang }) {
           {!expanded ? (
             <>
               <div style={{ height: 160, overflow: 'hidden', background: 'var(--theme-surface-soft)' }}>
-                <img src={imageUrl} loading="lazy" alt={recipe.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
-                  onError={e => { e.target.src = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&h=200&q=80'; e.target.onerror = null; }} />
+                <CachedImage src={imageUrl} cacheName={RECIPE_IMAGE_CACHE} loading="lazy" alt={recipe.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }} />
               </div>
               <div style={{
                 padding: '11px 14px 3px',
@@ -65,7 +67,7 @@ function RecipeCard({ recipe, onSelect, t, lang }) {
           )}
           <div style={{ padding: '6px 14px 12px', background: 'var(--theme-surface)' }}>
             <p style={{ color: 'var(--gray)', fontSize: 11, lineHeight: 1.5, margin: 0 }}>
-              {recipe.description ? tData(recipe.description, lang) : recipe.tags?.map(t => tTag(t, lang)).join(' · ') || tData(recipe.category, lang)}
+              {presentation?.description || (recipe.description ? tData(recipe.description, lang) : recipe.tags?.map(t => tTag(t, lang)).join(' · ') || tData(recipe.category, lang))}
             </p>
           </div>
         </div>

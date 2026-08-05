@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import TopBar from './TopBar';
 import { useTranslation } from '../i18n/translations';
 import { tData, tBreedDesc } from '../i18n/dataTranslations';
-import { getPetAvatarUrl, handlePetAvatarError } from '../utils/petAvatar';
+import CachedImage from './CachedImage';
+import { fallbackPetAvatar, getPetAvatarUrl } from '../utils/petAvatar';
+import { PET_AVATAR_CACHE } from '../utils/persistentImageCache';
 
 export default function PetProfileDetails({ profile, onEdit, onSelectCategory, onSaveHealthHistory, onShowAnalysis, lang }) {
   const t = useTranslation(lang);
@@ -229,11 +231,12 @@ export default function PetProfileDetails({ profile, onEdit, onSelectCategory, o
         {/* Profile Card */}
         <div className="card glass" style={styles.profileCard}>
           <div style={styles.avatarRow}>
-            <img
+            <CachedImage
               src={avatar}
+              fallbackSrc={fallbackPetAvatar(profile || {})}
+              cacheName={PET_AVATAR_CACHE}
               alt=""
               style={styles.avatar}
-              onError={(event) => handlePetAvatarError(event, profile || {}, 'pet-detail')}
             />
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

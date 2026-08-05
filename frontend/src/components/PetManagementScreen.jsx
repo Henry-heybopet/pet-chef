@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { useTranslation } from '../i18n/translations';
 import { tData } from '../i18n/dataTranslations';
 import TopBar from './TopBar';
-import { getPetAvatarUrl, handlePetAvatarError } from '../utils/petAvatar';
+import CachedImage from './CachedImage';
+import { fallbackPetAvatar, getPetAvatarUrl } from '../utils/petAvatar';
+import { PET_AVATAR_CACHE } from '../utils/persistentImageCache';
 
 export default function PetManagementScreen({ profiles = [], breeds = [], onAddPet, onEditPet, onDeletePet, deletingPetId, onSelectPet, onBack, lang }) {
   const t = useTranslation(lang);
@@ -105,11 +107,12 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                     marginBottom: '8px',
                     position: 'relative'
                   }}>
-                    <img
+                    <CachedImage
                       src={avatar}
+                      fallbackSrc={fallbackPetAvatar(pet)}
+                      cacheName={PET_AVATAR_CACHE}
                       alt=""
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={(event) => handlePetAvatarError(event, pet, 'pet-list')}
                     />
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>

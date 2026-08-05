@@ -22,7 +22,7 @@ export default function BottomTabBar({ tabs, activeTab, onSelect }) {
   const tabList = tabs || defaultTabs;
 
   return (
-    <nav style={styles.container} role="tablist" aria-label={t('navAria')}>
+    <nav className="bottom-tab-bar" style={styles.container} role="tablist" aria-label={t('navAria')}>
       {tabList.map((tab) => {
         const isActive = activeTab === tab.key;
         return (
@@ -57,7 +57,7 @@ const styles = {
     transform: 'translateX(-50%)',
     width: '100%',
     maxWidth: '430px',
-    height: '64px',
+    height: 'var(--bottom-nav-height)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-around',
@@ -66,7 +66,7 @@ const styles = {
     backdropFilter: 'blur(var(--glass-blur))',
     WebkitBackdropFilter: 'blur(var(--glass-blur))',
     borderTop: '1px solid var(--glass-border)',
-    zIndex: 100,
+    zIndex: 900,
   },
   tab: {
     display: 'flex',

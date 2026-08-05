@@ -8,6 +8,8 @@ import { api } from './api/index';
 import { HeyboTuya } from './native/heyboTuya';
 import { AppUpdate, isNativeAndroid } from './native/appUpdate';
 import { applyTheme, readStoredTheme } from './theme';
+import { prefetchRecipeImages } from './utils/recipeImageCache';
+import { prefetchPetAvatars } from './utils/petAvatar';
 
 import DogSetup from './components/DogSetup';
 import PetManagementScreen from './components/PetManagementScreen';
@@ -578,6 +580,25 @@ function AppInner({ theme, onToggleTheme }) {
       .catch(error => console.error('Load breeds failed:', error));
   }, []);
 
+  useEffect(() => {
+    if (!authToken) return undefined;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      api.getRecipes({ all: 1 })
+        .then(result => prefetchRecipeImages(result?.recipes, { shouldContinue: () => active }))
+        .then(result => {
+          if (active) console.info('[RecipeImageCache] sync complete', result);
+        })
+        .catch(error => {
+          if (active) console.warn('[RecipeImageCache] sync skipped:', error?.message || error);
+        });
+    }, 1500);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [authToken]);
+
   const saveAuthSession = (result) => {
     const user = result.user || null;
     const token = result.token || '';
@@ -760,6 +781,9 @@ function AppInner({ theme, onToggleTheme }) {
     if (result?.success) {
       const mapped = (result.pets || []).map(toUiPet);
       replaceProfiles(mapped);
+      prefetchPetAvatars(mapped, breedOptions)
+        .then(summary => console.info(`[PetAvatarCache] ${reason}`, summary))
+        .catch(error => console.warn('[PetAvatarCache] sync skipped:', error?.message || error));
       return mapped;
     }
     return [];
@@ -1052,7 +1076,7 @@ function AppInner({ theme, onToggleTheme }) {
   }
 
   return (
-    <div id="app-container" className={hasCompletedOnboarding ? 'app-with-tabs' : ''} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+    <div id="app-container" className="app-with-tabs" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       {screen === 'home' && (
         <HomeScreen
           onDogEntry={handleDogEntry}
@@ -1136,10 +1160,7 @@ function AppInner({ theme, onToggleTheme }) {
 
       {isAiLoading && <AiWaitingModal />}
 
-      {/* 引导完成后显示底部标签栏 */}
-      {hasCompletedOnboarding && (
-        <BottomTabBar activeTab={activeTab} onSelect={handleTabChange} />
-      )}
+      <BottomTabBar activeTab={activeTab} onSelect={handleTabChange} />
     </div>
   );
 }
