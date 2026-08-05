@@ -57,6 +57,19 @@ test('一键烹饪使用整幅设备图且不显示工程数据面板', () => {
   assert.doesNotMatch(cookingSource, /className="cooking-lux-metrics"/);
 });
 
+test('一键烹饪提示按启动前、烹饪中和完成三种状态显示动态文案', () => {
+  const guidanceBlock = cookingSource.match(/const cookingGuidanceKey[\s\S]*?<div className="cooking-lux-steps">[\s\S]*?<\/div>/)?.[0] || '';
+  assert.match(guidanceBlock, /view\.statusCode === 'done'/);
+  assert.match(guidanceBlock, /isActive/);
+  assert.match(guidanceBlock, /cookingGuidanceBeforeStart/);
+  assert.match(guidanceBlock, /\{ pet: petName, grams: servingGrams, recipe: recipeName \}/);
+  assert.doesNotMatch(guidanceBlock, /cookingTemperature|cookingTime|cookingSpeed|cookingPower/);
+  assert.match(translationsSource, /'cookingGuidanceBeforeStart'/);
+  assert.match(translationsSource, /即将为“\{pet\}”制作“\{grams\}克”的“\{recipe\}”健康鲜食/);
+  assert.match(translationsSource, /正在为“\{pet\}”制作“\{grams\}克”的“\{recipe\}”健康鲜食/);
+  assert.match(translationsSource, /完成为“\{pet\}”制作“\{grams\}克”的“\{recipe\}”健康鲜食/);
+});
+
 test('杯盖故障文案不显示 E01 代码', () => {
   const lidFaultLine = translationsSource.match(/'deviceFaultLid': \[([^\n]+)\]/)?.[1] || '';
   assert.match(lidFaultLine, /鲜食杯盖子没有盖好/);

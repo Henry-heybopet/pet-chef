@@ -174,11 +174,6 @@ function cleanWifiSsid(value) {
   return ssid && !/^<?unknown ssid>?$/i.test(ssid) && ssid !== '0x' ? ssid : '';
 }
 
-function formatCookMinutes(cooking, t) {
-  const minutes = cooking?.cookMinutes ?? Math.ceil(Number(cooking?.cookTime || 0) / 60);
-  return minutes ? t('minutesValue', { value: minutes }) : '--';
-}
-
 function formatRemainTime(value) {
   const seconds = Number(value || 0);
   if (!seconds) return '';
@@ -875,6 +870,19 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
   const isPaused = view.statusCode === 'pause';
   const isCooking = view.statusCode === 'cooking';
   const isActive = isCooking || isPaused;
+  const recipeName = hasRecipe
+    ? tData(cooking.recipe.name || cooking.recipe.recipeName || t('currentRecipe'), lang)
+    : t('unnamedRecipe');
+  const petName = recipeContext?.profile?.name || t('petNotSelected');
+  const servingGrams = recipeContext?.displayGrams
+    ?? recipeContext?.totalWeightGram
+    ?? recipeContext?.total_weight_g
+    ?? 0;
+  const cookingGuidanceKey = view.statusCode === 'done'
+    ? 'cookingGuidanceDone'
+    : isActive
+      ? 'cookingGuidanceActive'
+      : 'cookingGuidanceBeforeStart';
   const elapsedMs = runElapsedMs + (isCooking && runStartedAt ? nowTick - runStartedAt : 0);
   const deviceDps = parseDps(device);
   const totalSeconds = Number(cooking.cookTime || 0);
@@ -953,12 +961,9 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
           </div>
         </div>
         <div className="cooking-lux-steps">
-          <h3>📋 {t('cookingSteps')}</h3>
-          <p>1. {t('cookingTemperature')}: {hasRecipe ? `${cooking.temperature ?? '--'}℃` : '--'}</p>
-          <p>2. {t('cookingTime')}: {hasRecipe ? formatCookMinutes(cooking, t) : '--'}</p>
-          <p>3. {t('cookingSpeed')}: {hasRecipe ? formatSpeed(cooking.speed, t) : '--'}</p>
-          <p>4. {t('cookingPower')}: {hasRecipe ? formatPower(cooking.power, t) : '--'}</p>
-          {!hasRecipe && <small>{t('selectRecipeBeforeStart')}</small>}
+          {hasRecipe
+            ? <p className="cooking-lux-guidance">{t(cookingGuidanceKey, { pet: petName, grams: servingGrams, recipe: recipeName })}</p>
+            : <p className="cooking-lux-guidance">{t('selectRecipeBeforeStart')}</p>}
         </div>
         {view.faultCode && (!isLidOpenFault(parseDps(device)) || isActive) && (
           <div className="cooking-warning">{view.fault}</div>

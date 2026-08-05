@@ -2010,6 +2010,13 @@ html[lang='ja'] .home-action-title {
   line-height: 1.35;
 }
 
+.cooking-lux-steps .cooking-lux-guidance {
+  margin: 0;
+  color: #d5dee7;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 @media (max-height: 760px) {
   .cooking-detail-sheet {
     gap: 8px;
