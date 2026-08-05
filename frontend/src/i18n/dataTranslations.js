@@ -105,6 +105,7 @@ const R = { // Recipe names
 '牛肉能量餐':['Beef Energy Meal','Rind Energiemahlzeit','Bœuf Énergie','Res Energía','Manzo Energia','ビーフエネルギー食','소고기 에너지식'],
 '鸡肉轻盈餐':['Chicken Light Meal','Hähnchen Leicht','Poulet Léger','Pollo Ligero','Pollo Leggero','チキンライト食','치킨 라이트식'],
 '鸡肉燕麦经典':['Classic Chicken Oats','Hähnchen-Hafer Klassisch','Poulet avoine classique','Pollo con avena clásico','Pollo e avena classico','チキンオーツ定番食','닭고기 귀리 클래식'],
+'鸡肉燕麦均衡':['Balanced Chicken Oats','Hähnchen-Hafer Ausgewogen','Poulet Avoine Équilibré','Pollo Avena Equilibrado','Pollo Avena Bilanciato','チキンオーツバランス','닭고기 귀리 균형식'],
 '金枪鱼均衡餐':['Balanced Tuna Meal','Thunfisch Ausgewogen','Repas équilibré au thon','Comida equilibrada de atún','Pasto bilanciato al tonno','ツナバランス食','참치 균형식'],
 '兔肉低脂餐':['Low-Fat Rabbit Meal','Kaninchen Fettarm','Lapin faible en gras','Conejo bajo en grasa','Coniglio a basso contenuto di grassi','低脂肪ウサギ食','저지방 토끼 식단'],
 '火鸡低脂餐':['Turkey Low-Fat Meal','Truthahn Fettarm','Dinde Faible Gras','Pavo Bajo Grasa','Tacchino Basso Grasso','七面鳥低脂肪食','칠면조 저지방식'],
@@ -182,6 +183,7 @@ const NB = { // Curated ingredient benefit copy
 '苹果':['Pectin, vitamin C and quercetin support digestion and antioxidant balance.','Pektin, Vitamin C und Quercetin unterstützen Verdauung und Antioxidation.','Pectine, vitamine C et quercétine soutiennent digestion et antioxydants.','Pectina, vitamina C y quercetina apoyan digestión y antioxidantes.','Pectina, vitamina C e quercetina sostengono digestione e antiossidanti.','ペクチン、ビタミンC、ケルセチンが消化と抗酸化を支えます。','펙틴, 비타민 C, 퀘르세틴이 소화와 항산화를 돕습니다.'],
 '金枪鱼白肉':['Lean protein, taurine, EPA and DHA support heart and cognition.','Mageres Protein, Taurin, EPA und DHA unterstützen Herz und Kognition.','Protéines maigres, taurine, EPA et DHA soutiennent cœur et cognition.','Proteína magra, taurina, EPA y DHA apoyan corazón y cognición.','Proteine magre, taurina, EPA e DHA sostengono cuore e cognizione.','低脂肪たんぱく、タウリン、EPA、DHAが心臓と認知を支えます。','저지방 단백질, 타우린, EPA, DHA가 심장과 인지 건강을 돕습니다.'],
 '红薯':['Low-GI carbohydrate and fiber provide steady energy and digestive support.','Niedrig-glykämische Kohlenhydrate und Ballaststoffe liefern stabile Energie.','Glucides à IG bas et fibres apportent énergie stable et soutien digestif.','Carbohidratos de IG bajo y fibra aportan energía estable y apoyo digestivo.','Carboidrati a basso IG e fibre forniscono energia stabile e supporto digestivo.','低GIの炭水化物と食物繊維が安定したエネルギーと消化を支えます。','저GI 탄수화물과 식이섬유가 안정적인 에너지와 소화를 돕습니다.'],
+'藜麦':['Complete plant protein, iron, magnesium, zinc and fiber support immunity.','Vollständiges Pflanzenprotein, Eisen, Magnesium, Zink und Ballaststoffe unterstützen die Abwehr.','Protéines végétales complètes, fer, magnésium, zinc et fibres soutiennent l’immunité.','Proteína vegetal completa, hierro, magnesio, zinc y fibra apoyan la inmunidad.','Proteine vegetali complete, ferro, magnesio, zinco e fibre sostengono l’immunità.','完全な植物性たんぱく、鉄、マグネシウム、亜鉛、食物繊維が免疫を支えます。','완전 식물성 단백질, 철분, 마그네슘, 아연, 식이섬유가 면역을 돕습니다.'],
 '牛肉':['Protein, iron, zinc and vitamin B12 support muscle and vitality.','Protein, Eisen, Zink und Vitamin B12 unterstützen Muskeln und Vitalität.','Protéines, fer, zinc et vitamine B12 soutiennent muscles et vitalité.','Proteína, hierro, zinc y vitamina B12 apoyan músculos y vitalidad.','Proteine, ferro, zinco e vitamina B12 sostengono muscoli e vitalità.','たんぱく質、鉄、亜鉛、ビタミンB12が筋肉と活力を支えます。','단백질, 철분, 아연, 비타민 B12가 근육과 활력을 돕습니다.'],
 '牛心':['CoQ10, taurine and iron support heart muscle and stamina.','CoQ10, Taurin und Eisen unterstützen Herzmuskel und Ausdauer.','CoQ10, taurine et fer soutiennent le muscle cardiaque et l’endurance.','CoQ10, taurina y hierro apoyan el corazón y la resistencia.','CoQ10, taurina e ferro sostengono cuore e resistenza.','CoQ10、タウリン、鉄が心筋と持久力を支えます。','CoQ10, 타우린, 철분이 심장 근육과 지구력을 돕습니다.'],
 '兔里脊':['Very lean, digestible novel protein for sensitive dogs.','Sehr mageres, gut verdauliches Protein für empfindliche Hunde.','Protéine très maigre et digeste pour chiens sensibles.','Proteína muy magra y digestiva para perros sensibles.','Proteina molto magra e digeribile per cani sensibili.','非常に低脂肪で消化しやすく、敏感な犬に適したたんぱく源です。','매우 저지방이며 소화가 쉬워 민감한 반려견에 적합한 단백질입니다.'],
@@ -271,6 +273,11 @@ export function tData(zhName, lang) {
 }
 export function hasDataTranslation(zhName, lang) {
   return !lang || lang === 'zh' || Boolean(B[zhName] || I[zhName] || R[zhName] || G[zhName]);
+}
+export function translatedRecipePresentation(recipe, lang) {
+  return lang === 'zh' || recipe?.presentation?.translation_status === 'translated'
+    ? recipe?.presentation || null
+    : null;
 }
 export function tTag(zhTag, lang) {
   if (!lang || lang === 'zh') return zhTag;

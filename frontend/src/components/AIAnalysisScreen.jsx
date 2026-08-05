@@ -2,13 +2,15 @@
 import React from 'react';
 import TopBar from './TopBar';
 import { useTranslation, VALIDATION_REASON_KEYS } from '../i18n/translations';
-import { tData, tTag, tBreedDesc, tBenefit, tPack } from '../i18n/dataTranslations';
+import { tData, tTag, tBreedDesc, tBenefit, tPack, translatedRecipePresentation } from '../i18n/dataTranslations';
 import { api } from '../api';
 import { demoRecipes } from '../data/demoRecipes';
 import { resolveRecipeImageUrl } from '../utils/recipeImage';
+import { RECIPE_IMAGE_CACHE } from '../utils/persistentImageCache';
 import { sortRecipeIngredientEntries } from '../utils/recipeIngredients';
-import { filterRankedRecipes, splitTopItems } from '../utils/recommendationDisplay';
+import { filterRankedRecipes, partitionNutritionPacks, splitTopItems } from '../utils/recommendationDisplay';
 import FreshCheckRadar from './FreshCheckRadar';
+import CachedImage from './CachedImage';
 
 // Nutrition needs translation map for rule-engine fallback
 const NEED_TR = {
@@ -183,6 +185,14 @@ function getBestScoredRecipeId(recipes, comparisons) {
   return best?.id || recipes[0]?.id || '';
 }
 
+const RECIPE_RADAR_KEYS = ['safety', 'suitability', 'structure', 'nutrition', 'long_term', 'energy'];
+
+function getRecipeRadarScores(feedingPlan) {
+  return RECIPE_RADAR_KEYS
+    .map(key => ({ key, value: Number(feedingPlan?.validation_scores?.[key]) }))
+    .filter(item => Number.isFinite(item.value));
+}
+
 function RecipeDetailPage({ recipe, analysis, feedingPlan, recommendedEnergyDensity: recommendedDensity, comparison, isRecommended, onBack, t, lang }) {
   if (!recipe) return null;
 
@@ -193,11 +203,10 @@ function RecipeDetailPage({ recipe, analysis, feedingPlan, recommendedEnergyDens
   const ingredients = sortRecipeIngredientEntries(Object.entries(recipe.ingredients || {}));
   const totalIngredientRatio = ingredients.reduce((sum, [, ratio]) => sum + (Number(ratio) || 0), 0) || 100;
   const benefits = Object.entries(recipe.ingredient_benefits || {});
-  const displayName = recipe.presentation?.name || tData(recipe.name, lang);
-  const ingredientName = name => recipe.presentation?.ingredients?.[name]?.name || tData(name, lang);
-  const radarScores = ['safety', 'suitability', 'structure', 'nutrition', 'long_term', 'energy']
-    .map(key => ({ key, value: Number(feedingPlan?.validation_scores?.[key]) }))
-    .filter(item => Number.isFinite(item.value));
+  const presentation = translatedRecipePresentation(recipe, lang);
+  const displayName = presentation?.name || tData(recipe.name, lang);
+  const ingredientName = name => presentation?.ingredients?.[name]?.name || tData(name, lang);
+  const radarScores = getRecipeRadarScores(feedingPlan);
   const lowScoreDetails = radarScores
     .filter(item => item.value <= 85 && item.key !== 'long_term')
     .map(item => ({ ...item, detail: feedingPlan?.validation_details?.[item.key] || {} }));
@@ -233,8 +242,9 @@ function RecipeDetailPage({ recipe, analysis, feedingPlan, recommendedEnergyDens
       >
         <div style={{ width: '100%', height: 'min(22dvh, 190px)', background: 'rgba(0,230,255,0.05)' }}>
           {recipe.img ? (
-            <img
+            <CachedImage
               src={resolveRecipeImageUrl(recipe.img)}
+              cacheName={RECIPE_IMAGE_CACHE}
               alt=""
               style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
             />
@@ -400,7 +410,7 @@ function ComparisonSheet({ data, hoveredCard, setHoveredCard, onClose, t, lang }
     justifyContent: 'center'
   };
 
-  const scoreCard = (kind, title, name, score, color, onClick) => (
+  const radarCard = (kind, title, name, score, scores, color, onClick) => (
     <button
       type="button"
       onClick={onClick}
@@ -409,7 +419,7 @@ function ComparisonSheet({ data, hoveredCard, setHoveredCard, onClose, t, lang }
       style={{
         flex: 1,
         minWidth: 0,
-        padding: '14px 10px',
+        padding: '12px 6px 8px',
         background: 'rgba(255,255,255,0.035)',
         borderRadius: 14,
         border: hoveredCard === kind ? `1.5px solid ${color}` : '1px dashed rgba(255,255,255,0.18)',
@@ -419,9 +429,13 @@ function ComparisonSheet({ data, hoveredCard, setHoveredCard, onClose, t, lang }
       }}
     >
       <div style={{ fontSize: 11, color: 'var(--gray)', marginBottom: 6 }}>{title}</div>
-      <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tData(name, lang)}</div>
-      <div style={{ fontSize: 34, lineHeight: 1, fontWeight: 900, color }}>{score}%</div>
-      <div style={{ fontSize: 11, color, marginTop: 6 }}>{t('matchScore')}</div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', minHeight: 38, display: 'grid', placeItems: 'center', lineHeight: 1.3 }}>{tData(name, lang)}</div>
+      <div style={{ fontSize: 18, lineHeight: 1, fontWeight: 900, color, margin: '3px 0 2px' }}>{score}%</div>
+      {scores?.length === 6 ? (
+        <div style={{ width: '100%', pointerEvents: 'none' }}><FreshCheckRadar scores={scores} t={t} /></div>
+      ) : (
+        <div style={{ height: 150, display: 'grid', placeItems: 'center', color: 'var(--gray)', fontSize: 11 }}>{t('loading')}</div>
+      )}
     </button>
   );
 
@@ -466,20 +480,9 @@ function ComparisonSheet({ data, hoveredCard, setHoveredCard, onClose, t, lang }
             <h3 style={{ color: 'var(--primary)', margin: 0, fontSize: 22, lineHeight: 1.2, fontWeight: 900 }}>{t('comparisonTitle')}</h3>
           </div>
 
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-            {scoreCard('current', t('currentRecommendation'), data.currentName, data.currentScore, '#4CAF50', onClose)}
-            {scoreCard('proposed', t('plannedReplacement'), data.proposedName, data.proposedScore, 'var(--primary)', data.onConfirm)}
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 12 }}>
-            <div style={{ padding: 12, background: 'rgba(255,255,255,0.035)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 800, marginBottom: 6 }}>{t('nutritionComparison')}</div>
-              <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{data.details}</div>
-            </div>
-            <div style={{ padding: 12, background: 'rgba(255,255,255,0.035)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)' }}>
-              <div style={{ fontSize: 12, color: '#4CAF50', fontWeight: 800, marginBottom: 6 }}>{t('scoreExplanation')}</div>
-              <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6 }}>{data.reason}</div>
-            </div>
+          <div className="recipe-comparison-radars" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            {radarCard('current', t('currentRecommendation'), data.currentName, data.currentScore, data.currentRadar, '#4CAF50', onClose)}
+            {radarCard('proposed', t('plannedReplacement'), data.proposedName, data.proposedScore, data.proposedRadar, 'var(--primary)', data.onConfirm)}
           </div>
         </div>
 
@@ -574,12 +577,16 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     }
     return [NUTRITION_PACK_IDS.adult, NUTRITION_PACK_IDS.joint, NUTRITION_PACK_IDS.coat, NUTRITION_PACK_IDS.liver, NUTRITION_PACK_IDS.hypoallergenic];
   }, [analysis?.life_stage, isLargePuppy]);
+  const allowedBPackIds = React.useMemo(() => getAllowedBPackIds(), [getAllowedBPackIds]);
+  const { available: availableBPacks, unavailable: unavailableBPacks } = React.useMemo(
+    () => partitionNutritionPacks(bPacks, allowedBPackIds),
+    [allowedBPackIds, bPacks]
+  );
 
   const recommendedBId = React.useMemo(() => {
-    const allowed = getAllowedBPackIds();
     const aiPackId = analysis?.selected_b_pack?.pack_id;
-    return allowed.includes(aiPackId) ? aiPackId : allowed[0];
-  }, [analysis?.selected_b_pack?.pack_id, getAllowedBPackIds]);
+    return allowedBPackIds.includes(aiPackId) ? aiPackId : allowedBPackIds[0];
+  }, [allowedBPackIds, analysis?.selected_b_pack?.pack_id]);
 
   // 当前选中的 B 包
   const [selectedBId, setSelectedBId] = React.useState(recommendedBId);
@@ -587,14 +594,14 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
   const selectedBName = selectedBPack?.canonical_name || selectedBPack?.name || NUTRITION_PACK_FALLBACK_NAMES[selectedBId] || '全价营养包';
 
   React.useEffect(() => {
-    const allowed = getAllowedBPackIds();
-    if (!allowed.includes(selectedBId)) {
-      setSelectedBId(allowed[0]);
+    if (!allowedBPackIds.includes(selectedBId)) {
+      setSelectedBId(allowedBPackIds[0]);
     }
-  }, [getAllowedBPackIds, selectedBId]);
+  }, [allowedBPackIds, selectedBId]);
 
-  // 弹窗与控制状态
-  const [showBSelector, setShowBSelector] = React.useState(false);
+  // 折叠列表与控制状态
+  const [showOtherBPacks, setShowOtherBPacks] = React.useState(false);
+  const [showUnavailableBPacks, setShowUnavailableBPacks] = React.useState(false);
   const [showDetailRecipe, setShowDetailRecipe] = React.useState(null);
   const [warningData, setWarningData] = React.useState(null);
   const [aComparisonData, setAComparisonData] = React.useState(null);
@@ -716,24 +723,15 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
           proposedScore: res.comparison.a_comparison.proposed_score,
           details: res.comparison.a_comparison.comparison_details,
           reason: res.comparison.a_comparison.score_reason,
+          currentRadar: getRecipeRadarScores(analysis?.recipe_feeding_plans?.[selectedAId]),
+          proposedRadar: getRecipeRadarScores(analysis?.recipe_feeding_plans?.[nextAId]),
           onConfirm: () => {
             setSelectedAId(nextAId);
-            if (res.comparison.has_warning) {
-              setWarningData({
-                text: res.comparison.warning_text,
-                pendingAction: () => {}
-              });
-            }
             setAComparisonData(null);
           }
         });
       } else if (res.success && res.comparison && res.comparison.has_warning) {
-        setWarningData({
-          text: res.comparison.warning_text,
-          pendingAction: () => {
-            setSelectedAId(nextAId);
-          }
-        });
+        setSelectedAId(nextAId);
       } else if (res.success) {
         setSelectedAId(nextAId);
       }
@@ -759,14 +757,10 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
         proposedScore: getRecipeScore(proposedRecipe, comparisonsCache) ?? cached.a_comparison.proposed_score,
         details: cached.a_comparison.comparison_details,
         reason: cached.a_comparison.score_reason,
+        currentRadar: getRecipeRadarScores(analysis?.recipe_feeding_plans?.[selectedAId]),
+        proposedRadar: getRecipeRadarScores(analysis?.recipe_feeding_plans?.[id]),
         onConfirm: () => {
           setSelectedAId(id);
-          if (cached.has_warning) {
-            setWarningData({
-              text: cached.warning_text,
-              pendingAction: () => {}
-            });
-          }
           setAComparisonData(null);
         }
       });
@@ -812,6 +806,8 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
   } = splitTopItems(scoredCategoryRecipes);
   React.useEffect(() => {
     setShowOtherARecipes(false);
+    setShowOtherBPacks(false);
+    setShowUnavailableBPacks(false);
   }, [analysis?.life_stage]);
 
   const renderARecipeCard = (r) => {
@@ -819,15 +815,19 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     const matchedAllergen = checkRecipeAllergen(r);
     const cachedScore = comparisonsCache[r.name]?.a_comparison?.proposed_score;
     const suitability = comparisonsCache[r.name]?.suitability;
-    const suitabilityLabel = { high: '高度适配', medium: '适配', low: '谨慎适配', blocked: '不适合' }[suitability];
+    const suitabilityLabel = {
+      high: t('suitabilityHigh'), medium: t('suitabilityMedium'),
+      low: t('suitabilityLow'), blocked: t('suitabilityBlocked'),
+    }[suitability];
+    const presentation = translatedRecipePresentation(r, lang);
     return (
       <div key={r.id} className={`card ${isSelected ? 'glass-active' : 'glass'}`} style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', gap: 12, border: matchedAllergen ? '1px dashed #ef4444' : (isSelected ? '1px solid var(--primary)' : '1px solid var(--border)'), background: matchedAllergen ? 'rgba(239,68,68,0.03)' : '', cursor: 'pointer' }} onClick={() => handleSelectA(r.id)}>
         <div style={{ width: 20, height: 20, borderRadius: '50%', border: matchedAllergen ? '2px solid #ef4444' : '2px solid var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isSelected ? (matchedAllergen ? '#ef4444' : 'var(--primary)') : 'transparent' }}>
           {isSelected && <span style={{ color: '#000', fontSize: 12, fontWeight: 'bold' }}>✓</span>}
         </div>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{r.presentation?.name || tData(r.name, lang)}</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#fff', overflowWrap: 'anywhere' }}>{presentation?.name || tData(r.name, lang)}</span>
             {cachedScore !== undefined && cachedScore !== null && (
               <span style={{ fontSize: 11, color: matchedAllergen ? '#f87171' : 'var(--primary)', fontWeight: 800 }}>({t('matchPercent', { score: cachedScore })})</span>
             )}
@@ -841,7 +841,7 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
             )}
           </div>
           <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 4 }}>
-            {Object.keys(r.ingredients || {}).slice(0, 4).map(name => r.presentation?.ingredients?.[name]?.name || tData(name, lang)).join('/')}...
+            {Object.keys(r.ingredients || {}).slice(0, 4).map(name => presentation?.ingredients?.[name]?.name || tData(name, lang)).join('/')}...
           </div>
           {comparisonsCache[r.name]?.a_comparison?.score_reason && <div style={{ fontSize: 10, color: 'var(--gray)', marginTop: 4 }}>{comparisonsCache[r.name].a_comparison.score_reason}</div>}
         </div>
@@ -852,9 +852,40 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
     );
   };
 
+  const renderBPackOption = (b, isAllowed) => {
+    const isSelected = selectedBId === b.pack_id;
+    return (
+      <div key={b.pack_id} style={{
+        padding: '12px 16px',
+        borderRadius: 10,
+        background: isSelected ? 'rgba(255,0,163,0.08)' : isAllowed ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.015)',
+        border: isSelected ? '1px solid var(--secondary)' : isAllowed ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,255,255,0.04)',
+        cursor: isAllowed ? 'pointer' : 'not-allowed',
+        opacity: isAllowed ? 1 : 0.38,
+        transition: 'all 0.2s'
+      }} onClick={() => {
+        if (!isAllowed) return;
+        setSelectedBId(b.pack_id);
+        setShowOtherBPacks(false);
+        setShowUnavailableBPacks(false);
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? 'var(--secondary)' : '#fff' }}>{b.name}</span>
+          {isSelected && <span style={{ fontSize: 9, background: 'rgba(255,0,163,0.15)', color: 'var(--secondary)', padding: '2px 6px', borderRadius: 4 }}>{t('currentSelection')}</span>}
+          {!isAllowed && <span style={{ fontSize: 9, background: 'rgba(255,255,255,0.06)', color: 'var(--gray)', padding: '2px 6px', borderRadius: 4 }}>{t('notApplicable')}</span>}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 6, lineHeight: 1.4 }}>{b.description}</div>
+      </div>
+    );
+  };
+
   const activeRecipeObj = React.useMemo(() => {
     return catalogRecipes.find(r => r.id === selectedAId) || categoryRecipes[0];
   }, [selectedAId, categoryRecipes, catalogRecipes]);
+  const otherAvailableBPacks = React.useMemo(
+    () => availableBPacks.filter(pack => pack.pack_id !== selectedBId),
+    [availableBPacks, selectedBId]
+  );
   const activeFeedingPlan = analysis?.recipe_feeding_plans?.[activeRecipeObj?.id] || analysis;
   const referenceFeedingPlan = analysis?.reference_feeding_plan || activeFeedingPlan;
   const activeNutritionText = tFallbackAnalysis(
@@ -936,10 +967,12 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
           )}
 
           <div className="card glass" style={{ padding: 16, marginBottom: 24 }}>
-            <div style={{ fontSize: 12, color: 'var(--secondary)', marginBottom: 8, fontWeight: 600 }}>{analysis?.recommendation_source_label || 'HeyboPet Agent 个体化推荐'}</div>
+            <div style={{ fontSize: 12, color: 'var(--secondary)', marginBottom: 8, fontWeight: 600 }}>
+              {t(analysis?.recommendation_source === 'rule_fallback' ? 'recommendationSourceRules' : 'recommendationSourceAgent')}
+            </div>
             <p style={{ color: 'var(--gray)', fontSize: 13, lineHeight: 1.7, margin: 0 }}>{activeNutritionText}</p>
             {analysis?.fallback_message && <p style={{ color: '#FF9600', fontSize: 12, lineHeight: 1.6 }}>{analysis.fallback_message}</p>}
-            {analysis?.factors_used?.length > 0 && <div style={{ color: 'var(--gray)', fontSize: 11, marginTop: 8 }}>本次读取：{analysis.factors_used.join(' · ')}</div>}
+            {analysis?.factors_used?.length > 0 && <div style={{ color: 'var(--gray)', fontSize: 11, marginTop: 8 }}>{t('factorsUsed')}：{analysis.factors_used.join(' · ')}</div>}
             {analysis?.cautions?.length > 0 && (
               <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(255,150,0,0.08)', borderRadius: 8, borderLeft: '3px solid #FF9600' }}>
                 <div style={{ fontSize: 11, color: '#FF9600', marginBottom: 4 }}>{t('cautions')}</div>
@@ -988,19 +1021,24 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
             {/* B 全价营养包 */}
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--secondary)', marginBottom: 10 }}>{t('packB')}</div>
-              <div className="card glass" style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', justifyContent: 'space-between', border: '1px solid var(--secondary)' }}>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {selectedBPack?.name || NUTRITION_PACK_FALLBACK_NAMES[selectedBId] || '全价营养包'}
-                    <span style={{ fontSize: 9, background: 'rgba(255,0,163,0.15)', color: 'var(--secondary)', padding: '1px 5px', borderRadius: 4 }}>{t('currentSelection')}</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 6, lineHeight: 1.4, maxWidth: '80%' }}>
-                    {selectedBPack?.description || ''}
-                  </div>
-                </div>
-                <button className="btn btn-secondary" style={{ flex: '0 0 76px', width: 76, padding: '4px 10px', fontSize: 11, height: 'fit-content', whiteSpace: 'nowrap' }} onClick={() => setShowBSelector(true)}>
-                  {t('changePackB')}
-                </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {selectedBPack && renderBPackOption(selectedBPack, true)}
+                {otherAvailableBPacks.length > 0 && (
+                  <>
+                    <button type="button" className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', borderStyle: 'dashed' }} onClick={() => setShowOtherBPacks(value => !value)}>
+                      {showOtherBPacks ? t('collapseOtherBPacks') : t('expandOtherBPacks', { n: otherAvailableBPacks.length })}
+                    </button>
+                    {showOtherBPacks && otherAvailableBPacks.map(pack => renderBPackOption(pack, true))}
+                  </>
+                )}
+                {unavailableBPacks.length > 0 && (
+                  <>
+                    <button type="button" className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', borderStyle: 'dashed', opacity: 0.7 }} onClick={() => setShowUnavailableBPacks(value => !value)}>
+                      {showUnavailableBPacks ? t('collapseUnavailableBPacks') : t('unavailableBPacks', { n: unavailableBPacks.length })}
+                    </button>
+                    {showUnavailableBPacks && unavailableBPacks.map(pack => renderBPackOption(pack, false))}
+                  </>
+                )}
               </div>
             </div>
 
@@ -1021,55 +1059,6 @@ export default function AIAnalysisScreen({ onBack, profile, onSelectRecipe, lang
           </div>
         </div>
       </div>
-
-      {/* B 包更换模态弹窗 */}
-      {showBSelector && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div className="card glass animate-fade" style={{ width: '100%', maxWidth: 440, maxHeight: '85vh', overflowY: 'auto', padding: 24, border: '1px solid var(--border)' }}>
-            <h3 style={{ color: 'var(--secondary)', margin: '0 0 16px 0', fontSize: 16, fontWeight: 700 }}>{t('changeBPackTitle')}</h3>
-            <p style={{ color: 'var(--gray)', fontSize: 12, lineHeight: 1.5, margin: '0 0 16px 0' }}>
-              {t('changeBPackHelp')}
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
-              {bPacks.map(b => {
-                const isSelected = selectedBId === b.pack_id;
-                const isAllowed = getAllowedBPackIds().includes(b.pack_id) && b.available;
-                return (
-                  <div key={b.pack_id} style={{
-                    padding: '12px 16px',
-                    borderRadius: 10,
-                    background: isSelected ? 'rgba(255,0,163,0.08)' : isAllowed ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.015)',
-                    border: isSelected ? '1px solid var(--secondary)' : isAllowed ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,255,255,0.04)',
-                    cursor: isAllowed ? 'pointer' : 'not-allowed',
-                    opacity: isAllowed ? 1 : 0.38,
-                    transition: 'all 0.2s'
-                  }} onClick={() => {
-                    if (!isAllowed) return;
-                    setShowBSelector(false);
-                    setSelectedBId(b.pack_id);
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? 'var(--secondary)' : '#fff' }}>
-                        {b.name}
-                      </span>
-                      {isSelected && (
-                        <span style={{ fontSize: 9, background: 'rgba(255,0,163,0.15)', color: 'var(--secondary)', padding: '2px 6px', borderRadius: 4 }}>{t('currentSelection')}</span>
-                      )}
-                      {!isAllowed && (
-                        <span style={{ fontSize: 9, background: 'rgba(255,255,255,0.06)', color: 'var(--gray)', padding: '2px 6px', borderRadius: 4 }}>{t('notApplicable')}</span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--gray)', marginTop: 6, lineHeight: 1.4 }}>
-                      {b.description}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <button className="btn btn-secondary" style={{ width: '100%' }} onClick={() => setShowBSelector(false)}>{t('closeBtn')}</button>
-          </div>
-        </div>
-      )}
 
       {/* 调整配方安全警告确认弹窗 */}
       {warningData && (

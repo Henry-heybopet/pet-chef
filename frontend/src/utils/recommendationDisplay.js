@@ -12,6 +12,14 @@ export function filterRankedRecipes(recipes = [], rankedIds = []) {
   return recipes.filter(recipe => rankedSet.has(recipe.id));
 }
 
+export function partitionNutritionPacks(packs = [], allowedIds = []) {
+  const allowed = new Set(allowedIds);
+  return packs.reduce((groups, pack) => {
+    groups[allowed.has(pack.pack_id) && pack.available ? 'available' : 'unavailable'].push(pack);
+    return groups;
+  }, { available: [], unavailable: [] });
+}
+
 export function recommendationTier(score) {
   const value = Number(score);
   if (value >= 85) return 'high';

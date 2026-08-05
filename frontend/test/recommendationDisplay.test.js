@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   filterRankedRecipes,
+  partitionNutritionPacks,
   recommendationTier,
   splitTopItems,
 } from '../src/utils/recommendationDisplay.js';
@@ -31,4 +32,16 @@ test('only life-stage recipes scored by the backend remain visible', () => {
   ];
   assert.deepEqual(filterRankedRecipes(recipes, ['adult-2', 'adult-1']).map(recipe => recipe.id), ['adult-1', 'adult-2']);
   assert.equal(filterRankedRecipes(recipes, []).length, 4);
+});
+
+test('unavailable nutrition packs are moved below the selectable packs', () => {
+  const packs = [
+    { pack_id: 'puppy', available: true },
+    { pack_id: 'adult', available: true },
+    { pack_id: 'draft', available: false },
+  ];
+  assert.deepEqual(partitionNutritionPacks(packs, ['adult', 'draft']), {
+    available: [packs[1]],
+    unavailable: [packs[0], packs[2]],
+  });
 });

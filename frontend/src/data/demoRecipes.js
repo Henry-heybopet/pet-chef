@@ -19,7 +19,7 @@ export const demoRecipes = [
       "蓝莓": 4.1
     },
     "b_pack": "成犬维护营养包B：成犬维矿预混料 1.7 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.3",
-    "img": "/鸡肉轻盈餐.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_001-6e98aed5efc1.png",
     "water_content_pct": 73,
     "protein_pct": 35,
     "carb_pct": 35,
@@ -63,7 +63,7 @@ export const demoRecipes = [
       "苹果": 5
     },
     "b_pack": "成犬维护营养包B：成犬维矿预混料 1.7 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.3",
-    "img": "/鸡肉燕麦经典.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_002-1b592340d008.png",
     "water_content_pct": 62,
     "protein_pct": 35,
     "carb_pct": 25,
@@ -107,7 +107,7 @@ export const demoRecipes = [
       "蓝莓": 5
     },
     "b_pack": "成犬维护营养包B：成犬维矿预混料 1.7 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.3",
-    "img": "/金枪鱼均衡餐.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_003-e47cb3144e57.png",
     "water_content_pct": 69,
     "protein_pct": 30,
     "carb_pct": 35,
@@ -152,7 +152,7 @@ export const demoRecipes = [
       "苹果": 5
     },
     "b_pack": "成犬维护营养包B：成犬维矿预混料 1.7 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.3",
-    "img": "/牛肉能量餐.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_004-94acd276c592.png",
     "water_content_pct": 65,
     "protein_pct": 35,
     "carb_pct": 35,
@@ -197,7 +197,7 @@ export const demoRecipes = [
       "蓝莓": 2.1
     },
     "b_pack": "成犬维护营养包B：成犬维矿预混料 1.7 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.3",
-    "img": "/兔肉低脂餐.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_005-c70fc00bd194.png",
     "water_content_pct": 71,
     "protein_pct": 35,
     "carb_pct": 35,
@@ -242,7 +242,7 @@ export const demoRecipes = [
       "蓝莓": 6.9
     },
     "b_pack": "老年犬轻负担营养包B：老年犬维矿预混料（抗氧化支持）1.9 / 低磷钙源或钙磷维护矿物粉 0.8 / EPA-DHA鱼油或藻油 1.3",
-    "img": "/护关节低脂.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_006-88b9d61d9fe0.png",
     "water_content_pct": 73,
     "protein_pct": 29,
     "carb_pct": 34,
@@ -286,7 +286,7 @@ export const demoRecipes = [
       "蓝莓": 2
     },
     "b_pack": "老年犬轻负担营养包B：老年犬维矿预混料（抗氧化支持）1.9 / 低磷钙源或钙磷维护矿物粉 0.8 / EPA-DHA鱼油或藻油 1.3",
-    "img": "/鸡肉高纤.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_007-68e0fd40805b.png",
     "water_content_pct": 77,
     "protein_pct": 30,
     "carb_pct": 35,
@@ -329,7 +329,7 @@ export const demoRecipes = [
       "蓝莓": 10
     },
     "b_pack": "老年犬轻负担营养包B：老年犬维矿预混料（抗氧化支持）1.9 / 低磷钙源或钙磷维护矿物粉 0.8 / EPA-DHA鱼油或藻油 1.3",
-    "img": "/金枪鱼护心.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_008-e1835b4246aa.png",
     "water_content_pct": 69,
     "protein_pct": 30,
     "carb_pct": 35,
@@ -373,7 +373,7 @@ export const demoRecipes = [
       "蓝莓": 5
     },
     "b_pack": "老年犬轻负担营养包B：老年犬维矿预混料（抗氧化支持）1.9 / 低磷钙源或钙磷维护矿物粉 0.8 / EPA-DHA鱼油或藻油 1.3",
-    "img": "/牛肉补能.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_009-ffc602e7ea13.png",
     "water_content_pct": 70,
     "protein_pct": 30,
     "carb_pct": 35,
@@ -418,7 +418,7 @@ export const demoRecipes = [
       "全熟燕麦片": 10.1
     },
     "b_pack": "老年犬轻负担营养包B：老年犬维矿预混料（抗氧化支持）1.9 / 低磷钙源或钙磷维护矿物粉 0.8 / EPA-DHA鱼油或藻油 1.3",
-    "img": "/易消化温和.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_010-50af59d095bb.png",
     "water_content_pct": 73,
     "protein_pct": 30,
     "carb_pct": 56,
@@ -459,7 +459,7 @@ export const demoRecipes = [
       "全熟燕麦片": 10
     },
     "b_pack": "低敏单一蛋白营养包B：低敏维矿预混料 2.0 / 低敏钙源矿物粉（不含动物蛋白载体）1.2 / 藻油或高度精炼低敏油脂 0.8",
-    "img": "/金枪鱼单一低敏.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_011-3286c964363a.png",
     "water_content_pct": 72,
     "protein_pct": 45,
     "carb_pct": 35,
@@ -499,7 +499,7 @@ export const demoRecipes = [
       "全熟燕麦片": 10
     },
     "b_pack": "低敏单一蛋白营养包B：低敏维矿预混料 2.0 / 低敏钙源矿物粉（不含动物蛋白载体）1.2 / 藻油或高度精炼低敏油脂 0.8",
-    "img": "/兔肉菠菜单一低敏.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_012-0c2409c11da0.png",
     "water_content_pct": 70,
     "protein_pct": 45,
     "carb_pct": 35,
@@ -540,7 +540,7 @@ export const demoRecipes = [
       "蓝莓": 6.8
     },
     "b_pack": "低敏单一蛋白营养包B：低敏维矿预混料 2.0 / 低敏钙源矿物粉（不含动物蛋白载体）1.2 / 藻油或高度精炼低敏油脂 0.8",
-    "img": "/兔肉红薯单一低敏.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_013-3ac0b32e3670.png",
     "water_content_pct": 78,
     "protein_pct": 49,
     "carb_pct": 25,
@@ -580,7 +580,7 @@ export const demoRecipes = [
       "全熟燕麦片": 10
     },
     "b_pack": "低敏单一蛋白营养包B：低敏维矿预混料 2.0 / 低敏钙源矿物粉（不含动物蛋白载体）1.2 / 藻油或高度精炼低敏油脂 0.8",
-    "img": "/鸭肉胡萝卜单一低敏.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_014-3f713f753a3f.png",
     "water_content_pct": 73,
     "protein_pct": 45,
     "carb_pct": 35,
@@ -620,7 +620,7 @@ export const demoRecipes = [
       "全熟燕麦片": 10
     },
     "b_pack": "低敏单一蛋白营养包B：低敏维矿预混料 2.0 / 低敏钙源矿物粉（不含动物蛋白载体）1.2 / 藻油或高度精炼低敏油脂 0.8",
-    "img": "/鸭肉南瓜单一低敏.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_015-3f713f753a3f.png",
     "water_content_pct": 74,
     "protein_pct": 45,
     "carb_pct": 35,
@@ -660,7 +660,7 @@ export const demoRecipes = [
       "全熟燕麦片": 15.6
     },
     "b_pack": "成犬/护肝基础营养包B：成犬维矿预混料 1.8 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.2",
-    "img": "/鸡肉姜黄.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_016-e198335ce544.png",
     "water_content_pct": 70,
     "protein_pct": 37,
     "carb_pct": 42,
@@ -702,7 +702,7 @@ export const demoRecipes = [
       "蓝莓": 2
     },
     "b_pack": "成犬/护肝基础营养包B：成犬维矿预混料 1.8 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.2",
-    "img": "/鸡肉南瓜.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_017-696397b03638.png",
     "water_content_pct": 72,
     "protein_pct": 34,
     "carb_pct": 39,
@@ -746,7 +746,7 @@ export const demoRecipes = [
       "蓝莓": 9.9
     },
     "b_pack": "成犬/护肝基础营养包B：成犬维矿预混料 1.8 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.2",
-    "img": "/金枪鱼抗氧.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_018-9488b7e37fa4.png",
     "water_content_pct": 72,
     "protein_pct": 30,
     "carb_pct": 35,
@@ -789,7 +789,7 @@ export const demoRecipes = [
       "蓝莓": 10
     },
     "b_pack": "成犬/护肝基础营养包B：成犬维矿预混料 1.8 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.2",
-    "img": "/牛肉轻负担.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_019-0f83172412d1.png",
     "water_content_pct": 69,
     "protein_pct": 30,
     "carb_pct": 40,
@@ -832,7 +832,7 @@ export const demoRecipes = [
       "蓝莓": 5.1
     },
     "b_pack": "成犬/护肝基础营养包B：成犬维矿预混料 1.8 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）1.0 / Omega-3鱼油或藻油 1.2",
-    "img": "/兔肉低脂.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_020-5eef33e6efd1.png",
     "water_content_pct": 71,
     "protein_pct": 35,
     "carb_pct": 40,
@@ -874,7 +874,7 @@ export const demoRecipes = [
       "蓝莓": 10
     },
     "b_pack": "成犬/美毛基础营养包B：成犬维矿预混料 1.6 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）0.9 / Omega-3鱼油或藻油 1.5",
-    "img": "/鸡肉美毛.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_021-c6e5d4c987de.png",
     "water_content_pct": 71,
     "protein_pct": 35,
     "carb_pct": 35,
@@ -917,7 +917,7 @@ export const demoRecipes = [
       "蓝莓": 7
     },
     "b_pack": "成犬/美毛基础营养包B：成犬维矿预混料 1.6 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）0.9 / Omega-3鱼油或藻油 1.5",
-    "img": "/金枪鱼抗炎.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_022-341aca62ca5f.png",
     "water_content_pct": 68,
     "protein_pct": 38,
     "carb_pct": 35,
@@ -960,7 +960,7 @@ export const demoRecipes = [
       "菠菜": 13
     },
     "b_pack": "成犬/美毛基础营养包B：成犬维矿预混料 1.6 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）0.9 / Omega-3鱼油或藻油 1.5",
-    "img": "/金枪鱼亮毛.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_023-e029bd12e7b1.png",
     "water_content_pct": 68,
     "protein_pct": 43,
     "carb_pct": 16,
@@ -1003,7 +1003,7 @@ export const demoRecipes = [
       "全熟燕麦片": 14.9
     },
     "b_pack": "成犬/美毛基础营养包B：成犬维矿预混料 1.6 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）0.9 / Omega-3鱼油或藻油 1.5",
-    "img": "/牛肉护肤.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_024-28c7cfa53c5c.png",
     "water_content_pct": 65,
     "protein_pct": 35,
     "carb_pct": 35,
@@ -1046,7 +1046,7 @@ export const demoRecipes = [
       "蓝莓": 10
     },
     "b_pack": "成犬/美毛基础营养包B：成犬维矿预混料 1.6 / 成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）0.9 / Omega-3鱼油或藻油 1.5",
-    "img": "/兔肉抗敏.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_025-8509b0d75997.png",
     "water_content_pct": 70,
     "protein_pct": 35,
     "carb_pct": 35,
@@ -1088,7 +1088,7 @@ export const demoRecipes = [
       "全熟燕麦片": 12.1
     },
     "b_pack": "大型幼犬稳骨控钙营养包B：大型幼犬低钙维矿预混料 1.8 / 控钙钙磷矿物粉（低钙，Ca:P≈1.2:1）0.9 / DHA-EPA鱼油或藻油 1.3",
-    "img": "/鸡肉蔬菜成长.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_026-c2f3e5ba3222.png",
     "water_content_pct": 73,
     "protein_pct": 38,
     "carb_pct": 32,
@@ -1131,7 +1131,7 @@ export const demoRecipes = [
       "全熟燕麦片": 6.9
     },
     "b_pack": "大型幼犬稳骨控钙营养包B：大型幼犬低钙维矿预混料 1.8 / 控钙钙磷矿物粉（低钙，Ca:P≈1.2:1）0.9 / DHA-EPA鱼油或藻油 1.3",
-    "img": "/鸡肉稳生长.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_027-6e98aed5efc1.png",
     "water_content_pct": 73,
     "protein_pct": 50,
     "carb_pct": 27,
@@ -1174,7 +1174,7 @@ export const demoRecipes = [
       "冬瓜丁": 10
     },
     "b_pack": "大型幼犬稳骨控钙营养包B：大型幼犬低钙维矿预混料 1.8 / 控钙钙磷矿物粉（低钙，Ca:P≈1.2:1）0.9 / DHA-EPA鱼油或藻油 1.3",
-    "img": "/金枪鱼缓生长.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_028-d113bce5269c.png",
     "water_content_pct": 69,
     "protein_pct": 35,
     "carb_pct": 35,
@@ -1216,7 +1216,7 @@ export const demoRecipes = [
       "全熟燕麦片": 15.1
     },
     "b_pack": "大型幼犬稳骨控钙营养包B：大型幼犬低钙维矿预混料 1.8 / 控钙钙磷矿物粉（低钙，Ca:P≈1.2:1）0.9 / DHA-EPA鱼油或藻油 1.3",
-    "img": "/牛肉控制成长.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_029-06d4f8ebae8c.png",
     "water_content_pct": 65,
     "protein_pct": 35,
     "carb_pct": 35,
@@ -1258,7 +1258,7 @@ export const demoRecipes = [
       "菠菜": 8.3
     },
     "b_pack": "大型幼犬稳骨控钙营养包B：大型幼犬低钙维矿预混料 1.8 / 控钙钙磷矿物粉（低钙，Ca:P≈1.2:1）0.9 / DHA-EPA鱼油或藻油 1.3",
-    "img": "/兔肉低钙成长.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_030-739573c84ced.png",
     "water_content_pct": 69,
     "protein_pct": 41,
     "carb_pct": 36,
@@ -1301,7 +1301,7 @@ export const demoRecipes = [
       "蓝莓": 5
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
-    "img": "/鸡肉藜麦均衡.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_031-d7b0fd7235e2.png",
     "water_content_pct": 62,
     "protein_pct": 46,
     "carb_pct": 35,
@@ -1345,7 +1345,7 @@ export const demoRecipes = [
       "蓝莓": 5
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
-    "img": "/鸡肉藜麦免疫餐.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_032-f9a6815d8aba.png",
     "water_content_pct": 62,
     "protein_pct": 45,
     "carb_pct": 35,
@@ -1393,7 +1393,7 @@ export const demoRecipes = [
       "山药丁": 5.9
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
-    "img": "/鸡肉苹果成长餐.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_033-b060e1175b0d.png",
     "water_content_pct": 74,
     "protein_pct": 53,
     "carb_pct": 28,
@@ -1439,7 +1439,7 @@ export const demoRecipes = [
       "全熟燕麦片": 15.6
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
-    "img": "/鸡肉土豆成长.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_034-af260d89f1e0.png",
     "water_content_pct": 68,
     "protein_pct": 39,
     "carb_pct": 36,
@@ -1484,7 +1484,7 @@ export const demoRecipes = [
       "蓝莓": 5
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
-    "img": "/金枪鱼南瓜脑发育.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_035-086bcf10a1ac.png",
     "water_content_pct": 69,
     "protein_pct": 43,
     "carb_pct": 30,
@@ -1528,7 +1528,7 @@ export const demoRecipes = [
       "菠菜": 10.7
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
-    "img": "/金枪鱼燕麦成长.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_036-99a1b3141f13.png",
     "water_content_pct": 66,
     "protein_pct": 37,
     "carb_pct": 37,
@@ -1572,7 +1572,7 @@ export const demoRecipes = [
       "菠菜": 7
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
-    "img": "/牛肉高蛋白成长.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_037-2e3aa8a71ddb.png",
     "water_content_pct": 65,
     "protein_pct": 49,
     "carb_pct": 30,
@@ -1619,7 +1619,7 @@ export const demoRecipes = [
       "蓝莓": 2
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
-    "img": "/牛肉红薯活力餐.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_038-4e06a662a298.png",
     "water_content_pct": 68,
     "protein_pct": 44,
     "carb_pct": 30,
@@ -1665,7 +1665,7 @@ export const demoRecipes = [
       "苹果": 2
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
-    "img": "/兔肉南瓜肠胃餐.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_039-fde9bf1a8b92.png",
     "water_content_pct": 66,
     "protein_pct": 35,
     "carb_pct": 40,
@@ -1708,7 +1708,7 @@ export const demoRecipes = [
       "全熟燕麦片": 15.2
     },
     "b_pack": "幼犬成长营养包B：幼犬维矿预混料 1.6 / 成长期钙磷矿物粉（Ca:P≈1.3:1）1.4 / DHA-EPA鱼油或藻油 1.0",
-    "img": "/鸭肉红薯成长.png",
+    "img": "/uploads/recipe-catalog/dog_recipe_040-22312a5cab9d.png",
     "water_content_pct": 67,
     "protein_pct": 40,
     "carb_pct": 35,

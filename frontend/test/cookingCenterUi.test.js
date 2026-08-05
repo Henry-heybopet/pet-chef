@@ -139,3 +139,15 @@ test('设备名称可编辑并同步Web、Android和iOS Tuya SDK', () => {
   assert.match(androidPluginSource, /device\.renameDevice\(trimmedName/);
   assert.match(iosPluginSource, /device\.updateName\(name/);
 });
+
+test('鲜食机弹窗高于底部导航且配网结果可滚动到选定按钮', () => {
+  assert.match(stylesSource, /\.cooking-sheet-mask\s*\{[^}]*z-index:\s*1100/s);
+  assert.match(stylesSource, /\.bottom-tab-bar\s*\{[^}]*z-index:\s*900/s);
+  assert.match(stylesSource, /\.cooking-pairing-sheet\s*\{[^}]*overflow-y:\s*auto/s);
+  assert.match(stylesSource, /\.cooking-pairing-sheet\s*\{[^}]*scroll-padding-bottom:/s);
+});
+
+test('修改鲜食机名称的取消和保存按钮使用相同尺寸', () => {
+  assert.match(stylesSource, /\.cooking-rename-card\s*>\s*div\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(stylesSource, /\.cooking-rename-card\s*>\s*div\s+\.cooking-center-btn\s*\{[^}]*width:\s*100%[^}]*min-height:\s*48px[^}]*margin-top:\s*0/s);
+});
