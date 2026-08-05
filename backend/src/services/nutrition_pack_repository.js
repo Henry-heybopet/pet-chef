@@ -1,5 +1,6 @@
 const { query, isAvailable, getPool } = require('../data/pg_client');
-const { NUTRITION_PACKS_DB, NUTRITION_PACK_BY_ID } = require('../data/nutrition_packs_db');
+const { NUTRITION_PACKS_DB } = require('../data/nutrition_packs_db');
+const { NUTRITION_PACK_TRANSLATIONS } = require('../data/nutrition_pack_translations_db');
 
 const JSON_FIELDS = new Set(['composition', 'nutrition_snapshot', 'health_tags']);
 const NUTRIENT_FIELDS = ['calcium_pct', 'phosphorus_pct', 'chloride_pct', 'lysine_pct'];
@@ -59,6 +60,27 @@ async function nutritionPacksTableExists() {
   if (!(await isAvailable())) return false;
   const result = await query(`SELECT to_regclass('public.nutrition_packs') AS table_name`, []);
   return Boolean(result.rows[0]?.table_name);
+}
+
+async function syncNutritionPackTranslations(client) {
+  for (const row of NUTRITION_PACK_TRANSLATIONS) {
+    await client.query(
+      `INSERT INTO pack_translations
+        (pack_id, locale, canonical_name, name, description, translation_status, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,NOW())
+       ON CONFLICT (pack_id, locale) DO UPDATE SET
+         canonical_name = EXCLUDED.canonical_name,
+         name = EXCLUDED.name,
+         description = EXCLUDED.description,
+         translation_status = EXCLUDED.translation_status,
+         updated_at = NOW()`,
+      [row.pack_id, row.locale, row.canonical_name, row.name, row.description, row.translation_status]
+    );
+  }
+  await client.query(
+    'DELETE FROM pack_translations WHERE pack_id IS NULL OR NOT (pack_id = ANY($1::text[]))',
+    [[...new Set(NUTRITION_PACK_TRANSLATIONS.map(row => row.pack_id))]]
+  );
 }
 
 async function listNutritionPacks({ fallback = true } = {}) {
@@ -182,6 +204,7 @@ async function syncNutritionPackSeeds() {
         );
       }
     }
+    await syncNutritionPackTranslations(client);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
@@ -368,10 +391,6 @@ function packDescription(pack) {
   return rows ? `${pack.name}：${rows}` : '';
 }
 
-function packTranslationCode(pack) {
-  return NUTRITION_PACK_BY_ID[pack.id]?.translation_code || pack.category_code;
-}
-
 async function listBPackOptionsFromNutritionPacks() {
   const { packs, source } = await listNutritionPacks({ fallback: false });
   return {
@@ -395,12 +414,12 @@ async function listConsumerNutritionPacks(locale = 'zh') {
   if (source === 'pg' && normalizedLocale !== 'zh') {
     try {
       const result = await query(
-        `SELECT pack_code, name, description, translation_status
+        `SELECT pack_id, name, description, translation_status
          FROM pack_translations
          WHERE locale = $1`,
         [normalizedLocale]
       );
-      translations = new Map(result.rows.map(row => [row.pack_code, row]));
+      translations = new Map(result.rows.map(row => [row.pack_id, row]));
     } catch (error) {
       console.warn('[NutritionPackRepo] translated pack catalog unavailable:', error.message);
     }
@@ -408,7 +427,7 @@ async function listConsumerNutritionPacks(locale = 'zh') {
   return {
     source,
     packs: packs.map(pack => {
-      const translated = translations.get(packTranslationCode(pack));
+      const translated = translations.get(pack.id);
       return {
         pack_id: pack.id,
         name: translated?.name || pack.name,
@@ -434,7 +453,8 @@ module.exports = {
   updateNutritionPack,
   deleteNutritionPack,
   syncNutritionPackSeeds,
+  syncNutritionPackTranslations,
   listBPackOptionsFromNutritionPacks,
   listConsumerNutritionPacks,
-  _test: { normalizePack, nextPackId, validateComposition, validatePackClassification, mostFrequentRecipeSnapshot, packDescription, packTranslationCode },
+  _test: { normalizePack, nextPackId, validateComposition, validatePackClassification, mostFrequentRecipeSnapshot, packDescription },
 };

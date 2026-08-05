@@ -15,7 +15,7 @@ const { startCooking, pauseCooking, stopCooking, getDeviceStatus, getDeviceDetai
 const { calcCookingParams, calcDailyIntake, calcRecipeFeedingPlan, calcIngredientGrams } = require('./services/cooking_engine');
 const { recommendationScoreFromValidation, referenceFeedingPlanForPet } = require('./services/nutrition_energy');
 const { buildRecommendationSignals } = require('./services/recommendation_signals');
-const { cacheContextHash, isRecommendationCacheValid, publicPetContext, recommendWithHeyboAgent, fallbackRanking, PROMPT_VERSION } = require('./services/ai_recommendation');
+const { cacheContextHash, isRecommendationCacheValid, publicPetContext, filterRecipesForLifeStage, recommendWithHeyboAgent, fallbackRanking, applyRuleScoreCeilings, PROMPT_VERSION } = require('./services/ai_recommendation');
 const heyboRoutes = require('./routes/heybo');
 const { getCorsOrigins, printRegionSummary, getEnvironment } = require('./config/region_config');
 const { listRecipes, listAdminRecipes, getRecipeById, getRecipeNames, createRecipe, updateRecipe, deleteRecipe, buildRecipeIndexByName, getIngredientMap } = require('./services/nutrition_repository');
@@ -895,8 +895,13 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
   const bPackResult = await getFreshCheckBPackOptions(basePet);
   const enabledBPacks = bPackResult.options.filter(option => option.enabled);
   let selectedBPack = enabledBPacks.find(option => option.recommended) || enabledBPacks[0] || null;
-  const initialPlans = buildRecipeFeedingPlans(basePet, recipes, ingredientLibrary.ingredients, requestedLocale, selectedBPack);
   const energyEnvelope = referenceFeedingPlanForPet(basePet);
+  const candidateRecipes = filterRecipesForLifeStage(recipes, energyEnvelope.stage_code);
+  if (!candidateRecipes.length) {
+    console.error('[HeyboPet Agent] no active recipes for life stage', energyEnvelope.stage_code);
+    return res.status(422).json({ success: false, error: `No active recipes configured for life stage: ${energyEnvelope.stage_code}` });
+  }
+  const initialPlans = buildRecipeFeedingPlans(basePet, candidateRecipes, ingredientLibrary.ingredients, requestedLocale, selectedBPack);
   const userId = getOptionalUserId(req);
   let feedingRecords = [];
   let healthRecords = [];
@@ -906,7 +911,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
     healthRecords = store.listByHousehold('health_records', userId, household.id).filter(record => String(record.pet_id) === String(dogProfile.pet_id || dogProfile.id));
   }
   const signals = buildRecommendationSignals({ feedingRecords, healthRecords });
-  const candidates = recipes.map(recipe => {
+  const candidates = candidateRecipes.map(recipe => {
     const plan = initialPlans[recipe.id];
     return {
       recipe_id: String(recipe.id), name: recipe.name, category: recipe.category,
@@ -917,7 +922,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       rule_score: plan.recommendation_score, b_pack_category: selectedBPack?.category || null,
     };
   });
-  const contextHash = cacheContextHash({ pet: publicPetContext(dogProfile), recipes, bPacks: bPackResult.options });
+  const contextHash = cacheContextHash({ pet: publicPetContext(dogProfile), recipes: candidateRecipes, bPacks: bPackResult.options });
   const petCacheId = safeCacheId(`${userId || 'anonymous'}_${dogProfile.pet_id || dogProfile.id || 'default'}`);
   const cacheFilePath = compareCachePath(petCacheId);
   if (fs.existsSync(cacheFilePath)) {
@@ -958,9 +963,10 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
   const agentBCategory = recommendation.ranked_recipes.find(item => item.eligible && item.b_pack_category)?.b_pack_category;
   selectedBPack = enabledBPacks.find(option => option.category === agentBCategory) || selectedBPack;
   const selectedPet = { ...basePet, energy_target_kcal: recommendation.selected_daily_kcal };
-  const recipeFeedingPlans = buildRecipeFeedingPlans(selectedPet, recipes, ingredientLibrary.ingredients, requestedLocale, selectedBPack);
+  const recipeFeedingPlans = buildRecipeFeedingPlans(selectedPet, candidateRecipes, ingredientLibrary.ingredients, requestedLocale, selectedBPack);
   const referenceFeedingPlan = referenceFeedingPlanForPet(selectedPet);
-  const recipeById = new Map(recipes.map(recipe => [String(recipe.id), recipe]));
+  recommendation.ranked_recipes = applyRuleScoreCeilings(recommendation.ranked_recipes, recipeFeedingPlans);
+  const recipeById = new Map(candidateRecipes.map(recipe => [String(recipe.id), recipe]));
   const comparisons = {};
   recommendation.ranked_recipes.forEach((item, rank) => {
     const recipe = recipeById.get(String(item.recipe_id));
@@ -969,7 +975,17 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       has_warning: !item.eligible || (recipeFeedingPlans[recipe.id]?.warning_codes || []).length > 0,
       warning_level: !item.eligible ? 'warning' : 'none', warning_text: item.tradeoffs?.join('；') || '',
       energy_feasibility: recipeFeedingPlans[recipe.id], rank: rank + 1, suitability: item.suitability,
-      a_comparison: { show_dialog: true, proposed_score: Math.round(Number(item.score)), score_model: recommendationSource, comparison_details: item.reason, score_reason: item.reason },
+      a_comparison: {
+        show_dialog: true,
+        proposed_score: Math.round(Number(item.score)),
+        ai_score: item.ai_score,
+        rule_score: item.rule_score,
+        score_cap_applied: item.score_cap_applied,
+        score_rule_applied: item.score_rule_applied,
+        score_model: 'fresh_check_weighted_with_heybo_agent_context',
+        comparison_details: item.reason,
+        score_reason: item.reason,
+      },
     };
   });
   const stageCode = referenceFeedingPlan.stage_code;
@@ -984,6 +1000,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
     fallback_message: recommendationSource === 'rule_fallback' ? recommendation.summary : null,
     fallback_reason: fallbackReason, analyzed_at: analyzedAt, cache_hit: false,
     selected_b_pack: selectedBPack, ranked_recipe_ids: recommendation.ranked_recipes.map(item => item.recipe_id),
+    candidate_life_stage: stageCode, candidate_recipe_count: candidateRecipes.length,
     daily_grams: referenceFeedingPlan.daily_grams, per_meal_grams: referenceFeedingPlan.per_meal_grams, meals_per_day: referenceFeedingPlan.meals_per_day,
     daily_energy: referenceFeedingPlan, recipe_feeding_plans: recipeFeedingPlans, reference_feeding_plan: referenceFeedingPlan,
     agent_meta: recommendation.meta,

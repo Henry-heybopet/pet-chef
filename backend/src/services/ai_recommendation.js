@@ -3,8 +3,8 @@ const { recommendationScoreFromValidation } = require('./nutrition_energy');
 
 const MODEL = () => process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro';
 const THINKING_MODE = () => process.env.DEEPSEEK_THINKING_MODE || 'disabled';
-const REQUEST_TIMEOUT_MS = () => Number(process.env.DEEPSEEK_REQUEST_TIMEOUT_MS || 60000);
-const PROMPT_VERSION = 'heybo-agent-ab-v1';
+const REQUEST_TIMEOUT_MS = () => Number(process.env.DEEPSEEK_REQUEST_TIMEOUT_MS || 90000);
+const PROMPT_VERSION = 'heybo-agent-ab-v5';
 const CACHE_TTL_MS = 10 * 24 * 60 * 60 * 1000;
 
 function safeCacheId(value) { return String(value || 'default').replace(/[^a-zA-Z0-9_-]/g, '_'); }
@@ -55,31 +55,68 @@ function publicPetContext(pet = {}) {
   };
 }
 
+const LIFE_STAGE_ALIASES = {
+  puppy: new Set(['幼犬', 'puppy']),
+  adult: new Set(['成年犬', 'adult']),
+  senior: new Set(['老年犬', 'senior']),
+};
+
+function filterRecipesForLifeStage(recipes, stageCode) {
+  const aliases = LIFE_STAGE_ALIASES[stageCode];
+  if (!aliases) return [];
+  return (recipes || []).filter(recipe => aliases.has(String(recipe?.life_stage || '').trim().toLowerCase()));
+}
+
 function validateAgentResult(result, { candidateIds, hardBlockedIds, minKcal, maxKcal, allowedBPacks }) {
   if (!result || !Array.isArray(result.ranked_recipes)) throw new Error('invalid ranked_recipes');
   const selected = Number(result.selected_daily_kcal);
   if (!Number.isFinite(selected) || selected < minKcal || selected > maxKcal) throw new Error('energy target outside safe range');
   const ids = result.ranked_recipes.map(item => String(item.recipe_id));
-  if (ids.length < 1 || ids.length > Math.min(10, candidateIds.length) || new Set(ids).size !== ids.length || ids.some(id => !candidateIds.includes(id))) {
-    throw new Error('AI must return up to ten unique candidate recipes');
+  if (ids.length !== candidateIds.length || new Set(ids).size !== ids.length || ids.some(id => !candidateIds.includes(id))) {
+    throw new Error('AI must score every candidate recipe exactly once');
   }
   result.ranked_recipes.forEach(item => {
     if (!Number.isFinite(Number(item.score)) || Number(item.score) < 0 || Number(item.score) > 100) throw new Error('invalid score');
+    if (typeof item.eligible !== 'boolean') throw new Error('invalid eligibility');
     if (hardBlockedIds.has(String(item.recipe_id)) && item.eligible !== false) throw new Error('hard-blocked recipe marked eligible');
     if (item.b_pack_category && !allowedBPacks.has(item.b_pack_category)) throw new Error('invalid B pack');
   });
   return result;
 }
 
-function completeAgentRanking(result, candidates) {
-  const selectedIds = new Set(result.ranked_recipes.map(item => String(item.recipe_id)));
+function completeAgentRanking(result) {
+  const rankedRecipes = result.ranked_recipes
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => Number(b.item.eligible) - Number(a.item.eligible)
+      || Number(b.item.score) - Number(a.item.score)
+      || a.index - b.index)
+    .map(({ item }) => item);
   return {
     ...result,
-    ranked_recipes: [
-      ...result.ranked_recipes,
-      ...fallbackRanking(candidates).filter(item => !selectedIds.has(String(item.recipe_id))),
-    ],
+    ranked_recipes: rankedRecipes,
   };
+}
+
+function applyRuleScoreCeilings(rankedRecipes, plansByRecipeId) {
+  return completeAgentRanking({
+    ranked_recipes: (rankedRecipes || []).map(item => {
+      const aiScore = Math.round(Number(item.score));
+      const ruleScore = Number(plansByRecipeId?.[String(item.recipe_id)]?.recommendation_score);
+      const weightedRuleScore = Number.isFinite(ruleScore) ? Math.round(ruleScore) : 49;
+      const finalScore = item.eligible ? weightedRuleScore : Math.min(weightedRuleScore, 49);
+      return {
+        ...item,
+        ai_score: aiScore,
+        rule_score: Number.isFinite(ruleScore) ? Math.round(ruleScore) : null,
+        score: finalScore,
+        score_cap_applied: finalScore < aiScore,
+        score_rule_applied: finalScore !== aiScore,
+        suitability: item.eligible === false
+          ? 'blocked'
+          : finalScore >= 85 ? 'high' : finalScore >= 70 ? 'medium' : 'low',
+      };
+    }),
+  }).ranked_recipes;
 }
 
 async function callAgent(payload) {
@@ -92,11 +129,11 @@ async function callAgent(payload) {
       method: 'POST', signal: controller.signal,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: MODEL(), thinking: { type: THINKING_MODE() }, max_tokens: 4000,
+        model: MODEL(), thinking: { type: THINKING_MODE() }, max_tokens: 8000,
         response_format: { type: 'json_object' },
         messages: [
-          { role: 'system', content: `你是 HeyboPet Agent 的犬类营养推荐核心。程序已提供唯一可信的 RER/MER 安全区间、Fresh Check 配方事实、硬安全码和 B 包资格。你负责综合档案、BCS、目标、活动、健康标签及14/30天真实喂食反馈，在安全区间内选择每日能量，并从全部 A 基础包中选出最适合且安全的前10名。规则事实不可篡改；不得选择硬阻断项；适口性好但便便异常不得加分；推荐结构仅为 A 基础包加 B 全价营养包。理由不超过30个汉字，优点和权衡各最多2项。不得诊断。只返回严格 JSON。` },
-          { role: 'user', content: JSON.stringify({ ...payload, output_schema: { selected_daily_kcal: 'number', summary: 'string', key_nutrition_needs: ['string'], cautions: ['string'], factors_used: ['string'], ranked_recipes: 'exactly 10 best eligible candidates', ranked_recipe_item: { recipe_id: 'string', score: '0-100', suitability: 'high|medium|low', eligible: true, b_pack_category: 'string|null', reason: 'max 30 Chinese characters', positive_factors: 'max 2 strings', tradeoffs: 'max 2 strings' } } }) },
+          { role: 'system', content: `你是 HeyboPet Agent 的犬类营养推荐核心。程序已提供唯一可信的 RER/MER 安全区间、Fresh Check 配方事实、硬安全码和 B 包资格。你负责综合档案、BCS、目标、活动、健康标签及14/30天真实喂食反馈，在安全区间内选择每日能量。必须对程序提供的每一个 A 基础包逐一评估、逐一打分，并且每个候选只返回一次；不得只返回前10个。每项score必须等于候选的rule_score；个体档案和喂食反馈用于能量选择、风险关注与推荐理由，不得另造一套与Fresh Check六维不一致的百分比。程序会在收到全部评估后按分数排序并展示前10个。规则事实不可篡改；硬阻断项必须标记 eligible=false；适口性好但便便异常不得加分；推荐结构仅为 A 基础包加 B 全价营养包。每项理由不超过30个汉字，优点和权衡各最多2项。不得诊断。只返回严格 JSON。` },
+          { role: 'user', content: JSON.stringify({ ...payload, output_schema: { selected_daily_kcal: 'number', summary: 'string', key_nutrition_needs: ['string'], cautions: ['string'], factors_used: ['string'], ranked_recipes: `exactly ${payload.candidates.length} items; score every candidate exactly once`, ranked_recipe_item: { recipe_id: 'string', score: '0-100', suitability: 'high|medium|low|blocked', eligible: 'boolean', b_pack_category: 'string|null', reason: 'max 30 Chinese characters', positive_factors: 'max 2 strings', tradeoffs: 'max 2 strings' } } }) },
         ],
       }),
     });
@@ -122,7 +159,7 @@ async function recommendWithHeyboAgent(input) {
       const started = Date.now();
       const response = await callAgent({ ...input, attempt, correction: attempt === 2 ? String(lastError?.message || '') : null });
       const validated = validateAgentResult(response.result, validation);
-      return { ...completeAgentRanking(validated, candidates), meta: { model: MODEL(), prompt_version: PROMPT_VERSION, latency_ms: Date.now() - started, usage: response.usage } };
+      return { ...completeAgentRanking(validated), meta: { model: MODEL(), prompt_version: PROMPT_VERSION, latency_ms: Date.now() - started, usage: response.usage } };
     } catch (error) {
       lastError = error;
       if (error?.name === 'AbortError') break;
@@ -142,4 +179,4 @@ function fallbackRanking(candidates) {
   })).sort((a, b) => Number(b.eligible) - Number(a.eligible) || b.score - a.score);
 }
 
-module.exports = { MODEL, THINKING_MODE, REQUEST_TIMEOUT_MS, PROMPT_VERSION, CACHE_TTL_MS, safeCacheId, cachedEnergyTarget, stableHash, cacheContextHash, isRecommendationCacheValid, publicPetContext, recommendWithHeyboAgent, fallbackRanking, _test: { validateAgentResult, completeAgentRanking } };
+module.exports = { MODEL, THINKING_MODE, REQUEST_TIMEOUT_MS, PROMPT_VERSION, CACHE_TTL_MS, safeCacheId, cachedEnergyTarget, stableHash, cacheContextHash, isRecommendationCacheValid, publicPetContext, filterRecipesForLifeStage, recommendWithHeyboAgent, fallbackRanking, applyRuleScoreCeilings, _test: { validateAgentResult, completeAgentRanking } };

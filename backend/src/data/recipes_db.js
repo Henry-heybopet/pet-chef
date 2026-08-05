@@ -338,7 +338,7 @@ const rawRecipes = [
     "category": "低敏单一蛋白",
     "category_code": 14,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "金枪鱼单一低敏",
     "tags": [
@@ -357,7 +357,7 @@ const rawRecipes = [
     "category": "低敏单一蛋白",
     "category_code": 14,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "兔肉菠菜单一低敏",
     "tags": [
@@ -376,7 +376,7 @@ const rawRecipes = [
     "category": "低敏单一蛋白",
     "category_code": 14,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "兔肉红薯单一低敏",
     "tags": [
@@ -396,7 +396,7 @@ const rawRecipes = [
     "category": "低敏单一蛋白",
     "category_code": 14,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "鸭肉胡萝卜单一低敏",
     "tags": [
@@ -415,7 +415,7 @@ const rawRecipes = [
     "category": "低敏单一蛋白",
     "category_code": 14,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "鸭肉南瓜单一低敏",
     "tags": [
@@ -434,7 +434,7 @@ const rawRecipes = [
     "category": "护肝",
     "category_code": 11,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "鸡肉姜黄",
     "tags": [
@@ -453,7 +453,7 @@ const rawRecipes = [
     "category": "护肝",
     "category_code": 11,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "鸡肉南瓜",
     "tags": [
@@ -474,7 +474,7 @@ const rawRecipes = [
     "category": "护肝",
     "category_code": 11,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "金枪鱼抗氧",
     "tags": [
@@ -495,7 +495,7 @@ const rawRecipes = [
     "category": "护肝",
     "category_code": 11,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "牛肉轻负担",
     "tags": [
@@ -516,7 +516,7 @@ const rawRecipes = [
     "category": "护肝",
     "category_code": 11,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "兔肉低脂",
     "tags": [
@@ -537,7 +537,7 @@ const rawRecipes = [
     "category": "美毛护肤",
     "category_code": 10,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "鸡肉美毛",
     "tags": [
@@ -557,7 +557,7 @@ const rawRecipes = [
     "category": "美毛护肤",
     "category_code": 10,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "金枪鱼抗炎",
     "tags": [
@@ -578,7 +578,7 @@ const rawRecipes = [
     "category": "美毛护肤",
     "category_code": 10,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "金枪鱼亮毛",
     "tags": [
@@ -599,7 +599,7 @@ const rawRecipes = [
     "category": "美毛护肤",
     "category_code": 10,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "牛肉护肤",
     "tags": [
@@ -620,7 +620,7 @@ const rawRecipes = [
     "category": "美毛护肤",
     "category_code": 10,
     "category_type": "functional",
-    "life_stage": null,
+    "life_stage": "成年犬",
     "dog_size": null,
     "name": "兔肉抗敏",
     "tags": [

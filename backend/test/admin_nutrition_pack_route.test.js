@@ -32,6 +32,10 @@ test('authenticated admin catalog routes always return JSON', async (t) => {
   assert.equal(consumerBody.packs.length, 9);
   assert.equal(new Set(consumerBody.packs.map(pack => pack.pack_id)).size, 9);
   assert.ok(consumerBody.packs.every(pack => !Object.hasOwn(pack, 'composition')));
+  assert.equal(
+    consumerBody.packs.find(pack => pack.pack_id === 'dog_pack_003')?.name,
+    'Adult Dog General Complete Nutrition Pack'
+  );
 
   const login = await fetch(`${origin}/api/v1/admin/auth/login`, {
     method: 'POST',

@@ -454,7 +454,7 @@ model IngredientTranslation {
 }
 
 model PackTranslation {
-  pack_code          String
+  pack_id            String
   locale             String
   canonical_name     String
   name               String
@@ -462,7 +462,7 @@ model PackTranslation {
   translation_status String   @default("translated")
   updated_at         DateTime @updatedAt
 
-  @@id([pack_code, locale])
+  @@id([pack_id, locale])
   @@index([locale])
   @@map("pack_translations")
 }

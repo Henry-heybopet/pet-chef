@@ -1,26 +1,19 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
 import dotenv from 'dotenv';
 import pg from 'pg';
 import { demoRecipes } from '../../frontend/src/data/demoRecipes.js';
-import { hasBenefitTranslation, hasDataTranslation, tBenefit, tData, tPack } from '../../frontend/src/i18n/dataTranslations.js';
+import { hasBenefitTranslation, hasDataTranslation, tBenefit, tData } from '../../frontend/src/i18n/dataTranslations.js';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const { NUTRITION_PACK_TRANSLATIONS } = require('../src/data/nutrition_pack_translations_db');
+const { syncNutritionPackTranslations } = require('../src/services/nutrition_pack_repository');
 dotenv.config({ path: path.resolve(scriptDir, '../.env') });
 
 const locales = ['zh', 'en', 'de', 'fr', 'es', 'it', 'ja', 'ko'];
-const packCodes = {
-  '幼犬成长营养包B': 'PUPPY_GROWTH_B',
-  '大型幼犬稳骨控钙营养包B': 'LARGE_PUPPY_CALCIUM_B',
-  '成犬维护营养包B': 'ADULT_MAINTENANCE_B',
-  '成犬/美毛基础营养包B': 'ADULT_COAT_B',
-  '成犬/护肝基础营养包B': 'ADULT_LIVER_B',
-  '老年犬轻负担营养包B': 'SENIOR_LIGHT_B',
-  '低敏单一蛋白营养包B': 'HYPOALLERGENIC_B',
-};
-
-const canonicalPackName = value => String(value || '').split(/[：:（(]/)[0].trim();
 const benefitByIngredient = new Map();
 for (const recipe of demoRecipes) {
   for (const [name, benefit] of Object.entries(recipe.ingredient_benefits || {})) {
@@ -46,13 +39,6 @@ try {
     );
   }
   const ingredients = (await client.query('SELECT id, name, benefits FROM ingredient_library')).rows;
-  const packNames = new Set();
-  for (const recipe of demoRecipes) {
-    for (const value of [recipe.b_pack]) {
-      const name = canonicalPackName(value);
-      if (name && name !== '无') packNames.add(name);
-    }
-  }
 
   for (const recipe of recipes) {
     for (const locale of locales) {
@@ -81,25 +67,15 @@ try {
     }
   }
 
-  for (const canonicalName of packNames) {
-    const packCode = packCodes[canonicalName];
-    if (!packCode) throw new Error(`Missing stable pack code for ${canonicalName}`);
-    for (const locale of locales) {
-      const rendered = tPack(canonicalName, locale);
-      const separator = rendered.indexOf(':');
-      const name = separator >= 0 ? rendered.slice(0, separator).trim() : rendered;
-      const description = separator >= 0 ? rendered.slice(separator + 1).trim() : null;
-      await client.query(
-        `INSERT INTO pack_translations (pack_code, locale, canonical_name, name, description, translation_status, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())
-         ON CONFLICT (pack_code, locale) DO UPDATE SET canonical_name = EXCLUDED.canonical_name, name = EXCLUDED.name, description = EXCLUDED.description, translation_status = EXCLUDED.translation_status, updated_at = NOW()`,
-        [packCode, locale, canonicalName, name, description, locale === 'zh' ? 'source' : (hasDataTranslation(canonicalName, locale) ? 'translated' : 'fallback')]
-      );
-    }
-  }
+  await syncNutritionPackTranslations(client);
 
   await client.query('COMMIT');
-  console.log(JSON.stringify({ recipes: recipes.length, ingredients: ingredients.length, packs: packNames.size, locales: locales.length }));
+  console.log(JSON.stringify({
+    recipes: recipes.length,
+    ingredients: ingredients.length,
+    packs: new Set(NUTRITION_PACK_TRANSLATIONS.map(row => row.pack_id)).size,
+    locales: locales.length,
+  }));
 } catch (error) {
   await client.query('ROLLBACK');
   throw error;

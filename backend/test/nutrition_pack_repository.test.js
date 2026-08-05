@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { NUTRITION_PACKS_DB, canonicalNutritionPackName } = require('../src/data/nutrition_packs_db');
+const { NUTRITION_PACK_TRANSLATIONS } = require('../src/data/nutrition_pack_translations_db');
 const { _test } = require('../src/services/nutrition_pack_repository');
 
 test('nutrition pack catalog contains the requested nine unique categories', () => {
@@ -25,7 +26,17 @@ test('pack API exposes pack_id and allocates the next dog_pack id', () => {
 test('legacy seven-pack names resolve to the canonical nine-pack catalog', () => {
   assert.equal(canonicalNutritionPackName('成犬维护营养包B'), '成年犬通用全价营养包');
   assert.equal(canonicalNutritionPackName('低敏单一蛋白营养包B'), '低敏无动物蛋白全价营养包');
-  assert.equal(_test.packTranslationCode({ id: 'dog_pack_003', category_code: 'adult_general' }), 'ADULT_MAINTENANCE_B');
+});
+
+test('validated catalog translations cover nine packs and eight locales', () => {
+  assert.equal(NUTRITION_PACK_TRANSLATIONS.length, 72);
+  assert.equal(new Set(NUTRITION_PACK_TRANSLATIONS.map(row => row.pack_id)).size, 9);
+  assert.equal(new Set(NUTRITION_PACK_TRANSLATIONS.map(row => row.locale)).size, 8);
+  assert.equal(new Set(NUTRITION_PACK_TRANSLATIONS.map(row => `${row.pack_id}:${row.locale}`)).size, 72);
+  assert.equal(
+    NUTRITION_PACK_TRANSLATIONS.find(row => row.pack_id === 'dog_pack_003' && row.locale === 'en')?.name,
+    'Adult Dog General Complete Nutrition Pack'
+  );
 });
 
 test('pack classification accepts only the two groups and three life stages', () => {

@@ -300,7 +300,7 @@ function toRecipeDraft(recipe) {
     img: recipe.img || '',
     name: recipe.name || '',
     category: recipe.category || CATEGORY_OPTIONS[0],
-    life_stage: recipe.life_stage || LIFE_STAGE_OPTIONS[1],
+    life_stage: recipe.life_stage || '',
     status: recipe.status || 'active',
     version: recipe.version || 1,
     health_tags: asArray(recipe.health_tags || recipe.tags).join('、'),
@@ -1032,6 +1032,7 @@ function App() {
 
   const validateRecipeDraft = (draft) => {
     if (!draft.name.trim()) return '食谱名字不能为空';
+    if (!LIFE_STAGE_OPTIONS.includes(draft.life_stage)) return '请选择生命阶段';
     return '';
   };
 
@@ -1904,6 +1905,7 @@ function App() {
                       <label>
                         <span>生命阶段</span>
                         <select value={draft.life_stage} onChange={e => updateRecipeDraft(recipe.id, { life_stage: e.target.value })}>
+                          <option value="" disabled>未设置（保存前必选）</option>
                           {LIFE_STAGE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
                         </select>
                       </label>
