@@ -1,7 +1,22 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { PROMPT_VERSION, isRecommendationCacheValid, cachedEnergyTarget, filterRecipesForLifeStage, fallbackRanking, applyRuleScoreCeilings, _test } = require('../src/services/ai_recommendation');
+const { MODEL, REQUEST_TIMEOUT_MS, PROMPT_VERSION, isRecommendationCacheValid, cachedEnergyTarget, filterRecipesForLifeStage, fallbackRanking, applyRuleScoreCeilings, _test } = require('../src/services/ai_recommendation');
 const { recipesDb } = require('../src/data/recipes_db');
+
+test('synchronous recommendation defaults stay inside the nginx request budget', () => {
+  const oldModel = process.env.DEEPSEEK_MODEL;
+  const oldTimeout = process.env.DEEPSEEK_REQUEST_TIMEOUT_MS;
+  delete process.env.DEEPSEEK_MODEL;
+  delete process.env.DEEPSEEK_REQUEST_TIMEOUT_MS;
+  try {
+    assert.equal(MODEL(), 'deepseek-v4-flash');
+    assert.equal(REQUEST_TIMEOUT_MS(), 25000);
+    assert.ok(REQUEST_TIMEOUT_MS() * 2 < 60000);
+  } finally {
+    if (oldModel === undefined) delete process.env.DEEPSEEK_MODEL; else process.env.DEEPSEEK_MODEL = oldModel;
+    if (oldTimeout === undefined) delete process.env.DEEPSEEK_REQUEST_TIMEOUT_MS; else process.env.DEEPSEEK_REQUEST_TIMEOUT_MS = oldTimeout;
+  }
+});
 
 test('cache expires after ten days or ten newly added feedback records', () => {
   const now = Date.now();

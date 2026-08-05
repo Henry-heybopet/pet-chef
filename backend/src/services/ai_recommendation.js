@@ -1,9 +1,9 @@
 const crypto = require('crypto');
 const { recommendationScoreFromValidation } = require('./nutrition_energy');
 
-const MODEL = () => process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro';
+const MODEL = () => process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
 const THINKING_MODE = () => process.env.DEEPSEEK_THINKING_MODE || 'disabled';
-const REQUEST_TIMEOUT_MS = () => Number(process.env.DEEPSEEK_REQUEST_TIMEOUT_MS || 90000);
+const REQUEST_TIMEOUT_MS = () => Number(process.env.DEEPSEEK_REQUEST_TIMEOUT_MS || 25000);
 const PROMPT_VERSION = 'heybo-agent-ab-v5';
 const CACHE_TTL_MS = 10 * 24 * 60 * 60 * 1000;
 
@@ -155,13 +155,17 @@ async function recommendWithHeyboAgent(input) {
   };
   let lastError;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const started = Date.now();
     try {
-      const started = Date.now();
       const response = await callAgent({ ...input, attempt, correction: attempt === 2 ? String(lastError?.message || '') : null });
       const validated = validateAgentResult(response.result, validation);
       return { ...completeAgentRanking(validated), meta: { model: MODEL(), prompt_version: PROMPT_VERSION, latency_ms: Date.now() - started, usage: response.usage } };
     } catch (error) {
       lastError = error;
+      console.warn('[HeyboPet Agent attempt failed]', JSON.stringify({
+        model: MODEL(), attempt, latency_ms: Date.now() - started,
+        error: error?.name === 'AbortError' ? 'timeout' : String(error?.message || 'unknown'),
+      }));
       if (error?.name === 'AbortError') break;
     }
   }

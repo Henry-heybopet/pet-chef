@@ -955,7 +955,7 @@ app.post('/api/v1/ai-analysis', sensitiveLimiter, async (req, res) => {
       selected_daily_kcal: energyEnvelope.formula_daily_kcal,
       summary: '智能分析暂时不可用，当前结果基于宠物档案和营养安全规则生成。',
       key_nutrition_needs: [], cautions: [], factors_used: ['宠物档案', 'Fresh Check 营养安全规则'],
-      ranked_recipes: fallbackRanking(candidates), meta: { model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro' },
+      ranked_recipes: fallbackRanking(candidates), meta: { model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash' },
     };
     console.error('[HeyboPet Agent fallback]', error.message);
   }
@@ -1261,7 +1261,7 @@ app.get('/api/v1/debug-env', (req, res) => {
     TUYA_DEVICE_ID: process.env.TUYA_DEVICE_ID ? `${process.env.TUYA_DEVICE_ID.substring(0, 6)}...` : 'MISSING',
     TUYA_BASE_URL: process.env.TUYA_BASE_URL || 'MISSING (default: tuyacn.com)',
     DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ? 'CONFIGURED' : 'MISSING',
-    DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro',
+    DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
     NODE_ENV: process.env.NODE_ENV || 'undefined',
     VERCEL: process.env.VERCEL || 'undefined',
   });

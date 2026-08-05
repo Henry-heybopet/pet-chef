@@ -11,7 +11,7 @@ async function callDeepSeekAPI(systemPrompt, userPrompt) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) throw new Error('DEEPSEEK_API_KEY is not configured');
   const baseUrl = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1';
-  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro';
+  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',

@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    image: petchef-backend:2.0.0-cn
+    image: petchef-backend:2.0.1-cn-ai-data-fix
     container_name: petchef-backend
     restart: unless-stopped
     ports:
@@ -23,7 +23,8 @@ services:
       PRIVACY_VERSION: ${PRIVACY_VERSION:-2026-08-05}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY is required}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
-      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-pro}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
+      DEEPSEEK_REQUEST_TIMEOUT_MS: ${DEEPSEEK_REQUEST_TIMEOUT_MS:-25000}
       TUYA_ACCESS_ID: ${TUYA_ACCESS_ID:?TUYA_ACCESS_ID is required}
       TUYA_SECRET: ${TUYA_SECRET:?TUYA_SECRET is required}
       TUYA_DEVICE_ID: ${TUYA_DEVICE_ID:-}
