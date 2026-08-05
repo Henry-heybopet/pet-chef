@@ -467,6 +467,30 @@ model PackTranslation {
   @@map("pack_translations")
 }
 
+model NutritionPack {
+  id                 String       @id
+  name               String
+  pack_group         String
+  category_code      String       @unique
+  recipe_category    String?
+  life_stage         String
+  description        String?
+  health_tags        Json         @default("[]")
+  product_pricing    String?
+  img                String?      @default("")
+  composition        Json         @default("{}")
+  nutrition_snapshot Json         @default("{}")
+  status             RecipeStatus @default(draft)
+  version            Int          @default(1)
+  created_at         DateTime     @default(now())
+  updated_at         DateTime     @updatedAt
+
+  @@index([pack_group])
+  @@index([recipe_category])
+  @@index([status])
+  @@map("nutrition_packs")
+}
+
 model CookingOperation {
   id                      String                 @id
   user_id                 String

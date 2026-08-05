@@ -2,8 +2,18 @@ const { query, isAvailable } = require('../data/pg_client');
 const { recipesDb } = require('../data/recipes_db');
 const { ingredientsDb } = require('../data/ingredients_db');
 const { analyzeRecipeIngredients } = require('./recipe_ingredient_analysis');
+const { listBPackOptionsFromNutritionPacks } = require('./nutrition_pack_repository');
 
 const canonicalRecipeById = new Map(recipesDb.map(recipe => [recipe.id, recipe]));
+const RECIPE_LIFE_STAGES = new Set(['幼犬', '成年犬', '老年犬']);
+
+function assertValidRecipeLifeStage(value) {
+  if (!RECIPE_LIFE_STAGES.has(value)) {
+    const error = new Error('life_stage must be one of: 幼犬, 成年犬, 老年犬');
+    error.code = 'INVALID_LIFE_STAGE';
+    throw error;
+  }
+}
 
 function parseJson(value, fallback) {
   if (value == null) return fallback;
@@ -160,6 +170,13 @@ async function getRecipeNames() {
 }
 
 async function listBPackOptions() {
+  try {
+    return await listBPackOptionsFromNutritionPacks();
+  } catch (error) {
+    if (error.code !== 'DB_UNAVAILABLE' && error.code !== '42P01') {
+      console.warn('[NutritionRepo] nutrition pack lookup failed, using recipes:', error.message);
+    }
+  }
   const { recipes, source } = await listRecipes();
   const grouped = new Map();
   for (const recipe of recipes) {
@@ -187,6 +204,8 @@ async function updateRecipe(id, patch = {}) {
     error.code = 'DB_UNAVAILABLE';
     throw error;
   }
+
+  if (patch.life_stage !== undefined) assertValidRecipeLifeStage(patch.life_stage);
 
   const bPack = patch.nutrition_snapshot?.b_pack;
   if (bPack !== undefined && patch.status !== 'draft') {
@@ -243,18 +262,7 @@ async function updateRecipe(id, patch = {}) {
   };
 }
 
-async function createRecipe(patch = {}) {
-  if (!(await isAvailable())) {
-    const error = new Error('recipes table unavailable');
-    error.code = 'DB_UNAVAILABLE';
-    throw error;
-  }
-
-  const idRows = await query(`SELECT id FROM recipes WHERE id LIKE 'dog_recipe_%'`, []);
-  const maxId = idRows.rows.reduce((max, row) => {
-    const match = String(row.id || '').match(/^dog_recipe_(\d+)$/);
-    return match ? Math.max(max, Number(match[1])) : max;
-  }, 0);
+function buildRecipeCreatePayload(patch, maxId, now = new Date()) {
   const id = patch.id || `dog_recipe_${String(maxId + 1).padStart(3, '0')}`;
   const defaults = {
     id,
@@ -277,8 +285,27 @@ async function createRecipe(patch = {}) {
     img: '',
     status: 'draft',
     version: 1,
+    created_at: now,
+    updated_at: now,
   };
-  const payload = { ...defaults, ...patch, id };
+  return { ...defaults, ...patch, id };
+}
+
+async function createRecipe(patch = {}) {
+  if (!(await isAvailable())) {
+    const error = new Error('recipes table unavailable');
+    error.code = 'DB_UNAVAILABLE';
+    throw error;
+  }
+
+  if (patch.life_stage !== undefined) assertValidRecipeLifeStage(patch.life_stage);
+
+  const idRows = await query(`SELECT id FROM recipes WHERE id LIKE 'dog_recipe_%'`, []);
+  const maxId = idRows.rows.reduce((max, row) => {
+    const match = String(row.id || '').match(/^dog_recipe_(\d+)$/);
+    return match ? Math.max(max, Number(match[1])) : max;
+  }, 0);
+  const payload = buildRecipeCreatePayload(patch, maxId);
   const columns = await getRecipeColumns();
   const entries = Object.entries(payload).filter(([key, value]) => columns.has(key) && value !== undefined);
   const jsonKeys = new Set(['health_tags', 'ingredients', 'nutrition_snapshot', 'cooking_profile']);
@@ -295,6 +322,39 @@ async function createRecipe(patch = {}) {
     recipe: recipe ? withIngredientAnalysis(recipe, ingredientLibrary.ingredients) : null,
     source: 'pg',
   };
+}
+
+async function deleteRecipe(id) {
+  if (!(await isAvailable())) {
+    const error = new Error('recipes table unavailable');
+    error.code = 'DB_UNAVAILABLE';
+    throw error;
+  }
+
+  const references = await query(
+    `SELECT
+       (SELECT COUNT(*)::int FROM cooking_operations WHERE recipe_id = $1) AS cooking_operations,
+       (SELECT COUNT(*)::int FROM feeding_records WHERE recipe_id = $1) AS feeding_records`,
+    [id]
+  );
+  const usage = references.rows[0] || {};
+  if (Number(usage.cooking_operations) > 0 || Number(usage.feeding_records) > 0) {
+    const error = new Error('该食谱已有烹饪或喂养记录，不能删除');
+    error.code = 'RECIPE_IN_USE';
+    throw error;
+  }
+
+  try {
+    const result = await query('DELETE FROM recipes WHERE id = $1 RETURNING id, name', [id]);
+    return result.rows[0] || null;
+  } catch (error) {
+    if (error.code === '23503') {
+      const conflict = new Error('该食谱已有业务记录引用，不能删除');
+      conflict.code = 'RECIPE_IN_USE';
+      throw conflict;
+    }
+    throw error;
+  }
 }
 
 function buildRecipeIndexByName(recipes) {
@@ -381,7 +441,8 @@ module.exports = {
   listBPackOptions,
   createRecipe,
   updateRecipe,
+  deleteRecipe,
   getIngredientMap,
   buildRecipeIndexByName,
-  _test: { mergeIngredientRows, mergeIngredientAliases, normalizeRecipe, validateBPackObject, withIngredientAnalysis },
+  _test: { mergeIngredientRows, mergeIngredientAliases, normalizeRecipe, validateBPackObject, assertValidRecipeLifeStage, buildRecipeCreatePayload, withIngredientAnalysis },
 };

@@ -120,8 +120,9 @@ test('B包按食材总重10%计算且明确排除烹饪与营养计算', () => {
   assert.equal(application.excluded_from_cooking, true);
 });
 
-test('B包同时接受稳定category code和旧APK中文分类', () => {
-  const options = [{ category: '成犬通用', category_code: 'ADULT_GENERAL', enabled: true }];
+test('B包同时接受pack_id、稳定category code和旧APK中文分类', () => {
+  const options = [{ pack_id: 'dog_pack_003', category: '成犬通用', category_code: 'ADULT_GENERAL', enabled: true }];
+  assert.equal(_test.selectBPackOption(options, 'dog_pack_003'), options[0]);
   assert.equal(_test.selectBPackOption(options, 'ADULT_GENERAL'), options[0]);
   assert.equal(_test.selectBPackOption(options, '成犬通用'), options[0]);
   assert.equal(_test.selectBPackOption(options, 'UNKNOWN'), null);

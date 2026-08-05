@@ -250,7 +250,7 @@ router.post('/fresh-check/analyze', authMiddleware, asyncHandler(async (req, res
     const cachePath = path.resolve(__dirname, '../../.data', `compare_cache_${safeCacheId(`${user.id}_${pet.id}`)}.json`);
     if (fs.existsSync(cachePath)) energyTarget = cachedEnergyTarget(JSON.parse(fs.readFileSync(cachePath, 'utf8')), { petUpdatedAt: pet.updated_at, feedbackCount });
   } catch (_) { /* Fresh Check safely falls back to the shared deterministic formula. */ }
-  const result = await buildFreshCheckAnalysis({ pet: energyTarget ? { ...pet, energy_target_kcal: energyTarget } : pet, ingredients, meal_intent: req.body?.meal_intent, b_pack_category: req.body?.b_pack_category });
+  const result = await buildFreshCheckAnalysis({ pet: energyTarget ? { ...pet, energy_target_kcal: energyTarget } : pet, ingredients, meal_intent: req.body?.meal_intent, pack_id: req.body?.pack_id, b_pack_category: req.body?.b_pack_category });
   if (!result.recipe.ingredients.length) return res.status(400).json({ success: false, error: localizedError('invalidIngredient', locale) });
   const analysis_id = storeAnalysis({ userId: user.id, kind: 'fresh-check', result });
   const localized = await localizeSemanticResultWithAi(result, locale, translatePresentationFields);

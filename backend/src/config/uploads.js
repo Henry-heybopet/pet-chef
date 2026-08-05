@@ -8,6 +8,7 @@ if (configuredUploadsDir && !path.isAbsolute(configuredUploadsDir)) {
 const uploadsDir = configuredUploadsDir || path.resolve(__dirname, '../../public/uploads');
 const avatarDir = path.join(uploadsDir, 'avatars');
 const recipeUploadsDir = path.join(uploadsDir, 'recipes');
+const nutritionPackUploadsDir = path.join(uploadsDir, 'nutrition-packs');
 
 function avatarPublicUrl(filename) {
   return `/uploads/avatars/${filename}`;
@@ -17,5 +18,6 @@ module.exports = {
   uploadsDir,
   avatarDir,
   recipeUploadsDir,
+  nutritionPackUploadsDir,
   avatarPublicUrl,
 };

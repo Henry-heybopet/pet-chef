@@ -14,11 +14,12 @@ const VEGETABLE = ['菜', '萝卜', '西兰花', '菠菜', '蓝莓', '苹果', '
 const FRUIT = ['苹果', '蓝莓', '草莓', '蔓越莓', '覆盆子', '黑莓', '梨', '香蕉', '西瓜', '哈密瓜', '桃', '芒果', '木瓜'];
 const FAT = ['鱼油', '橄榄油', '亚麻籽油'];
 const CALCIUM = ['钙', '蛋壳粉', '骨粉', '营养包'];
-const B_PACK_CATEGORIES = ['幼犬通用', '控钙幼犬（大型幼犬）', '成犬通用', '老年犬通用', '美毛护肤', '低敏单一蛋白', '护肝'];
+const B_PACK_CATEGORIES = ['幼犬通用', '控钙幼犬（大型幼犬）', '成犬通用', '老年犬通用', '脑发育支持', '关节保护', '美毛护肤', '低敏单一蛋白', '护肝'];
 const PLAIN_WATER_NAMES = new Set(['水', '清水', '饮用水', '纯净水', '矿泉水', 'water']);
 const B_PACK_CATEGORY_CODES = {
   幼犬通用: 'PUPPY_GENERAL', '控钙幼犬（大型幼犬）': 'LARGE_PUPPY_CONTROLLED_CALCIUM',
   成犬通用: 'ADULT_GENERAL', 老年犬通用: 'SENIOR_GENERAL', 美毛护肤: 'COAT_CARE',
+  脑发育支持: 'BRAIN_DEVELOPMENT', 关节保护: 'JOINT_PROTECTION',
   低敏单一蛋白: 'HYPOALLERGENIC_SINGLE_PROTEIN', 护肝: 'LIVER_SUPPORT',
 };
 const INGREDIENT_IDS = {
@@ -99,10 +100,10 @@ function bPackApplication(totalWeight) {
   };
 }
 
-function selectBPackOption(options, requestedCategory) {
-  const requested = clean(requestedCategory);
+function selectBPackOption(options, requestedIdentifier) {
+  const requested = clean(requestedIdentifier);
   if (!requested) return null;
-  return options.find(option => option.category_code === requested || option.category === requested) || null;
+  return options.find(option => option.pack_id === requested || option.category_code === requested || option.category === requested) || null;
 }
 
 function normalizeIngredients(items = []) {
@@ -174,22 +175,25 @@ function bPackEligibility(pet, category) {
   const facts = { stage_code: stage, body_size_code: petBodySize(pet), category_code: B_PACK_CATEGORY_CODES[category] || 'UNKNOWN' };
   const eligibility = (enabled, reason, reason_code) => ({ enabled, recommended: false, reason, reason_code, facts });
   if (pet.species && pet.species !== 'dog') return eligibility(false, '当前B全价营养包仅适用于犬类。', 'B_PACK_DOG_ONLY');
-  if (['pregnancy', 'lactation'].includes(pet.special_period)) return eligibility(false, '妊娠或哺乳期需要专用方案，当前7个营养包均不可选。', 'B_PACK_PREGNANCY_LACTATION_UNAVAILABLE');
+  if (['pregnancy', 'lactation'].includes(pet.special_period)) return eligibility(false, '妊娠或哺乳期需要专用方案，当前全价营养包均不可选。', 'B_PACK_PREGNANCY_LACTATION_UNAVAILABLE');
 
   if (stage === 'puppy') {
     const allowed = largePuppy ? '控钙幼犬（大型幼犬）' : '幼犬通用';
+    if (category === '脑发育支持') return eligibility(true, '符合幼犬脑发育功能支持需求。', 'B_PACK_PUPPY_BRAIN_SUPPORT_ELIGIBLE');
     return category === allowed
       ? eligibility(true, largePuppy ? '符合大型/巨型幼犬成长阶段。' : '符合当前幼犬成长阶段。', largePuppy ? 'B_PACK_LARGE_PUPPY_ELIGIBLE' : 'B_PACK_PUPPY_ELIGIBLE')
       : eligibility(false, category.includes('幼犬') ? '该营养包不符合当前幼犬体型。' : '幼犬不能使用成犬、老年犬或成犬功能型营养包。', category.includes('幼犬') ? 'B_PACK_PUPPY_SIZE_MISMATCH' : 'B_PACK_PUPPY_STAGE_MISMATCH');
   }
 
   if (stage === 'senior') {
+    if (category === '关节保护') return eligibility(true, '符合老年犬关节功能支持需求。', 'B_PACK_SENIOR_JOINT_SUPPORT_ELIGIBLE');
     return category === '老年犬通用'
       ? eligibility(true, '符合当前老年犬生命阶段。', 'B_PACK_SENIOR_ELIGIBLE')
       : eligibility(false, '当前为老年犬，仅可选择老年犬专用全价营养包。', 'B_PACK_SENIOR_ONLY');
   }
 
   if (category === '成犬通用') return eligibility(true, '适用于成年犬日常维持。', 'B_PACK_ADULT_ELIGIBLE');
+  if (category === '关节保护') return eligibility(true, '适用于成年犬关节功能支持。', 'B_PACK_ADULT_JOINT_SUPPORT_ELIGIBLE');
   if (category === '美毛护肤') return eligibility(hasCoatNeed, hasCoatNeed ? '符合美毛或皮肤护理需求。' : '宠物档案没有美毛或皮肤护理需求。', hasCoatNeed ? 'B_PACK_COAT_ELIGIBLE' : 'B_PACK_COAT_NOT_ELIGIBLE');
   if (category === '低敏单一蛋白') return eligibility(hasAllergyNeed, hasAllergyNeed ? '符合过敏或低敏记录。' : '宠物档案没有过敏或低敏记录。', hasAllergyNeed ? 'B_PACK_ALLERGY_ELIGIBLE' : 'B_PACK_ALLERGY_NOT_ELIGIBLE');
   if (category === '护肝') return eligibility(hasLiverNeed, hasLiverNeed ? '符合肝脏健康记录。' : '宠物档案没有肝脏健康记录。', hasLiverNeed ? 'B_PACK_LIVER_ELIGIBLE' : 'B_PACK_LIVER_NOT_ELIGIBLE');
@@ -203,6 +207,7 @@ async function getFreshCheckBPackOptions(pet) {
     const eligibility = bPackEligibility(pet, option.category);
     const dataConflict = option.data_conflict;
     return [option.category, {
+      pack_id: option.pack_id,
       category: option.category,
       category_code: B_PACK_CATEGORY_CODES[option.category] || 'UNKNOWN',
       name: clean(option.b_pack).split('：')[0],
@@ -871,7 +876,7 @@ async function recognizeFreshCheck({ text }) {
   }
 }
 
-async function buildFreshCheckAnalysis({ pet, ingredients, meal_intent, b_pack_category }, dependencies = {}) {
+async function buildFreshCheckAnalysis({ pet, ingredients, meal_intent, pack_id, b_pack_category }, dependencies = {}) {
   const bPacks = await getFreshCheckBPackOptions(pet);
   const ingredientLibrary = await getIngredientMap();
   const normalizedIngredients = normalizeIngredients(ingredients);
@@ -890,9 +895,9 @@ async function buildFreshCheckAnalysis({ pet, ingredients, meal_intent, b_pack_c
       lookupMeta = { status: 'service_unavailable', retried_ingredients: lookupCandidates.map(item => item.name), unresolved_ingredients: lookupCandidates.map(item => item.name) };
     }
   }
-  const requestedCategory = clean(b_pack_category);
-  const selectedBPack = selectBPackOption(bPacks.options, requestedCategory);
-  if (requestedCategory && (!selectedBPack || !selectedBPack.enabled)) {
+  const requestedPack = clean(pack_id || b_pack_category);
+  const selectedBPack = selectBPackOption(bPacks.options, requestedPack);
+  if (requestedPack && (!selectedBPack || !selectedBPack.enabled)) {
     const error = new Error(selectedBPack?.reason || '所选全价营养包不存在或不适合当前宠物档案');
     error.status = 400;
     throw error;

@@ -18,7 +18,8 @@ const { buildRecommendationSignals } = require('./services/recommendation_signal
 const { cacheContextHash, isRecommendationCacheValid, publicPetContext, recommendWithHeyboAgent, fallbackRanking, PROMPT_VERSION } = require('./services/ai_recommendation');
 const heyboRoutes = require('./routes/heybo');
 const { getCorsOrigins, printRegionSummary, getEnvironment } = require('./config/region_config');
-const { listRecipes, listAdminRecipes, getRecipeById, getRecipeNames, createRecipe, updateRecipe, buildRecipeIndexByName, getIngredientMap } = require('./services/nutrition_repository');
+const { listRecipes, listAdminRecipes, getRecipeById, getRecipeNames, createRecipe, updateRecipe, deleteRecipe, buildRecipeIndexByName, getIngredientMap } = require('./services/nutrition_repository');
+const nutritionPackRepository = require('./services/nutrition_pack_repository');
 const { evaluateRecipe, getFreshCheckBPackOptions } = require('./services/fresh_check');
 const store = require('./services/heybo_store');
 const { generateToken, verifyToken } = require('./services/auth');
@@ -28,7 +29,7 @@ const adminAccounts = require('./services/admin_accounts');
 const { normalizeLocale, aiNutritionPresentationIsValid, buildAiNutritionFallback, cachedAiNutritionAnalysis, validationDetailsTranslationStatus } = require('./services/localization');
 const { attachCatalogPresentations } = require('./services/catalog_localization');
 const { localizeComparison } = require('./services/comparison_localization');
-const { uploadsDir, recipeUploadsDir } = require('./config/uploads');
+const { uploadsDir, recipeUploadsDir, nutritionPackUploadsDir } = require('./config/uploads');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -36,6 +37,7 @@ const runtimeDataDir = path.resolve(__dirname, '../.data');
 const AI_RECOMMENDATION_CACHE_VERSION = PROMPT_VERSION;
 fs.mkdirSync(uploadsDir, { recursive: true });
 fs.mkdirSync(recipeUploadsDir, { recursive: true });
+fs.mkdirSync(nutritionPackUploadsDir, { recursive: true });
 fs.mkdirSync(runtimeDataDir, { recursive: true });
 
 // 路由兼容性中间件：自动将 /api/xxx 转发至 /api/v1/xxx （防止生产环境 Nginx 或 Capacitor 容器导致 404）
@@ -170,7 +172,18 @@ app.get('/api/v1/recipes/:id', async (req, res) => {
   res.json({ success: true, recipe: localizedRecipe, source });
 });
 
+app.get('/api/v1/nutrition-packs', async (req, res) => {
+  try {
+    const { packs, source } = await nutritionPackRepository.listConsumerNutritionPacks(req.query.locale || req.query.lang);
+    res.json({ success: true, packs, count: packs.length, source });
+  } catch (err) {
+    console.error('Nutrition pack catalog error:', err.message);
+    res.status(500).json({ success: false, error: 'Nutrition pack catalog unavailable' });
+  }
+});
+
 const ADMIN_ROUTE_MODULES = [
+  ['/nutrition-packs', 'nutrition_packs'],
   ['/recipes', 'recipes'],
   ['/pets', 'pets'],
   ['/users', 'users'],
@@ -268,6 +281,7 @@ app.post('/api/v1/admin/recipes', async (req, res) => {
     if (err.code === 'DB_UNAVAILABLE') {
       return res.status(503).json({ success: false, error: 'recipes table unavailable; cannot create admin recipe' });
     }
+    if (err.code === 'INVALID_LIFE_STAGE') return res.status(400).json({ success: false, error: err.message });
     console.error('Admin recipe create error:', err.message);
     res.status(500).json({ success: false, error: err.message });
   }
@@ -311,11 +325,104 @@ app.patch('/api/v1/admin/recipes/:id', async (req, res) => {
     if (err.code === 'DB_UNAVAILABLE') {
       return res.status(503).json({ success: false, error: 'recipes table unavailable; cannot save admin changes' });
     }
-    if (err.code === 'INVALID_B_PACK') {
+    if (err.code === 'INVALID_B_PACK' || err.code === 'INVALID_LIFE_STAGE') {
       return res.status(400).json({ success: false, error: err.message });
     }
     console.error('Admin recipe update error:', err.message);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/v1/admin/recipes/:id', async (req, res) => {
+  try {
+    const recipe = await deleteRecipe(req.params.id);
+    if (!recipe) return res.status(404).json({ success: false, error: 'Recipe not found' });
+    res.json({ success: true, recipe });
+  } catch (err) {
+    if (err.code === 'RECIPE_IN_USE') {
+      return res.status(409).json({ success: false, error: err.message });
+    }
+    if (err.code === 'DB_UNAVAILABLE') {
+      return res.status(503).json({ success: false, error: 'recipes table unavailable; cannot delete recipe' });
+    }
+    console.error('Admin recipe delete error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Admin nutrition packs — 独立管理全价营养包 B
+app.get('/api/v1/admin/nutrition-packs', async (req, res) => {
+  try {
+    const { packs, source } = await nutritionPackRepository.listNutritionPacks({ fallback: false });
+    res.json({ success: true, packs, count: packs.length, source });
+  } catch (err) {
+    console.error('Admin nutrition pack list error:', err.message);
+    const status = err.code === 'DB_UNAVAILABLE' ? 503 : 500;
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/v1/admin/nutrition-packs', async (req, res) => {
+  try {
+    const pack = await nutritionPackRepository.createNutritionPack(req.body || {});
+    res.status(201).json({ success: true, pack, source: 'pg' });
+  } catch (err) {
+    const status = err.code === 'INVALID_NUTRITION_PACK' ? 400 : err.code === 'DB_UNAVAILABLE' ? 503 : 500;
+    console.error('Admin nutrition pack create error:', err.message);
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+app.patch('/api/v1/admin/nutrition-packs/:id', async (req, res) => {
+  try {
+    const pack = await nutritionPackRepository.updateNutritionPack(req.params.id, req.body || {});
+    if (!pack) return res.status(404).json({ success: false, error: 'Nutrition pack not found' });
+    res.json({ success: true, pack, source: 'pg' });
+  } catch (err) {
+    const status = err.code === 'INVALID_NUTRITION_PACK' ? 400 : err.code === 'DB_UNAVAILABLE' ? 503 : 500;
+    console.error('Admin nutrition pack update error:', err.message);
+    res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/v1/admin/nutrition-packs/:id', async (req, res) => {
+  try {
+    const pack = await nutritionPackRepository.deleteNutritionPack(req.params.id);
+    if (!pack) return res.status(404).json({ success: false, error: 'Nutrition pack not found' });
+    res.json({ success: true, pack });
+  } catch (err) {
+    if (err.code === 'NUTRITION_PACK_IN_USE') {
+      return res.status(409).json({ success: false, error: err.message });
+    }
+    if (err.code === 'DB_UNAVAILABLE') {
+      return res.status(503).json({ success: false, error: 'nutrition_packs table unavailable; cannot delete nutrition pack' });
+    }
+    console.error('Admin nutrition pack delete error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/v1/admin/nutrition-packs/:id/image', async (req, res) => {
+  try {
+    const imageData = String(req.body?.image_data || '');
+    const match = imageData.match(/^data:image\/(png|jpe?g|webp);base64,(.+)$/i);
+    if (!match) return res.status(400).json({ success: false, error: 'Invalid image data' });
+    const ext = match[1].toLowerCase().replace('jpeg', 'jpg');
+    const buffer = Buffer.from(match[2], 'base64');
+    if (!buffer.length) return res.status(400).json({ success: false, error: 'Empty image data' });
+    if (buffer.length > 4 * 1024 * 1024) {
+      return res.status(413).json({ success: false, error: 'Image too large; max 4MB' });
+    }
+    const safeId = req.params.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `${safeId}-${Date.now()}.${ext}`;
+    fs.writeFileSync(path.join(nutritionPackUploadsDir, filename), buffer);
+    const pack = await nutritionPackRepository.updateNutritionPack(req.params.id, { img: `/uploads/nutrition-packs/${filename}` });
+    if (!pack) return res.status(404).json({ success: false, error: 'Nutrition pack not found' });
+    res.json({ success: true, pack, source: 'pg' });
+  } catch (err) {
+    const status = err.code === 'DB_UNAVAILABLE' ? 503 : 500;
+    console.error('Admin nutrition pack image upload error:', err.message);
+    res.status(status).json({ success: false, error: err.message });
   }
 });
 

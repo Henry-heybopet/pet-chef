@@ -5,7 +5,7 @@ const DATA_DIR = path.resolve(__dirname, '../../.data');
 const STORE_PATH = process.env.ADMIN_ACCOUNTS_FILE || path.join(DATA_DIR, 'admin_accounts.json');
 
 const REGIONS = ['CN', 'US', 'EU'];
-const MODULES = ['dashboard', 'users', 'pets', 'devices', 'recipes', 'products', 'orders', 'medical', 'doctors', 'faults', 'subadmins'];
+const MODULES = ['dashboard', 'users', 'pets', 'devices', 'recipes', 'nutrition_packs', 'products', 'orders', 'medical', 'doctors', 'faults', 'subadmins'];
 
 const isProduction = process.env.NODE_ENV === 'production';
 const SUPER_USERNAME = process.env.ADMIN_SUPER_USERNAME || (isProduction ? '' : 'Heybopetadmin');
