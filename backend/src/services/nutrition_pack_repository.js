@@ -167,12 +167,19 @@ async function syncNutritionPackSeeds() {
         );
         initial = mostFrequentRecipeSnapshot(rows.rows);
       }
+      if (!Object.keys(initial.composition).length && seed.composition) {
+        initial.composition = seed.composition;
+      }
+      if (seed.status === 'active') {
+        const compositionError = validateComposition(initial.composition);
+        if (compositionError) throw new Error(`${seed.name}: ${compositionError}`);
+      }
       const nutritionSnapshot = {
         ...initial.nutrition_snapshot,
         source_recipe_category: seed.recipe_category,
         source_data_conflict: initial.data_conflict,
       };
-      await client.query(
+      const upserted = await client.query(
         `INSERT INTO nutrition_packs
           (id, name, pack_group, category_code, recipe_category, life_stage, description,
            health_tags, product_pricing, img, composition, nutrition_snapshot, status, version, created_at, updated_at)
@@ -184,14 +191,18 @@ async function syncNutritionPackSeeds() {
            life_stage = EXCLUDED.life_stage,
            description = COALESCE(nutrition_packs.description, EXCLUDED.description),
            health_tags = CASE WHEN nutrition_packs.health_tags = '[]'::jsonb THEN EXCLUDED.health_tags ELSE nutrition_packs.health_tags END,
-           updated_at = NOW()`,
+           composition = CASE WHEN nutrition_packs.composition = '{}'::jsonb THEN EXCLUDED.composition ELSE nutrition_packs.composition END,
+           updated_at = NOW()
+         RETURNING composition, nutrition_snapshot`,
         [seed.id, seed.name, seed.pack_group, seed.category_code, seed.recipe_category,
           seed.life_stage, seed.description, JSON.stringify(seed.health_tags || []),
           JSON.stringify(initial.composition), JSON.stringify(nutritionSnapshot), seed.status]
       );
+      const persistedComposition = parseJson(upserted.rows[0]?.composition, initial.composition);
+      const persistedNutrition = parseJson(upserted.rows[0]?.nutrition_snapshot, nutritionSnapshot);
       if (seed.recipe_category) {
         const compatibilityNutrition = Object.fromEntries(
-          NUTRIENT_FIELDS.map(key => [key, nutritionSnapshot[key] ?? null])
+          NUTRIENT_FIELDS.map(key => [key, persistedNutrition[key] ?? null])
         );
         await client.query(
           `UPDATE recipes
@@ -200,7 +211,7 @@ async function syncNutritionPackSeeds() {
              || jsonb_build_object('b_pack', $2::jsonb, 'pack_id', $3::text),
              updated_at = NOW()
            WHERE category = $1`,
-          [seed.recipe_category, JSON.stringify(initial.composition), seed.id, JSON.stringify(compatibilityNutrition)]
+          [seed.recipe_category, JSON.stringify(persistedComposition), seed.id, JSON.stringify(compatibilityNutrition)]
         );
       }
     }

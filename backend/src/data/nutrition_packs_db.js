@@ -8,6 +8,11 @@ const NUTRITION_PACKS_DB = [
     life_stage: '幼犬',
     description: '适用于小型及中型幼犬的日常成长营养支持。',
     health_tags: ['成长', '通用'],
+    composition: {
+      '幼犬维矿预混料': 1.6,
+      'DHA-EPA鱼油或藻油': 1,
+      '成长期钙磷矿物粉（Ca:P≈1.3:1）': 1.4,
+    },
     status: 'active',
   },
   {
@@ -19,6 +24,11 @@ const NUTRITION_PACKS_DB = [
     life_stage: '幼犬',
     description: '适用于大型幼犬的控钙成长营养支持。',
     health_tags: ['成长', '控钙'],
+    composition: {
+      'DHA-EPA鱼油或藻油': 1.3,
+      '大型幼犬低钙维矿预混料': 1.8,
+      '控钙钙磷矿物粉（低钙，Ca:P≈1.2:1）': 0.9,
+    },
     status: 'active',
   },
   {
@@ -30,6 +40,11 @@ const NUTRITION_PACKS_DB = [
     life_stage: '成年犬',
     description: '适用于成年犬日常营养维护。',
     health_tags: ['日常维护', '通用'],
+    composition: {
+      '成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）': 4,
+      'Omega-3鱼油或藻油（EPA+DHA必需脂肪酸来源）': 3,
+      '成犬维矿预混料（含维生素、矿物质和铁铜锌锰碘硒等微量元素）': 3,
+    },
     status: 'active',
   },
   {
@@ -41,6 +56,11 @@ const NUTRITION_PACKS_DB = [
     life_stage: '老年犬',
     description: '适用于老年犬的日常轻负担营养支持。',
     health_tags: ['老年养护', '轻负担'],
+    composition: {
+      'EPA-DHA鱼油或藻油': 1.3,
+      '低磷钙源或钙磷维护矿物粉': 0.8,
+      '老年犬维矿预混料（抗氧化支持）': 1.9,
+    },
     status: 'active',
   },
   {
@@ -74,6 +94,11 @@ const NUTRITION_PACKS_DB = [
     life_stage: '成年犬',
     description: '用于美毛护肤方向的功能营养支持。',
     health_tags: ['美毛', '护肤'],
+    composition: {
+      '成犬维矿预混料': 1.6,
+      'Omega-3鱼油或藻油': 1.5,
+      '成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）': 0.9,
+    },
     status: 'active',
   },
   {
@@ -85,6 +110,11 @@ const NUTRITION_PACKS_DB = [
     life_stage: '成年犬',
     description: '用于护肝方向的功能营养支持。',
     health_tags: ['护肝'],
+    composition: {
+      '成犬维矿预混料': 1.8,
+      'Omega-3鱼油或藻油': 1.2,
+      '成犬钙磷维护矿物粉（Ca:P≈1.2–1.4:1）': 1,
+    },
     status: 'active',
   },
   {
@@ -96,6 +126,11 @@ const NUTRITION_PACKS_DB = [
     life_stage: '成年犬',
     description: '不使用动物蛋白载体的低敏功能营养支持。',
     health_tags: ['低敏', '无动物蛋白'],
+    composition: {
+      '低敏维矿预混料': 2,
+      '藻油或高度精炼低敏油脂': 0.8,
+      '低敏钙磷矿物粉（不含动物蛋白载体）': 1.2,
+    },
     status: 'active',
   },
 ];

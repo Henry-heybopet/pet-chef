@@ -50,6 +50,13 @@ test('new brain and joint packs remain drafts until reviewed composition exists'
   assert.deepEqual(pending.map(pack => pack.status), ['draft', 'draft']);
 });
 
+test('every active seed pack has the reviewed three-item composition', () => {
+  const active = NUTRITION_PACKS_DB.filter(pack => pack.status === 'active');
+  assert.equal(active.length, 7);
+  assert.ok(active.every(pack => Object.keys(pack.composition || {}).length === 3));
+  assert.ok(active.every(pack => _test.validateComposition(pack.composition) === ''));
+});
+
 test('active composition validation requires complete explicit sources', () => {
   assert.match(_test.validateComposition({ '维生素预混料': 1 }), /矿物质|钙/);
   assert.equal(_test.validateComposition({

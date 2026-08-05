@@ -62,10 +62,13 @@ async function main() {
     const nutritionSnapshot = {
       water_content_pct: item.water_content_pct || 0.70,
       protein_pct: item.protein_pct || 0,
+      fat_pct: item.fat_pct || 0,
       carb_pct: item.carb_pct || 0,
+      fiber_pct: item.fiber_pct || 0,
       veg_pct: item.veg_pct || 0,
       add_pct: item.add_pct || 0,
       ingredient_benefits: item.ingredient_benefits || '',
+      b_pack: item.b_pack || '',
     };
 
     await prisma.recipe.create({
@@ -78,6 +81,7 @@ async function main() {
         health_tags: item.tags || [],
         ingredients: item.ingredients || {},
         nutrition_snapshot: nutritionSnapshot,
+        img: item.img || '',
         cooking_profile: item.cooking_base || {},
         status: 'active',
         version: 1,
