@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Pet Chef production database backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

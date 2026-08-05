@@ -1,0 +1,8 @@
+[Unit]
+Description=Back up the Pet Chef production PostgreSQL database
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/petchef/deploy/backup-petchef.sh
