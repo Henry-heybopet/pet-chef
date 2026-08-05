@@ -1,0 +1,20 @@
+# Offline production overlay for an ECS that cannot reach Docker Hub.
+# The base image must come from the validated amd64 test environment.
+FROM petchef-backend:b1.00
+
+USER root
+WORKDIR /app
+
+RUN rm -rf /app/src /app/prisma /app/migrations /app/scripts /frontend
+
+COPY backend/src/ ./src/
+COPY backend/prisma/ ./prisma/
+COPY backend/migrations/ ./migrations/
+COPY backend/scripts/ ./scripts/
+COPY frontend/package.json /frontend/package.json
+COPY frontend/src/data/demoRecipes.js /frontend/src/data/demoRecipes.js
+COPY frontend/src/i18n/dataTranslations.js /frontend/src/i18n/dataTranslations.js
+
+RUN npx prisma generate && chown -R petchef:petchef /app /frontend
+
+USER petchef
