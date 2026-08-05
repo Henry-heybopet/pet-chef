@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { localizeComparison } = require('../src/services/comparison_localization');
+const { _test: catalogLocalization } = require('../src/services/catalog_localization');
 const { aiNutritionPresentationIsValid } = require('../src/services/localization');
 
 const foreignLocales = ['en', 'de', 'fr', 'es', 'it', 'ja', 'ko'];
@@ -10,6 +11,21 @@ function assertTargetScript(text, locale) {
   assert.ok(text, `${locale} presentation must not be empty`);
   if (locale !== 'ja') assert.doesNotMatch(text, han, `${locale} presentation contains unexpected Han text: ${text}`);
 }
+
+test('legacy recipe pack labels resolve to the canonical translated pack catalog', () => {
+  assert.equal(
+    catalogLocalization.packCanonicalName('幼犬成长营养包B：幼犬维矿预混料 1.6'),
+    '幼犬通用全价营养包',
+  );
+  assert.equal(
+    catalogLocalization.packCanonicalName('成犬维护营养包B：成犬维矿预混料 1.7'),
+    '成年犬通用全价营养包',
+  );
+  assert.equal(
+    catalogLocalization.packCanonicalName('老年犬轻负担营养包B：老年犬维矿预混料 1.9'),
+    '老年犬通用全价营养包',
+  );
+});
 
 test('all catalog recipes, ingredient benefits, and packs have seven foreign presentations', async () => {
   const { recipesDb } = require('../src/data/recipes_db');

@@ -7,6 +7,7 @@
 - 管理端上传文件保存在持久化的 `uploads/recipes/`，数据库保存 `/uploads/recipes/...`；迁移和种子脚本只为空图片回填，不覆盖管理员上传路径。
 - 新版客户端传递 `locale`；仅当 `recipe.presentation.translation_status` 为 `translated`（中文为 `source`）时渲染 API presentation，否则使用客户端已审核翻译表，避免外语界面直接显示中文 fallback。
 - `recipe_translations`、`ingredient_translations`、`pack_translations` 保存人工审核后的展示文本。
+- 旧食谱 B 包名称先映射到规范营养包名称，再查询 `pack_translations`，避免其它字段已翻译但整条食谱仍被标记为中文回退。
 - AI 对比先运行一次确定性评分和安全判断，再用语义 code 生成各语言 presentation；缓存按 locale 隔离。
 - HeyboPet Agent 的 `summary`、营养需求、注意事项、参考因素及逐食谱理由必须使用请求 locale；后端校验目标文字，失败时使用确定性的八语言规则回退。推荐缓存哈希必须包含 locale，禁止复用其他语言的缓存。
 - `HeyboPet` 保持品牌原文；中文品牌“王牌”在外语界面使用 `VIP Pet`。

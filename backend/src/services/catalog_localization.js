@@ -1,4 +1,5 @@
 const { query, isAvailable } = require('../data/pg_client');
+const { canonicalNutritionPackName } = require('../data/nutrition_packs_db');
 const { normalizeLocale } = require('./localization');
 
 const HAN_RE = /[\u3400-\u9fff]/;
@@ -12,7 +13,8 @@ function isLocalizedText(value, locale) {
 }
 
 function packCanonicalName(value) {
-  return String(value || '').split(/[：:（(]/)[0].trim();
+  const legacyName = String(value || '').split(/[：:（(]/)[0].trim();
+  return canonicalNutritionPackName(legacyName);
 }
 
 function sourcePresentation(recipe, locale = 'zh') {
@@ -93,4 +95,4 @@ async function attachCatalogPresentations(recipes, requestedLocale) {
   }
 }
 
-module.exports = { attachCatalogPresentations };
+module.exports = { attachCatalogPresentations, _test: { packCanonicalName } };
