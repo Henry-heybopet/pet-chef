@@ -268,6 +268,28 @@ test('零食自制提供完整参数并复用启动前确认流程', () => {
   assert.match(translationsSource, /'customSnack'/);
 });
 
+test('零食自制必须保存宠物、食材和克重，并在启动前使用现有鲜食验证估算能量', () => {
+  assert.match(customSnackSource, /profiles = \[\], authToken, onAddPet/);
+  assert.match(customSnackSource, /pet_id: pet\.id/);
+  assert.match(customSnackSource, /ingredients: snackIngredients/);
+  assert.match(customSnackSource, /meal_intent: 'snack'/);
+  assert.match(customSnackSource, /api\.freshCheckAnalyze/);
+  assert.match(customSnackSource, /snackIngredients: result\.recipe\?\.ingredients \|\| snackIngredients/);
+  assert.match(customSnackSource, /estimatedEnergy:/);
+  assert.match(customSnackSource, /custom-snack-ingredient-row/);
+  assert.match(cookingSource, /is_custom_snack: Boolean\(recipeContext\?\.isCustomSnack\)/);
+  assert.match(cookingSource, /ingredients_snapshot: recipeContext\?\.snackIngredients/);
+  assert.match(cookingSource, /cooking-record-snack-ingredients/);
+});
+
+test('零食反馈要求实际喂食克数，后端可读取每日估算能量', () => {
+  assert.match(cookingSource, /const isCustomSnack = Boolean\(record\.operation\?\.is_custom_snack\)/);
+  assert.match(cookingSource, /amount_g: feedback\.amountG/);
+  assert.match(apiSource, /getDailyFeedingEnergy/);
+  assert.match(translationsSource, /'actualFeedingAmount'/);
+  assert.match(translationsSource, /'estimatedEnergy'/);
+});
+
 test('多台鲜食机从一键烹饪进入时必须先选择设备', () => {
   assert.match(cookingSource, /function DeviceSelectionModal/);
   assert.match(cookingSource, /if \(devices\.length === 1\)/);

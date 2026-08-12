@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { api } from '../api/index';
 import { useLanguage } from '../i18n/LanguageContext';
 import { useTranslation } from '../i18n/translations';
 
@@ -134,7 +135,7 @@ function ParameterCard({ icon, title, range, value, min, max, unit, onChange, ti
   );
 }
 
-export default function CustomSnackPage({ onBack, onStart }) {
+export default function CustomSnackPage({ onBack, onStart, profiles = [], authToken, onAddPet }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
   const [blade, setBlade] = useState(1);
@@ -143,6 +144,15 @@ export default function CustomSnackPage({ onBack, onStart }) {
   const [hours, setHours] = useState(0);
   const [minutes, setMinutes] = useState(10);
   const [seconds, setSeconds] = useState(0);
+  const pets = useMemo(() => profiles.filter(pet => !pet.species || pet.species === 'dog'), [profiles]);
+  const [petId, setPetId] = useState(() => pets[0]?.id || '');
+  const [ingredients, setIngredients] = useState([{ name: '', grams: '' }]);
+  const [submitting, setSubmitting] = useState(false);
+  const [formMessage, setFormMessage] = useState('');
+
+  useEffect(() => {
+    if (!pets.some(pet => String(pet.id) === String(petId))) setPetId(pets[0]?.id || '');
+  }, [pets, petId]);
 
   const setDuration = totalSeconds => {
     const value = clamp(totalSeconds, 1, MAX_DURATION_SECONDS);
@@ -151,22 +161,52 @@ export default function CustomSnackPage({ onBack, onStart }) {
     setSeconds(value % 60);
   };
 
-  const handleStart = () => {
+  const updateIngredient = (index, field, value) => {
+    setIngredients(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item));
+  };
+
+  const handleStart = async () => {
+    const pet = pets.find(item => String(item.id) === String(petId));
+    const snackIngredients = ingredients
+      .map(item => ({ name: item.name.trim(), grams: Number(item.grams) }))
+      .filter(item => item.name && Number.isFinite(item.grams) && item.grams > 0);
+    if (!pet) return setFormMessage(t('freshCheckSelectPetRequired'));
+    if (!snackIngredients.length) return setFormMessage(t('freshCheckIngredientRequired'));
     const totalSeconds = clamp(hours * 3600 + minutes * 60 + seconds, 1, MAX_DURATION_SECONDS);
-    onStart({
-      recipe: { id: 'custom-snack', name: t('customSnack') },
-      cookParams: {
-        temperature,
-        cookTime: totalSeconds,
-        cookMinutes: Math.ceil(totalSeconds / 60),
-        power: 8,
-        speed: String(speed),
-        blade,
-      },
-      displayGrams: 0,
-      isCustomSnack: true,
-      autoStart: true,
-    });
+    setSubmitting(true);
+    setFormMessage('');
+    try {
+      const result = await api.freshCheckAnalyze({ pet_id: pet.id, ingredients: snackIngredients, meal_intent: 'snack', locale: lang }, authToken);
+      const blocked = (result.findings || []).some(item => item.level === 'danger' || item.risk_level === 'danger');
+      const kcalPerGram = Number(result.energy?.kcal_per_gram ?? result.daily_need?.recipe_kcal_per_gram);
+      if (blocked) throw new Error(t('customSnackUnsafeIngredients'));
+      if (!Number.isFinite(kcalPerGram) || kcalPerGram < 0) throw new Error(t('customSnackEnergyUnavailable'));
+      onStart({
+        recipe: { id: 'custom-snack', name: t('customSnack') },
+        cookParams: {
+          temperature,
+          cookTime: totalSeconds,
+          cookMinutes: Math.ceil(totalSeconds / 60),
+          power: 8,
+          speed: String(speed),
+          blade,
+        },
+        profile: { id: pet.id, name: pet.name },
+        displayGrams: Number(result.recipe?.total_weight_g) || snackIngredients.reduce((sum, item) => sum + item.grams, 0),
+        snackIngredients: result.recipe?.ingredients || snackIngredients,
+        estimatedEnergy: {
+          totalKcal: Number(result.energy?.total_kcal) || 0,
+          kcalPerGram,
+          source: result.energy_lookup?.source || 'estimated',
+        },
+        isCustomSnack: true,
+        autoStart: true,
+      });
+    } catch (error) {
+      setFormMessage(error?.message || t('freshCheckAnalyzeFailed'));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const rows = [
@@ -275,8 +315,31 @@ export default function CustomSnackPage({ onBack, onStart }) {
           </div>
         </section>
 
-        <button className="custom-snack-start" type="button" onClick={handleStart}>
-          <Icon name="play" />{t('startCooking')}
+        <section className="custom-snack-card custom-snack-intake-card">
+          <h2>{t('selectPet')}</h2>
+          {pets.length ? (
+            <select value={petId} onChange={event => setPetId(event.target.value)} aria-label={t('selectPet')}>
+              {pets.map(pet => <option key={pet.id} value={pet.id}>{pet.name}</option>)}
+            </select>
+          ) : (
+            <button className="custom-snack-add-pet" type="button" onClick={onAddPet}>{t('createPet')}</button>
+          )}
+          <div className="custom-snack-ingredient-heading">
+            <h2>{t('customSnackIngredients')}</h2>
+            <button type="button" onClick={() => setIngredients(current => [...current, { name: '', grams: '' }])}>{t('addIngredient')}</button>
+          </div>
+          {ingredients.map((ingredient, index) => (
+            <div className="custom-snack-ingredient-row" key={index}>
+              <input value={ingredient.name} onChange={event => updateIngredient(index, 'name', event.target.value)} placeholder={t('ingredientName')} aria-label={t('ingredientName')} />
+              <input type="number" min="1" step="1" value={ingredient.grams} onChange={event => updateIngredient(index, 'grams', event.target.value)} placeholder={t('grams')} aria-label={t('grams')} />
+              <button type="button" disabled={ingredients.length === 1} onClick={() => setIngredients(current => current.filter((_, itemIndex) => itemIndex !== index))}>{t('delete')}</button>
+            </div>
+          ))}
+          {formMessage && <p className="custom-snack-form-message" role="alert">{formMessage}</p>}
+        </section>
+
+        <button className="custom-snack-start" type="button" onClick={handleStart} disabled={submitting}>
+          <Icon name="play" />{submitting ? t('processing') : t('startCooking')}
         </button>
       </div>
     </main>

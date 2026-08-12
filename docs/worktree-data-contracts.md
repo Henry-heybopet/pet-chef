@@ -115,7 +115,7 @@
 | 医疗数据 | `medical_records`、`vet_reviews` | 化验单、医院截图、医生审核结果 |
 | 设备绑定 | `devices`、`device_pet_bindings` | 内部 `device_id` + 外部 `tuya_device_id` |
 | 烹饪操作 | `cooking_operations` | 每次启动/暂停/完成/失败都要留记录 |
-| 喂食记录 | `feeding_records` | 连接宠物、食谱、烹饪结果 |
+| 喂食记录 | `feeding_records` | 连接宠物、食谱、烹饪结果；零食自制必须记录实际喂食克数和估算能量 |
 | 食谱 | `recipes`、`recipe_sources` | 内置、AI、医生、兽医认证来源 |
 | 商城 | `products`、`skus`、`orders`、`order_items`、`payments` | 支付和订单必须可对账 |
 | 关键审计 | `audit_logs` | 登录、绑定、支付、医生审核、数据删除 |

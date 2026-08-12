@@ -363,13 +363,30 @@ router.get('/feeding-records', authMiddleware, asyncHandler(async (req, res) => 
   res.json({ success: true, records: store.listByHousehold('feeding_records', user.id, household.id) });
 }));
 
+router.get('/feeding-records/daily-energy', authMiddleware, asyncHandler(async (req, res) => {
+  const user = await requireUser(req);
+  const petId = String(req.query.pet_id || '').trim();
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : undefined;
+  const pet = await petRepository.getPetForUser(user.id, petId);
+  if (!pet) return res.status(404).json({ success: false, error: 'Pet not found' });
+  res.json({ success: true, ...store.getDailyFeedingEnergy(user.id, pet.id, date) });
+}));
+
 router.post('/feeding-records', authMiddleware, asyncHandler(async (req, res) => {
   const user = await requireUser(req);
-  const payload = req.body || {};
-  const pet = await petRepository.getPetForUser(user.id, payload.pet_id);
+  const payload = { ...(req.body || {}) };
+  let pet = await petRepository.getPetForUser(user.id, payload.pet_id);
+  if (!pet && !payload.pet_id && String(payload.pet_name || '').trim()) {
+    const matches = (await petRepository.listPetsForUser(user.id))
+      .filter(item => String(item.name || '').trim() === String(payload.pet_name).trim());
+    if (matches.length === 1) {
+      [pet] = matches;
+      payload.pet_id = pet.id;
+    }
+  }
   if (!pet) return res.status(404).json({ success: false, error: 'Pet not found' });
   const record = store.createFeedingRecord(user.id, payload, { petOwnershipVerified: true });
-  res.status(201).json({ success: true, record });
+  res.status(201).json({ success: true, record, daily_energy: store.getDailyFeedingEnergy(user.id, pet.id) });
 }));
 
 router.get('/health-records', authMiddleware, asyncHandler(async (req, res) => {

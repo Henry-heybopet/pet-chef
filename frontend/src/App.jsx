@@ -1141,6 +1141,9 @@ function AppInner({ theme, onToggleTheme }) {
       {screen === 'custom_snack' && (
         <CustomSnackPage
           onBack={() => setScreen('device_flow')}
+          profiles={profiles}
+          authToken={authToken}
+          onAddPet={handleAddPet}
           onStart={data => {
             setCookingData(data);
             setScreen('device_flow');

@@ -135,6 +135,7 @@ export const api = {
   recordCookingOperation: (body, token) => authedPost('/api/operations/cooking', body, token),
   listCookingOperations: (token) => authedGet('/api/operations/cooking', token),
   listFeedingRecords: (token) => authedGet('/api/feeding-records', token),
+  getDailyFeedingEnergy: (petId, date, token) => authedGet(`/api/feeding-records/daily-energy?${new URLSearchParams({ pet_id: petId, ...(date ? { date } : {}) })}`, token),
   createFeedingRecord: (body, token) => authedPost('/api/feeding-records', body, token),
   createHealthRecord: (body, token) => authedPost('/api/health-records', body, token),
   createMedicalRecord: (body, token) => authedPost('/api/medical-records', body, token),

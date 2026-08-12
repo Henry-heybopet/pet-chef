@@ -736,13 +736,36 @@ function createFeedingRecord(userId, payload = {}, { petOwnershipVerified = fals
   }
 
   const sessionId = String(payload.session_id || payload.cooking_session_id || '').trim();
-  if (sessionId && !db.cooking_operations.some(item =>
-    item.user_id === userId && item.session_id === sessionId
-  )) {
+  const cookingOperationId = String(payload.cooking_operation_id || '').trim();
+  const operation = db.cooking_operations.find(item =>
+    item.user_id === userId
+    && ((cookingOperationId && item.id === cookingOperationId) || (sessionId && item.session_id === sessionId))
+  );
+  if ((sessionId || cookingOperationId) && !operation) {
     const error = new Error('Cooking session not found');
     error.status = 404;
     throw error;
   }
+
+  const isCustomSnack = Boolean(operation?.is_custom_snack);
+  const amountG = payload.amount_g === undefined || payload.amount_g === null || payload.amount_g === ''
+    ? null
+    : Number(payload.amount_g);
+  if (isCustomSnack && (!Number.isFinite(amountG) || amountG <= 0)) {
+    const error = new Error('Actual feeding grams are required for custom snacks');
+    error.status = 400;
+    throw error;
+  }
+  const preparedWeightG = Number(operation?.total_weight_g || 0);
+  if (isCustomSnack && preparedWeightG > 0 && amountG > preparedWeightG) {
+    const error = new Error('Actual feeding grams cannot exceed the prepared snack weight');
+    error.status = 400;
+    throw error;
+  }
+  const kcalPerGram = Number(operation?.estimated_energy?.kcalPerGram);
+  const estimatedKcal = isCustomSnack && Number.isFinite(kcalPerGram) && kcalPerGram >= 0
+    ? Number((amountG * kcalPerGram).toFixed(1))
+    : null;
 
   return createRecord('feeding_records', userId, {
     ...payload,
@@ -751,7 +774,30 @@ function createFeedingRecord(userId, payload = {}, { petOwnershipVerified = fals
     fed_at: payload.fed_at || payload.feeding_at || now(),
     palatability: String(payload.palatability || '').trim(),
     stool_status: String(payload.stool_status || '').trim(),
+    amount_g: Number.isFinite(amountG) ? amountG : undefined,
+    meal_type: isCustomSnack ? 'snack' : payload.meal_type,
+    estimated_kcal: estimatedKcal,
+    energy_estimate_source: isCustomSnack ? (operation?.estimated_energy?.source || 'estimated') : undefined,
+    ingredients_snapshot: isCustomSnack ? operation?.ingredients_snapshot : undefined,
   });
+}
+
+function dateInShanghai(value) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(value));
+  const field = type => parts.find(part => part.type === type)?.value;
+  return `${field('year')}-${field('month')}-${field('day')}`;
+}
+
+function getDailyFeedingEnergy(userId, petId, date = dateInShanghai(now())) {
+  const records = db.feeding_records.filter(item =>
+    item.user_id === userId
+    && String(item.pet_id) === String(petId)
+    && dateInShanghai(item.fed_at || item.created_at) === date
+  );
+  const estimatedKcal = Number(records.reduce((sum, item) => sum + (Number(item.estimated_kcal) || 0), 0).toFixed(1));
+  return { date, estimated_kcal: estimatedKcal, records_count: records.length };
 }
 
 function listAdminCookingOperations({ deviceId = '', limit = 500 } = {}) {
@@ -948,6 +994,7 @@ module.exports = {
   createRecord,
   createCookingOperation,
   createFeedingRecord,
+  getDailyFeedingEnergy,
   listAdminCookingOperations,
   listAdminDeviceCommunicationLogs,
   createOrder,

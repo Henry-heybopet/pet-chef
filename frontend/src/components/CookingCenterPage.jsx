@@ -747,15 +747,24 @@ function RecordRow({ record, onFeedback }) {
   const date = formatDate(record.operation?.started_at || record.operation?.created_at, lang);
   const recipeName = tData(record.recipeName, lang);
   const feedback = record.feedback;
+  const snackIngredients = record.operation?.is_custom_snack && Array.isArray(record.operation?.ingredients_snapshot)
+    ? record.operation.ingredients_snapshot
+      .map(item => `${item.name} ${item.grams}g`)
+      .filter(Boolean)
+      .join('、')
+    : '';
   return (
     <div className="cooking-record-row">
       <div className="cooking-record-copy">
         <strong>{t('cookingRecordSentence', { date, device: record.operation?.device_name || t('defaultCookerName'), pet: record.petName, recipe: recipeName })}</strong>
+        {snackIngredients && <span className="cooking-record-snack-ingredients">{t('customSnackIngredients')}：{snackIngredients}</span>}
         {feedback && (
           <span className="cooking-record-feedback">
             {t('palatability')}：{feedbackOptionLabel(feedback.palatability, PALATABILITY_OPTIONS, t)}
             {'｜'}
             {t('stoolStatus')}：{feedbackOptionLabel(feedback.stool_status, STOOL_OPTIONS, t)}
+            {Number(feedback.amount_g) > 0 && <>{'｜'}{t('actualFeedingAmount')}：{feedback.amount_g}g</>}
+            {Number(feedback.estimated_kcal) > 0 && <>{'｜'}{t('estimatedEnergy')}：{feedback.estimated_kcal} kcal</>}
           </span>
         )}
       </div>
@@ -771,6 +780,9 @@ function FeedbackModal({ record, saving, onCancel, onConfirm }) {
   const t = useTranslation(lang);
   const [palatability, setPalatability] = useState(null);
   const [stool, setStool] = useState(null);
+  const [amountG, setAmountG] = useState('');
+  const isCustomSnack = Boolean(record.operation?.is_custom_snack);
+  const actualAmount = Number(amountG);
 
   return (
     <div className="cooking-sheet-mask">
@@ -785,9 +797,15 @@ function FeedbackModal({ record, saving, onCancel, onConfirm }) {
         <div className="cooking-option-grid">
           {STOOL_OPTIONS.map(item => <button key={item.code} className={stool?.code === item.code ? 'is-active' : ''} onClick={() => setStool(item)}>{t(item.key)}</button>)}
         </div>
+        {isCustomSnack && (
+          <label className="cooking-feedback-amount">
+            <strong>{t('actualFeedingAmount')}</strong>
+            <input type="number" min="1" step="1" value={amountG} onChange={event => setAmountG(event.target.value)} placeholder={t('grams')} />
+          </label>
+        )}
         <div className="cooking-feedback-actions">
           <GhostButton disabled={saving} onClick={onCancel}>{t('cancelBtn')}</GhostButton>
-          <PrimaryButton disabled={saving || !palatability || !stool} onClick={() => onConfirm({ palatability: palatability.value, stool: stool.value })}>{t('confirm')}</PrimaryButton>
+          <PrimaryButton disabled={saving || !palatability || !stool || (isCustomSnack && (!Number.isFinite(actualAmount) || actualAmount <= 0))} onClick={() => onConfirm({ palatability: palatability.value, stool: stool.value, amountG: isCustomSnack ? actualAmount : undefined })}>{t('confirm')}</PrimaryButton>
         </div>
       </div>
     </div>
@@ -1375,6 +1393,9 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       pet_id: recipeContext?.profile?.id || '',
       pet_name: recipeContext?.profile?.name || '',
       total_weight_g: recipeContext?.displayGrams || 0,
+      is_custom_snack: Boolean(recipeContext?.isCustomSnack),
+      ingredients_snapshot: recipeContext?.snackIngredients || undefined,
+      estimated_energy: recipeContext?.estimatedEnergy || undefined,
       started_at: requestedAtIso,
       cooking_params_snapshot: cooking.params,
     };
@@ -1423,6 +1444,8 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       cookingParamsSnapshot: cooking.params,
       plannedSeconds: cookTime,
       isCustomSnack: Boolean(recipeContext?.isCustomSnack),
+      snackIngredients: recipeContext?.snackIngredients || undefined,
+      estimatedEnergy: recipeContext?.estimatedEnergy || undefined,
     });
     await reportCookingOperation({
       ...operationContext,
@@ -1462,6 +1485,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         fed_at: new Date().toISOString(),
         palatability: feedback.palatability,
         stool_status: feedback.stool,
+        amount_g: feedback.amountG,
         cooking_operation_id: feedbackRecord.id,
         session_id: feedbackRecord.operation?.session_id || '',
         client_event_id: feedbackRecord.feedbackClientEventId,

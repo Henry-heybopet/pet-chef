@@ -1984,7 +1984,7 @@ html[lang='ja'] .home-action-title {
   width: min(100%, 426px);
   min-height: 100dvh;
   margin: 0 auto;
-  padding: calc(17px + env(safe-area-inset-top, 0px)) 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  padding: calc(17px + env(safe-area-inset-top, 0px)) 14px calc(92px + env(safe-area-inset-bottom, 0px));
 }
 
 .custom-snack-header {
@@ -2521,6 +2521,77 @@ html[lang='ja'] .home-action-title {
   height: 19px;
 }
 
+.custom-snack-start:disabled {
+  cursor: wait;
+  opacity: .72;
+}
+
+.custom-snack-intake-card {
+  padding: 12px 13px;
+}
+
+.custom-snack-intake-card > select,
+.custom-snack-ingredient-row input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(140, 185, 197, .26);
+  border-radius: 8px;
+  padding: 8px 9px;
+  background: rgba(5, 19, 30, .45);
+  color: #edf7fa;
+  font: inherit;
+  font-size: 12px;
+}
+
+.custom-snack-ingredient-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 0 7px;
+}
+
+.custom-snack-ingredient-heading button,
+.custom-snack-add-pet,
+.custom-snack-ingredient-row button {
+  border: 1px solid rgba(30, 217, 212, .42);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: rgba(30, 217, 212, .09);
+  color: #70eee9;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.custom-snack-add-pet {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.custom-snack-ingredient-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 74px 40px;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.custom-snack-ingredient-row button {
+  border-color: rgba(236, 142, 142, .42);
+  background: rgba(236, 142, 142, .08);
+  color: #f3b0b0;
+}
+
+.custom-snack-ingredient-row button:disabled {
+  opacity: .32;
+}
+
+.custom-snack-form-message {
+  margin: 9px 0 0;
+  color: #ffd49c;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 @media (max-width: 370px) {
   .custom-snack-shell {
     padding-right: 10px;
@@ -2724,6 +2795,31 @@ html[lang='ja'] .home-action-title {
 .cooking-feedback-card p,
 .cooking-feedback-card strong {
   font-size: 12px;
+}
+
+.cooking-record-snack-ingredients {
+  display: block;
+  margin-top: 4px;
+  color: var(--theme-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.cooking-feedback-amount {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.cooking-feedback-amount input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--theme-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--theme-surface-soft);
+  color: var(--theme-text-primary);
+  font: inherit;
 }
 
 .cooking-feedback-actions {
