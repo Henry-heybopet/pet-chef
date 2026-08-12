@@ -18,6 +18,7 @@ import RecipeList from './components/RecipeList';
 import RecipeMake from './components/RecipeMake';
 import CookingScreen from './components/CookingScreen';
 import CookingCenterPage from './components/CookingCenterPage';
+import CustomSnackPage from './components/CustomSnackPage';
 import { FreshCheckResultScreen, FreshCheckScreen } from './components/FreshCheckScreen';
 import BottomTabBar from './components/BottomTabBar';
 import RecipeCategoryCatalog from './components/RecipeCategoryCatalog';
@@ -1137,16 +1138,21 @@ function AppInner({ theme, onToggleTheme }) {
       {screen === 'recipe_list' && <RecipeList onBack={goBack} category={selectedCategory} profile={profile} onSelectRecipe={handleSelectRecipe} lang={lang} />}
       {screen === 'recipe_make' && <RecipeMake onBack={goBack} recipe={selectedRecipe} profile={profile} onStartCooking={handleStartCooking} lang={lang} />}
       {screen === 'cooking' && <CookingScreen onBack={goHome} cookingData={cookingData} lang={lang} />}
+      {screen === 'custom_snack' && (
+        <CustomSnackPage
+          onBack={() => setScreen('device_flow')}
+          onStart={data => {
+            setCookingData(data);
+            setScreen('device_flow');
+          }}
+        />
+      )}
       {screen === 'device_flow' && (
         <CookingCenterPage
           onBack={goHome}
           authToken={authToken}
           recipeContext={cookingData}
-          onChooseRecipe={() => {
-            setSelectedCategory(null);
-            setEntrySource('catalog');
-            setScreen('recipe_catalog');
-          }}
+          onOpenCustomSnack={() => setScreen('custom_snack')}
         />
       )}
       {screen === 'mall_placeholder' && (

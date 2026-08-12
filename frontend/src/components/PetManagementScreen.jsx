@@ -79,21 +79,18 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
               <div 
                 key={pet.id}
                 onClick={() => onSelectPet && onSelectPet(pet)}
-                className="card selectable-card"
+                className="card selectable-card pet-management-card"
                 style={{
-                  display: 'flex',
                   padding: '16px 18px',
                   background: 'var(--theme-card)',
                   border: '1px solid var(--border)',
                   borderRadius: '16px',
                   cursor: 'pointer',
-                  gap: 16,
-                  alignItems: 'flex-start',
                   transition: 'all 0.2s ease'
                 }}
               >
                 {/* Left side: Avatar & action buttons */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '82px', flexShrink: 0 }}>
+                <div className="pet-management-side">
                   <div style={{
                     width: '56px',
                     height: '56px',
@@ -115,7 +112,7 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                   </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div className="pet-management-actions">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -156,7 +153,7 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                 </div>
 
                 {/* Right side: Information block */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div className="pet-management-info">
                   {/* Row 1: Name, Sex, Age */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: '800', fontSize: '15px', color: 'var(--theme-text-primary)' }}>{pet.name}</span>
@@ -194,7 +191,7 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
 
                   {/* Row 3: Feeding target & allergens */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '11px', marginTop: 4 }}>
-                    <div style={{ display: 'flex', gap: 4 }}>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                       <span style={{ color: 'var(--secondary)', fontWeight: 'bold' }}>
                         {t('goalLabel')}:
                       </span>
@@ -202,7 +199,7 @@ export default function PetManagementScreen({ profiles = [], breeds = [], onAddP
                         {goalKey ? t(goalKey) : (pet.feedingGoal || t('maintainBody'))}
                       </span>
                     </div>
-                    <div style={{ display: 'flex', gap: 4 }}>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                       <span style={{ color: '#FF9600', fontWeight: 'bold' }}>
                         {t('allergensLabel')}:
                       </span>
