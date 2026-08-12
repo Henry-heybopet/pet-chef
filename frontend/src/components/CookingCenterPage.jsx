@@ -1047,6 +1047,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const safetyRef = useRef({ lidAlerted: false });
   const nativeDpSeenRef = useRef(new Set());
   const operationFlushRef = useRef(Promise.resolve());
+  const deviceCommunicationFlushRef = useRef(new Map());
   const selectedDeviceDpsRef = useRef({});
   const recipeEntryHandledRef = useRef(false);
   const autoStartHandledRef = useRef(false);
@@ -1180,28 +1181,45 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       device_name: device.name || t('defaultCookerName'),
       status: device.isOnline === false ? 'offline' : 'online',
     }, authToken);
-    await api.syncDeviceDp(device.devId, {
-      tuya_device_id: device.devId,
-      online: device.isOnline,
-      dps: parseDps(device),
-      reported_at: new Date().toISOString(),
-    }, authToken);
+    // Device-list DP data is only a discovery snapshot. The selected device's
+    // subscription owns both the initial DP snapshot and all later updates.
+    // Writing this list snapshot here can race a newer dpUpdate.
     if (refreshAfter) await refreshData();
   };
 
-  const reportDeviceCommunication = async (devId, dps) => {
-    if (!authToken || !devId) return;
-    try {
-      await api.recordDeviceCommunication(devId, {
+  const enqueueDeviceCommunication = (devId, send) => {
+    if (!devId) return Promise.resolve();
+    const previous = deviceCommunicationFlushRef.current.get(devId) || Promise.resolve();
+    const next = previous
+      .catch(() => {})
+      .then(send)
+      .catch(error => {
+        // Telemetry is best-effort. It must not block or fail a device command.
+        console.warn('Device communication log failed:', error?.message || error);
+      });
+    deviceCommunicationFlushRef.current.set(devId, next);
+    return next;
+  };
+
+  const reportDeviceCommunication = (devId, dps) => {
+    if (!authToken || !devId) return Promise.resolve();
+    return enqueueDeviceCommunication(devId, () => api.recordDeviceCommunication(devId, {
         direction: 'app_to_device',
         dps,
         reported_at: new Date().toISOString(),
-      }, authToken);
-    } catch (error) {
-      // Observability must not prevent a safety command from reaching the
-      // machine; the next successful command/report will still be logged.
-      console.warn('Device communication log failed:', error?.message || error);
-    }
+      }, authToken));
+  };
+
+  const syncNativeDpsToBackend = (devId, dps, online) => {
+    if (!authToken || !devId) return Promise.resolve();
+    return enqueueDeviceCommunication(devId, () => api.syncDeviceDp(devId, {
+      tuya_device_id: devId,
+      online,
+      // The native callback is an incremental device report. Persist the raw
+      // patch, never the UI's merged cache, so an old DP5 cannot be replayed.
+      dps,
+      reported_at: new Date().toISOString(),
+    }, authToken));
   };
 
   useEffect(() => { refreshData(); }, [authToken]);
@@ -1252,23 +1270,21 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     if (!devId) return undefined;
     let listener;
     let alive = true;
-    const applyNativeDps = rawDps => {
+    let receivedRealtimeUpdate = false;
+    const applyNativeDps = (rawDps, source = 'realtime') => {
       let nextDps = rawDps || {};
       if (typeof nextDps === 'string') {
         try { nextDps = JSON.parse(nextDps || '{}'); } catch { nextDps = {}; }
       }
       if (!nextDps || typeof nextDps !== 'object' || Array.isArray(nextDps) || Object.keys(nextDps).length === 0) return false;
+      // getDeviceDpState is only an initial snapshot. A callback received
+      // before it is newer and must never be overwritten by that snapshot.
+      if (source === 'snapshot' && receivedRealtimeUpdate) return false;
+      if (source === 'realtime') receivedRealtimeUpdate = true;
       nativeDpSeenRef.current.add(devId);
       const mergedDps = { ...selectedDeviceDpsRef.current, ...nextDps };
       selectedDeviceDpsRef.current = mergedDps;
-      if (authToken) {
-        api.syncDeviceDp(devId, {
-          tuya_device_id: devId,
-          online: selectedDevice?.isOnline,
-          dps: mergedDps,
-          reported_at: new Date().toISOString(),
-        }, authToken).catch(() => {});
-      }
+      void syncNativeDpsToBackend(devId, nextDps, selectedDevice?.isOnline);
       setDevices(prev => prev.map(device => {
         const itemDevId = device.devId || device.tuya_device_id;
         return itemDevId === devId ? { ...device, dps: mergedDps } : device;
@@ -1291,11 +1307,14 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     };
     HeyboTuya.addListener('dpUpdate', event => {
       if (!alive || event.devId !== devId) return;
-      applyNativeDps(event.dps);
-    }).then(result => { listener = result; });
-    HeyboTuya.subscribeDevice({ devId })
+      applyNativeDps(event.dps, 'realtime');
+    })
+      .then(result => {
+        listener = result;
+        return HeyboTuya.subscribeDevice({ devId });
+      })
       .then(() => HeyboTuya.getDeviceDpState({ devId }))
-      .then(result => { if (alive) applyNativeDps(result?.dps); })
+      .then(result => { if (alive) applyNativeDps(result?.dps, 'snapshot'); })
       .catch(() => {});
     return () => {
       alive = false;
@@ -1319,9 +1338,9 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     }
     setStartSending(true);
     try {
-      await reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_requested' });
+      void reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_requested' });
       await HeyboTuya.resetCooking({ devId: selectedDevice.devId });
-      await reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_sent' });
+      void reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_sent' });
       setStartConfirmOpen(true);
     } catch (error) {
       setMessage(error?.message || t('deviceCommandFailed'));
@@ -1361,7 +1380,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     };
     setStartSending(true);
     try {
-      await reportDeviceCommunication(selectedDevice.devId, {
+      void reportDeviceCommunication(selectedDevice.devId, {
         1: true,
         3: 'diy',
         7: cookTime,
@@ -1377,7 +1396,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         power,
         speed,
       });
-      await reportDeviceCommunication(selectedDevice.devId, { 107: 'start_sent' });
+      void reportDeviceCommunication(selectedDevice.devId, { 107: 'start_sent' });
     } catch (error) {
       clearCookingRuntime(selectedDevice.devId);
       await reportCookingOperation({
@@ -1421,9 +1440,9 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     if (!selectedDevice || completeSending || getDeviceView(selectedDevice, t).statusCode !== 'done') return;
     setCompleteSending(true);
     try {
-      await reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_requested' });
+      void reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_requested' });
       await HeyboTuya.resetCooking({ devId: selectedDevice.devId });
-      await reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_sent' });
+      void reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_sent' });
     } catch (error) {
       setMessage(error?.message || t('deviceCommandFailed'));
     } finally {

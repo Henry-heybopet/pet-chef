@@ -57,7 +57,7 @@ test('启动前确认只保留幼童和宠物安全项', () => {
   assert.doesNotMatch(checksBlock, /startCheckIngredients|startCheckWater|startCheckLid/);
 });
 
-test('烹饪控制指令在 SDK 调用前后都记录通讯事件，日志失败不阻断设备命令', () => {
+test('烹饪控制指令在 SDK 调用前后都记录通讯事件，日志队列不阻断设备命令', () => {
   const prepareBlock = cookingSource.match(/const handlePrepareCooking = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] || '';
   const startBlock = cookingSource.match(/const handleStartCooking = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] || '';
   assert.match(prepareBlock, /107: 'reset_requested'/);
@@ -66,7 +66,11 @@ test('烹饪控制指令在 SDK 调用前后都记录通讯事件，日志失败
   assert.match(startBlock, /107: 'start_requested'/);
   assert.match(startBlock, /HeyboTuya\.startDiyCooking/);
   assert.match(startBlock, /107: 'start_sent'/);
+  assert.doesNotMatch(prepareBlock, /await reportDeviceCommunication/);
+  assert.doesNotMatch(startBlock, /await reportDeviceCommunication/);
   assert.match(cookingSource, /console\.warn\('Device communication log failed:'/);
+  assert.match(cookingSource, /const deviceCommunicationFlushRef = useRef\(new Map\(\)\)/);
+  assert.match(cookingSource, /const enqueueDeviceCommunication = \(devId, send\) =>/);
 });
 
 test('一键烹饪使用整幅设备图且不显示工程数据面板', () => {
@@ -201,10 +205,15 @@ test('运行中锁定启动时的食谱展示，但不让缓存决定设备状�
   assert.doesNotMatch(cookingSource, /resolveCookingDisplayState|START_STATUS_FENCE_MS|preservePendingStart/);
 });
 
-test('订阅后立即用原生DP快照校正ECS缓存，待机时清除旧运行上下文', () => {
-  assert.match(cookingSource, /HeyboTuya\.subscribeDevice\(\{ devId \}\)\s*\.then\(\(\) => HeyboTuya\.getDeviceDpState\(\{ devId \}\)\)/);
+test('订阅后仅用首个原生DP快照校正缓存，实时回调不可被快照覆盖', () => {
+  assert.match(cookingSource, /HeyboTuya\.addListener\('dpUpdate'[,\s\S]*?return HeyboTuya\.subscribeDevice\(\{ devId \}\);[\s\S]*?\.then\(\(\) => HeyboTuya\.getDeviceDpState\(\{ devId \}\)\)/);
   assert.doesNotMatch(cookingSource, /hasCookingStatusDps/);
   assert.match(cookingSource, /Object\.keys\(nextDps\)\.length === 0\) return false;/);
+  assert.match(cookingSource, /source === 'snapshot' && receivedRealtimeUpdate/);
+  assert.match(cookingSource, /applyNativeDps\(event\.dps, 'realtime'\)/);
+  assert.match(cookingSource, /applyNativeDps\(result\?\.dps, 'snapshot'\)/);
+  assert.match(cookingSource, /void syncNativeDpsToBackend\(devId, nextDps, selectedDevice\?\.isOnline\)/);
+  assert.doesNotMatch(cookingSource, /dps:\s*mergedDps,\s*reported_at/);
   assert.match(cookingSource, /nativeDpSeenRef\.current\.add\(devId\)/);
   assert.match(cookingSource, /if \(state === 'standby'\) \{[\s\S]*?clearCookingRuntime\(devId\);/);
   assert.match(nativeBridgeSource, /async getDeviceDpState\(\{ devId \}\)/);
@@ -212,6 +221,14 @@ test('订阅后立即用原生DP快照校正ECS缓存，待机时清除旧运行
   assert.match(androidAdapterSource, /getDeviceStatus\(devId, result -> \{/);
   assert.doesNotMatch(androidAdapterSource, /Map<String, Object> cached = dpsCache\.get\(devId\);[\s\S]*?getDeviceStatus\(devId/);
   assert.match(iosPluginSource, /@objc func getDeviceDpState\(_ call: CAPPluginCall\)/);
+  assert.match(androidAdapterSource, /listener\.onDpUpdate\(updatedDevId, new HashMap<>\(dps\)\)/);
+  assert.doesNotMatch(androidAdapterSource, /listener\.onDpUpdate\(updatedDevId, new HashMap<>\(merged\)\)/);
+});
+
+test('设备列表只登记元数据，不用发现快照覆盖订阅后的实时DP', () => {
+  const registrationBlock = cookingSource.match(/const registerBoundDevice = async \(device, refreshAfter = true\) => \{([\s\S]*?)\n  \};/)?.[1] || '';
+  assert.match(registrationBlock, /Device-list DP data is only a discovery snapshot/);
+  assert.doesNotMatch(registrationBlock, /api\.syncDeviceDp/);
 });
 
 test('完成确认仅向设备请求复位，并等待DP5待机回报切换页面', () => {

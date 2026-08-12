@@ -203,7 +203,10 @@ public class TuyaDeviceAdapterImpl implements TuyaDeviceAdapter {
                     Map<String, Object> merged = new HashMap<>(dpsCache.getOrDefault(updatedDevId, new HashMap<>()));
                     merged.putAll(dps);
                     dpsCache.put(updatedDevId, merged);
-                    if (listener != null) listener.onDpUpdate(updatedDevId, new HashMap<>(merged));
+                    // Preserve a merged cache for native reads, but forward the
+                    // SDK's raw patch to JavaScript. Re-emitting the cache can
+                    // replay an old DP5 with a later DP8 update.
+                    if (listener != null) listener.onDpUpdate(updatedDevId, new HashMap<>(dps));
                 }
 
                 @Override
