@@ -493,6 +493,8 @@ function App() {
   const [deviceError, setDeviceError] = useState('');
   const [deviceOperations, setDeviceOperations] = useState([]);
   const [deviceOperationError, setDeviceOperationError] = useState('');
+  const [deviceCommunications, setDeviceCommunications] = useState([]);
+  const [deviceCommunicationError, setDeviceCommunicationError] = useState('');
 
   // 处方药品维护列表状态
   const [medicines, setMedicines] = useState(MEDICINE_REGISTRY);
@@ -605,6 +607,14 @@ function App() {
       operation.tuya_device_id === selectedDevice.tuya_device_id
     );
   }, [deviceOperations, selectedDevice]);
+
+  const selectedDeviceCommunications = useMemo(() => {
+    if (!selectedDevice) return [];
+    return deviceCommunications.filter(log =>
+      log.device_id === selectedDevice.id ||
+      log.tuya_device_id === selectedDevice.tuya_device_id
+    );
+  }, [deviceCommunications, selectedDevice]);
 
   const filteredProducts = useMemo(() => {
     // 料包做区域隔离，配件全局显示
@@ -760,6 +770,16 @@ function App() {
       setDeviceOperations([]);
       setDeviceOperationError(error.message);
     }
+    setDeviceCommunicationError('');
+    try {
+      const res = await adminFetch('/api/admin/devices/communications');
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || '加载设备通讯日志失败');
+      setDeviceCommunications(data.logs || []);
+    } catch (error) {
+      setDeviceCommunications([]);
+      setDeviceCommunicationError(error.message);
+    }
   };
 
   const loadSubadmins = async () => {
@@ -800,6 +820,10 @@ function App() {
     if (canAccessModule('devices')) loadDevices();
     if (canAccessModule('subadmins')) loadSubadmins();
   }, [adminSession]);
+
+  useEffect(() => {
+    if (selectedDevice && canAccessModule('devices')) loadDevices();
+  }, [selectedDevice?.id]);
 
   const updateNutritionPackDraft = (packId, updater) => {
     setNutritionPackDrafts(prev => {
@@ -1764,6 +1788,29 @@ function App() {
                       </div>
                     </div>
 
+                    <section className="device-operation-log device-communication-log">
+                      <div className="device-operation-log-header">
+                        <div>
+                          <h5>设备通讯日志</h5>
+                          <p>仅记录 App 与设备的控制指令、DP5 状态和 DP12 故障；不记录 DP8 倒计时。</p>
+                        </div>
+                        <span>{selectedDeviceCommunications.length} 条</span>
+                      </div>
+                      {deviceCommunicationError && <p className="inline-error">日志加载失败：{deviceCommunicationError}</p>}
+                      {!deviceCommunicationError && selectedDeviceCommunications.length === 0 && (
+                        <p className="muted-text">暂无设备通讯记录。请先使用新版 APK 完成一次启动操作。</p>
+                      )}
+                      <div className="device-communication-timeline">
+                        {selectedDeviceCommunications.map(log => (
+                          <article className={`device-communication-event direction-${log.direction}`} key={log.id}>
+                            <time>{formatAdminTime(log.event_at || log.created_at)}</time>
+                            <strong>{log.direction === 'app_to_device' ? 'APP→设备' : '设备→APP'}</strong>
+                            <code>DP{log.dp_id}={String(log.value)}</code>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+
                     <section className="device-operation-log">
                       <div className="device-operation-log-header">
                         <div>
@@ -1806,6 +1853,7 @@ function App() {
                         ))}
                       </div>
                     </section>
+
                   </div>
                 </div>
               </div>

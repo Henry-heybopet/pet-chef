@@ -75,7 +75,7 @@ app.use(express.json({
 
 const isRealtimeStatusPath = (req) => {
   if (req.method === 'GET' && /^\/api\/v1\/(devices|pets|recipes|operations\/cooking)(\/|$)/.test(req.path)) return true;
-  if (req.method === 'POST' && /^\/api\/v1\/devices\/[^/]+\/dp-sync(\/|$)/.test(req.path)) return true;
+  if (req.method === 'POST' && /^\/api\/v1\/devices\/[^/]+\/(dp-sync|communication-log)(\/|$)/.test(req.path)) return true;
   return false;
 };
 
@@ -513,6 +513,19 @@ app.get('/api/v1/admin/devices/operations', async (req, res) => {
     success: true,
     operations,
     count: operations.length,
+    source: 'heybo_store',
+  });
+});
+
+app.get('/api/v1/admin/devices/communications', async (req, res) => {
+  const logs = store.listAdminDeviceCommunicationLogs({
+    deviceId: req.query.device_id,
+    limit: req.query.limit,
+  });
+  res.json({
+    success: true,
+    logs,
+    count: logs.length,
     source: 'heybo_store',
   });
 });

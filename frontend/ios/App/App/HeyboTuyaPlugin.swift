@@ -28,6 +28,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
         CAPPluginMethod(name: "connectBleDevice", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "subscribeDevice", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "unsubscribeDevice", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getDeviceDpState", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "publishDps", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openBluetoothSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startDiyCooking", returnType: CAPPluginReturnPromise),
@@ -404,6 +405,29 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
                 self.subscribedDevices.removeValue(forKey: devId)
             }
             call.resolve(["success": true, "devId": devId])
+        }
+    }
+
+    @objc func getDeviceDpState(_ call: CAPPluginCall) {
+        guard let devId = call.getString("devId") else {
+            call.reject("devId is required")
+            return
+        }
+        guard currentHomeId != 0 else {
+            call.reject("No homeId provided or set as default")
+            return
+        }
+        DispatchQueue.main.async {
+            let home = ThingSmartHome(homeId: self.currentHomeId)
+            home?.getDataWithSuccess({ _ in
+                guard let device = home?.deviceList?.first(where: { $0.devId == devId }) else {
+                    call.reject("Device not found")
+                    return
+                }
+                call.resolve(["success": true, "devId": devId, "dps": device.dps ?? [:]])
+            }, failure: { error in
+                call.reject("Get device DP state failed: \(error?.localizedDescription ?? \"unknown error\")")
+            })
         }
     }
     

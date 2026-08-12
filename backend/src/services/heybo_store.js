@@ -127,6 +127,7 @@ const initialDb = {
   devices: [],
   device_pet_bindings: [],
   cooking_operations: [],
+  device_communication_logs: [],
   device_operation_records: [],
   feeding_records: [],
   health_records: [],
@@ -140,6 +141,13 @@ const initialDb = {
 };
 
 let db = loadDb();
+
+function deviceCommunicationLogs() {
+  // Existing production JSON stores predate this field. Initialise it lazily so
+  // the first App command can create logs instead of failing on `.push`.
+  if (!Array.isArray(db.device_communication_logs)) db.device_communication_logs = [];
+  return db.device_communication_logs;
+}
 
 function now() {
   return new Date().toISOString();
@@ -513,7 +521,8 @@ function syncDeviceDp(userId, deviceId, payload = {}) {
     throw error;
   }
 
-  const dps = { ...(device.dps || {}), ...payload.dps };
+  const previousDps = device.dps || {};
+  const dps = { ...previousDps, ...payload.dps };
   const online = firstDefined(payload.online, payload.isOnline);
   Object.assign(device, {
     dps,
@@ -525,8 +534,62 @@ function syncDeviceDp(userId, deviceId, payload = {}) {
     updated_at: now(),
   });
 
+  // DP5/DP12 are support-relevant device-to-App events. DP8 is intentionally
+  // excluded: it reports every second and belongs only to the live UI.
+  [5, 12].forEach(dpId => {
+    if (payload.dps[dpId] === undefined || previousDps[dpId] === payload.dps[dpId]) return;
+    deviceCommunicationLogs().push({
+      id: id('dcl'),
+      user_id: userId,
+      household_id: device.household_id,
+      device_id: device.id,
+      tuya_device_id: device.tuya_device_id,
+      direction: 'device_to_app',
+      dp_id: String(dpId),
+      value: payload.dps[dpId],
+      event_at: payload.reported_at || now(),
+      created_at: now(),
+    });
+  });
+
   saveDb();
   return device;
+}
+
+function createDeviceCommunicationLogs(userId, deviceId, payload = {}) {
+  const device = db.devices.find(item =>
+    (item.id === deviceId || item.tuya_device_id === deviceId || item.tuya_device_id === payload.tuya_device_id) &&
+    userOwnsHousehold(userId, item.household_id)
+  );
+  if (!device) {
+    const error = new Error('Device not found');
+    error.status = 404;
+    throw error;
+  }
+  if (!payload.dps || typeof payload.dps !== 'object' || Array.isArray(payload.dps)) {
+    const error = new Error('dps object is required');
+    error.status = 400;
+    throw error;
+  }
+
+  const eventAt = payload.reported_at || now();
+  const logs = Object.entries(payload.dps)
+    .filter(([dpId]) => String(dpId) !== '8')
+    .map(([dpId, value]) => ({
+      id: id('dcl'),
+      user_id: userId,
+      household_id: device.household_id,
+      device_id: device.id,
+      tuya_device_id: device.tuya_device_id,
+      direction: 'app_to_device',
+      dp_id: String(dpId),
+      value,
+      event_at: eventAt,
+      created_at: now(),
+    }));
+  deviceCommunicationLogs().push(...logs);
+  saveDb();
+  return logs;
 }
 
 function unbindDevice(userId, deviceId) {
@@ -721,6 +784,19 @@ function listAdminCookingOperations({ deviceId = '', limit = 500 } = {}) {
   });
 }
 
+function listAdminDeviceCommunicationLogs({ deviceId = '', limit = 500 } = {}) {
+  const normalizedDeviceId = String(deviceId || '').trim();
+  return deviceCommunicationLogs()
+    .filter(item => !normalizedDeviceId || item.device_id === normalizedDeviceId || item.tuya_device_id === normalizedDeviceId)
+    .sort((a, b) => new Date(b.event_at || b.created_at) - new Date(a.event_at || a.created_at))
+    .slice(0, Math.max(1, Math.min(Number(limit) || 500, 1000)))
+    .map(log => ({
+      ...log,
+      user_name: db.users.find(user => user.id === log.user_id)?.display_name || log.user_id,
+      device_name: db.devices.find(device => device.id === log.device_id)?.device_name || '',
+    }));
+}
+
 function createOrder(userId, payload) {
   const household = payload.household_id
     ? db.households.find(item => item.id === payload.household_id)
@@ -866,12 +942,14 @@ module.exports = {
   petToDogProfile,
   upsertDevice,
   syncDeviceDp,
+  createDeviceCommunicationLogs,
   unbindDevice,
   bindDevicePet,
   createRecord,
   createCookingOperation,
   createFeedingRecord,
   listAdminCookingOperations,
+  listAdminDeviceCommunicationLogs,
   createOrder,
   getOrder,
   createPayment,

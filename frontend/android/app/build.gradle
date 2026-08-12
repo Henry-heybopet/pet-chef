@@ -36,8 +36,8 @@ android {
         applicationId "com.heybopet.petchef"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 4
-        versionName "2.0.2"
+        versionCode 12
+        versionName "2.0.10"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "String", "TUYA_ANDROID_APP_KEY", "\"${escapeBuildConfig(readSecret('TUYA_ANDROID_APP_KEY'))}\""
         buildConfigField "String", "TUYA_ANDROID_APP_SECRET", "\"${escapeBuildConfig(readSecret('TUYA_ANDROID_APP_SECRET'))}\""

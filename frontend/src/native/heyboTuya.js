@@ -96,6 +96,12 @@ class HeyboTuyaWeb extends WebPlugin {
     return { success: true, homeId: this.currentHomeId, devices };
   }
 
+  async getDeviceDpState({ devId }) {
+    const device = this.devices.find(item => item.devId === devId);
+    if (!device) throw new Error('Device not found');
+    return { success: true, devId, dps: { ...device.dps } };
+  }
+
   async getActivatorToken() {
     return { success: true, homeId: this.currentHomeId, token: 'web-demo-token' };
   }

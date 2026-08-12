@@ -6,10 +6,9 @@ import { useTranslation } from '../i18n/translations';
 import { tData } from '../i18n/dataTranslations';
 import {
   isActiveCookingDps,
-  isRunningCookingDps,
+  isCompletedCookingDps,
+  resolveCookingState,
   resolveCookingRemainingSeconds,
-  shouldAutoCompleteCooking,
-  shouldResetAfterCompletion,
 } from '../utils/cookingLifecycle';
 
 const PAIRING_STEPS = ['pairConnectDevice', 'pairSendWifi', 'pairConnectCloud', 'pairBindAccount'];
@@ -21,25 +20,22 @@ const BLE_SCAN_MS = 60000;
 const COOKING_RUNTIME_KEY = 'petchef_cooking_runtime';
 const COOKING_OPERATION_OUTBOX_KEY = 'petchef_cooking_operation_outbox';
 
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function withoutReportedRemaining(dps) {
-  const nextDps = { ...(dps || {}) };
-  delete nextDps[8];
-  delete nextDps.remain_time;
-  delete nextDps.remainTime;
-  return nextDps;
-}
-
-function readCookingRuntime() {
+function readCookingRuntimeStore() {
   try {
     const raw = globalThis.localStorage?.getItem(COOKING_RUNTIME_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
+}
+
+function readCookingRuntime(devId = '') {
+  const stored = readCookingRuntimeStore();
+  if (!stored) return null;
+  if (stored.runtimes && typeof stored.runtimes === 'object') {
+    return devId ? stored.runtimes[devId] || null : Object.values(stored.runtimes)[0] || null;
+  }
+  return !devId || stored.devId === devId ? stored : null;
 }
 
 function uniqueEventId(prefix = 'event') {
@@ -80,15 +76,25 @@ function removeCookingOperationFromOutbox(clientEventId) {
 }
 
 function saveCookingRuntime(devId, dps, extra = {}) {
-  if (!devId || !isActiveCookingDps(dps)) return;
+  if (!devId || (!isActiveCookingDps(dps) && !isCompletedCookingDps(dps) && !extra.pendingStart && !extra.commandAccepted)) return;
   try {
-    const current = readCookingRuntime();
+    const stored = readCookingRuntimeStore();
+    const runtimes = stored?.runtimes && typeof stored.runtimes === 'object'
+      ? stored.runtimes
+      : stored?.devId ? { [stored.devId]: stored } : {};
+    const current = runtimes[devId] || {};
+    const { reportedRemainingAt, ...otherExtra } = extra;
     globalThis.localStorage?.setItem(COOKING_RUNTIME_KEY, JSON.stringify({
-      ...(current?.devId === devId ? current : {}),
-      devId,
-      dps,
-      updatedAt: new Date().toISOString(),
-      ...extra,
+      runtimes: {
+        ...runtimes,
+        [devId]: {
+          ...current,
+          devId,
+          updatedAt: new Date().toISOString(),
+          ...otherExtra,
+          ...(reportedRemainingAt === undefined ? {} : { reportedRemainingAt }),
+        },
+      },
     }));
   } catch {
     // localStorage is best-effort; backend DP cache remains the source for cross-session state.
@@ -96,9 +102,18 @@ function saveCookingRuntime(devId, dps, extra = {}) {
 }
 
 function clearCookingRuntime(devId) {
-  const runtime = readCookingRuntime();
-  if (!runtime || (devId && runtime.devId !== devId)) return;
-  try { globalThis.localStorage?.removeItem(COOKING_RUNTIME_KEY); } catch {}
+  const stored = readCookingRuntimeStore();
+  if (!stored) return;
+  try {
+    if (!stored.runtimes) {
+      if (!devId || stored.devId === devId) globalThis.localStorage?.removeItem(COOKING_RUNTIME_KEY);
+      return;
+    }
+    const runtimes = { ...stored.runtimes };
+    if (devId) delete runtimes[devId];
+    if (Object.keys(runtimes).length) globalThis.localStorage?.setItem(COOKING_RUNTIME_KEY, JSON.stringify({ runtimes }));
+    else globalThis.localStorage?.removeItem(COOKING_RUNTIME_KEY);
+  } catch {}
 }
 
 function uniqueDevices(devices) {
@@ -167,6 +182,10 @@ function getFaultInfo(value, t) {
 
 function isLidOpenFault(dps) {
   return Number(dps?.[12] ?? dps?.fault_code ?? 0) === 1;
+}
+
+function isCupMissingFault(dps) {
+  return Number(dps?.[12] ?? dps?.fault_code ?? 0) === 2;
 }
 
 function cleanWifiSsid(value) {
@@ -249,11 +268,12 @@ function formatPairingPermissionLog(result) {
 
 function getDeviceView(device, t) {
   const dps = parseDps(device);
-  const dp5 = dps[5] ?? dps.status;
   const online = device?.isOnline ?? device?.onlineStatus ?? device?.online_status ?? device?.status;
   const isOffline = online === false || online === 'offline';
-  const statusCode = isOffline ? 'offline' : (['standby', 'cooking', 'pause', 'done'].includes(dp5) ? dp5 : ['standby', 'cooking', 'pause', 'done'].includes(device?.dp_status) ? device.dp_status : 'standby');
-  const statusMap = { standby: 'deviceStatusStandby', cooking: 'deviceStatusCooking', pause: 'deviceStatusPaused', done: 'deviceStatusDone', offline: 'deviceStatusOffline' };
+  const statusCode = isOffline
+    ? 'offline'
+    : resolveCookingState(dps);
+  const statusMap = { standby: 'deviceStatusStandby', cooking: 'deviceStatusCooking', pause: 'deviceStatusPaused', done: 'deviceStatusDone', offline: 'deviceStatusOffline', unknown: 'deviceStatusSyncing' };
   const temperature = dps[10] ?? dps.temperature ?? dps.cook_temperature ?? dps[9] ?? '--';
   const speed = dps[108] ?? dps.cook_mode_speed;
   const power = dps[102] ?? dps.cook_mode_power;
@@ -861,70 +881,77 @@ function RenameDeviceModal({ device, saving, onCancel, onConfirm }) {
   );
 }
 
-function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, runStartedAt, runElapsedMs, nowTick, onBack, onChooseRecipe, onStart, onPause, onResume, onStop }) {
+function DeviceDetail({ device, recipeContext, activeRuntime, startSending, completeSending, onBack, onOpenCustomSnack, onStart, onComplete }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
   const view = getDeviceView(device, t);
-  const cooking = getRecipeCookingParams(recipeContext);
-  const hasRecipe = Boolean(cooking.recipe);
-  const isPaused = view.statusCode === 'pause';
-  const isCooking = view.statusCode === 'cooking';
+  const deviceDps = parseDps(device);
+  const hasCupMissingFault = isCupMissingFault(deviceDps);
+  const displayStatusCode = view.statusCode;
+  const isPaused = displayStatusCode === 'pause';
+  const isCooking = displayStatusCode === 'cooking';
   const isActive = isCooking || isPaused;
+  const isDone = displayStatusCode === 'done';
+  const runtimeOwnsDisplay = Boolean(
+    activeRuntime?.devId === view.devId
+    && (isActive || isDone)
+    && (activeRuntime.recipeName || activeRuntime.recipeId),
+  );
+  const displayContext = runtimeOwnsDisplay
+    ? {
+      recipe: { id: activeRuntime.recipeId, name: activeRuntime.recipeName },
+      cookParams: activeRuntime.cookingParamsSnapshot,
+      displayGrams: activeRuntime.totalWeightG,
+      profile: { id: activeRuntime.petId, name: activeRuntime.petName },
+      isCustomSnack: activeRuntime.isCustomSnack,
+    }
+    : recipeContext;
+  const cooking = getRecipeCookingParams(displayContext);
+  const hasRecipe = Boolean(cooking.recipe);
   const recipeName = hasRecipe
     ? tData(cooking.recipe.name || cooking.recipe.recipeName || t('currentRecipe'), lang)
     : t('unnamedRecipe');
-  const petName = recipeContext?.profile?.name || t('petNotSelected');
-  const servingGrams = recipeContext?.displayGrams
-    ?? recipeContext?.totalWeightGram
-    ?? recipeContext?.total_weight_g
+  const petName = displayContext?.profile?.name || t('petNotSelected');
+  const servingGrams = displayContext?.displayGrams
+    ?? displayContext?.totalWeightGram
+    ?? displayContext?.total_weight_g
     ?? 0;
-  const cookingGuidanceKey = view.statusCode === 'done'
-    ? 'cookingGuidanceDone'
-    : isActive
-      ? 'cookingGuidanceActive'
-      : 'cookingGuidanceBeforeStart';
-  const elapsedMs = runElapsedMs + (isCooking && runStartedAt ? nowTick - runStartedAt : 0);
-  const deviceDps = parseDps(device);
-  const totalSeconds = Number(cooking.cookTime || 0);
-  const reportedRemaining = Number(deviceDps[8] ?? deviceDps.remain_time ?? deviceDps.remainTime);
+  const cookingGuidanceKey = displayContext?.isCustomSnack
+    ? isDone
+      ? 'customSnackGuidanceDone'
+      : isActive
+        ? 'customSnackGuidanceActive'
+        : 'customSnackGuidanceBeforeStart'
+    : isDone
+      ? 'cookingGuidanceDone'
+      : isActive
+        ? 'cookingGuidanceActive'
+        : 'cookingGuidanceBeforeStart';
+  const totalSeconds = Number(activeRuntime?.plannedSeconds || cooking.cookTime || 0);
+  const rawRemaining = deviceDps[8] ?? deviceDps.remain_time ?? deviceDps.remainTime;
+  const reportedRemaining = rawRemaining === undefined || rawRemaining === null || rawRemaining === ''
+    ? Number.NaN
+    : Number(rawRemaining);
   const remainingSeconds = resolveCookingRemainingSeconds({
-    totalSeconds,
     reportedRemaining,
-    elapsedSeconds: elapsedMs / 1000,
-    isActive,
-    isDone: view.statusCode === 'done',
-    hasLocalClock: Boolean(runStartedAt || runElapsedMs > 0),
+    isDone,
   });
-  const progressPercent = view.statusCode === 'done'
+  const progressPercent = isDone
     ? 100
-    : isActive && totalSeconds > 0
+    : isActive && totalSeconds > 0 && Number.isFinite(remainingSeconds)
       ? Math.min(100, Math.max(0, ((totalSeconds - remainingSeconds) / totalSeconds) * 100))
       : 0;
-  const stopTimer = useRef(null);
-  const longPressed = useRef(false);
-  const clearStopTimer = () => {
-    if (stopTimer.current) clearTimeout(stopTimer.current);
-    stopTimer.current = null;
-  };
-  const startStopTimer = (event) => {
-    event?.preventDefault?.();
-    if (!isPaused) return;
-    longPressed.current = false;
-    stopTimer.current = setTimeout(() => {
-      longPressed.current = true;
-      onStop();
-    }, 800);
-  };
-  const mainLabel = isPaused ? t('resumeOrHoldStop') : isCooking ? t('pauseCooking') : t('startCooking');
-  const runMainAction = () => {
-    if (longPressed.current) {
-      longPressed.current = false;
-      return;
-    }
-    if (isPaused) onResume();
-    else if (isCooking) onPause();
-    else onStart();
-  };
+  const hasReportedRemaining = Number.isFinite(reportedRemaining) && reportedRemaining >= 0;
+  const countdownText = hasReportedRemaining ? formatCountdown(remainingSeconds) : '--:--';
+  const statusLabel = displayStatusCode === 'offline'
+    ? t('deviceStatusOffline')
+    : displayStatusCode === 'cooking'
+      ? t('deviceStatusCooking')
+      : displayStatusCode === 'pause'
+        ? t('deviceStatusPaused')
+        : displayStatusCode === 'done'
+          ? t('deviceStatusDone')
+          : t('deviceStatusStandby');
 
   return (
     <div className="cooking-sheet-mask" onClick={onBack}>
@@ -936,11 +963,11 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
           <img src="/machine.jpg" alt={t('cookerImageAlt')} onError={event => { event.currentTarget.src = '/machine.png'; }} />
         </div>
         <div className="cooking-lux-progress">
-          <div className={`cooking-lux-stage ${isActive || view.statusCode === 'done' ? 'is-complete' : 'is-active'}`}>
+          <div className={`cooking-lux-stage ${isActive || isDone ? 'is-complete' : 'is-active'}`}>
             <strong>🥣</strong>
             <em>{t('stageLoad')}</em>
           </div>
-          <div className={`cooking-lux-stage cooking-lux-stage-main ${isActive ? 'is-active' : ''} ${view.statusCode === 'done' ? 'is-complete' : ''}`}>
+          <div className={`cooking-lux-stage cooking-lux-stage-main ${isActive ? 'is-active' : ''} ${isDone ? 'is-complete' : ''}`}>
             <div
               className="cooking-lux-progress-track"
               role="progressbar"
@@ -953,9 +980,9 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
             </div>
             <strong>♨️</strong>
             <em>{t('stageCook')}</em>
-            <small>{formatCountdown(remainingSeconds)}</small>
+            <small>{countdownText}</small>
           </div>
-          <div className={`cooking-lux-stage ${view.statusCode === 'done' ? 'is-complete' : ''}`}>
+          <div className={`cooking-lux-stage ${isDone ? 'is-complete' : ''}`}>
             <strong>✅</strong>
             <em>{t('stageDone')}</em>
           </div>
@@ -970,25 +997,30 @@ function DeviceDetail({ device, recipeContext, lastStatusAt, liveStatusError, ru
         )}
         <div className="cooking-detail-actions">
           <GhostButton onClick={onBack}>{t('back')}</GhostButton>
-          <GhostButton onClick={onChooseRecipe}>{t('selectRecipe')}</GhostButton>
-          <PrimaryButton
-            disabled={!hasRecipe && !isActive}
-            onPointerDown={startStopTimer}
-            onPointerUp={clearStopTimer}
-            onPointerLeave={clearStopTimer}
-            onPointerCancel={clearStopTimer}
-            onContextMenu={event => event.preventDefault()}
-            onClick={runMainAction}
-          >
-            {mainLabel}
-          </PrimaryButton>
+          <GhostButton onClick={onOpenCustomSnack}>{t('customSnack')}</GhostButton>
+          {displayStatusCode === 'standby' ? (
+            <PrimaryButton
+              disabled={startSending || hasCupMissingFault || !hasRecipe}
+              onClick={onStart}
+            >
+              {t('startCooking')}
+            </PrimaryButton>
+          ) : displayStatusCode === 'done' ? (
+            <PrimaryButton disabled={completeSending} onClick={onComplete}>
+              {t('deviceStatusDone')}
+            </PrimaryButton>
+          ) : (
+            <div className={`cooking-device-status cooking-device-status-${displayStatusCode}`} role="status">
+              {statusLabel}
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-export default function CookingCenterPage({ onBack, authToken, recipeContext, onChooseRecipe }) {
+export default function CookingCenterPage({ onBack, authToken, recipeContext, onOpenCustomSnack }) {
   const { lang } = useLanguage();
   const t = useTranslation(lang);
   const [devices, setDevices] = useState([]);
@@ -1009,24 +1041,21 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const [renameSaving, setRenameSaving] = useState(false);
   const [devicePickerOpen, setDevicePickerOpen] = useState(false);
   const [message, setMessage] = useState('');
-  const [runStartedAt, setRunStartedAt] = useState(0);
-  const [runElapsedMs, setRunElapsedMs] = useState(0);
-  const [nowTick, setNowTick] = useState(Date.now());
+  const [startSending, setStartSending] = useState(false);
+  const [completeSending, setCompleteSending] = useState(false);
   const [tuyaHomeId, setTuyaHomeId] = useState('');
   const safetyRef = useRef({ lidAlerted: false });
-  const completionResetRef = useRef(new Set());
+  const nativeDpSeenRef = useRef(new Set());
   const operationFlushRef = useRef(Promise.resolve());
-  const cookingRef = useRef(null);
-  const completionHandlerRef = useRef(null);
   const selectedDeviceDpsRef = useRef({});
   const recipeEntryHandledRef = useRef(false);
-  const mountedRef = useRef(true);
-  cookingRef.current = getRecipeCookingParams(recipeContext);
+  const autoStartHandledRef = useRef(false);
 
   const selectedDevice = useMemo(() => {
     const device = devices.find(item => item.devId === selectedDevId) || devices[0];
     return device || null;
   }, [devices, selectedDevId]);
+  const activeRuntime = readCookingRuntime(selectedDevice?.devId);
   useEffect(() => {
     selectedDeviceDpsRef.current = parseDps(selectedDevice);
   }, [selectedDevice]);
@@ -1099,53 +1128,6 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     return event;
   };
 
-  completionHandlerRef.current = async ({ devId, dps }) => {
-    const completedRuntime = readCookingRuntime();
-    try {
-      await HeyboTuya.resetCooking({ devId });
-    } catch {
-      await delay(600);
-      await HeyboTuya.resetCooking({ devId });
-    }
-
-    const resetDps = { ...dps, 5: 'done', 8: 0, 107: 'reset' };
-    selectedDeviceDpsRef.current = resetDps;
-    clearCookingRuntime(devId);
-    if (mountedRef.current) {
-      setRunStartedAt(0);
-      setRunElapsedMs(0);
-      setDevices(prev => prev.map(device => {
-        const itemDevId = device.devId || device.tuya_device_id;
-        return itemDevId === devId ? { ...device, dps: { ...parseDps(device), ...resetDps } } : device;
-      }));
-      setMessage(t('cookDoneText'));
-    }
-    if (authToken) {
-      api.syncDeviceDp(devId, {
-        tuya_device_id: devId,
-        online: selectedDevice?.isOnline,
-        dps: resetDps,
-        reported_at: new Date().toISOString(),
-      }, authToken).catch(() => {});
-    }
-    if (completedRuntime?.devId === devId && completedRuntime.sessionId) {
-      await reportCookingOperation({
-        session_id: completedRuntime.sessionId,
-        tuya_device_id: devId,
-        device_name: completedRuntime.deviceName || selectedDevice?.name || t('defaultCookerName'),
-        recipe_id: completedRuntime.recipeId || '',
-        recipe_name: completedRuntime.recipeName || '',
-        pet_id: completedRuntime.petId || '',
-        pet_name: completedRuntime.petName || '',
-        operation_type: 'complete',
-        status: 'completed',
-        result: 'success',
-        started_at: completedRuntime.startedAt,
-        completed_at: new Date().toISOString(),
-      });
-    }
-  };
-
   const refreshData = async () => {
     if (!authToken) return;
     try {
@@ -1158,20 +1140,19 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       ]);
       const serverDevices = uniqueDevices((deviceResult.devices || []).map(device => ({ ...device, devId: device.tuya_device_id || device.devId })));
       setDevices(prev => {
-        const localByDevId = Object.fromEntries(prev.map(device => [device.devId || device.tuya_device_id, device]));
-        const runtime = readCookingRuntime();
+          const localByDevId = Object.fromEntries(prev.map(device => [device.devId || device.tuya_device_id, device]));
         return serverDevices.map(device => {
           const local = localByDevId[device.devId];
           const serverDps = parseDps(device);
           const localDps = parseDps(local);
-          const runtimeDps = runtime?.devId === device.devId && isActiveCookingDps(runtime.dps) ? runtime.dps : {};
-          const keepLocalRuntime = isActiveCookingDps(localDps) || isActiveCookingDps(runtimeDps);
-          const safeServerDps = keepLocalRuntime ? withoutReportedRemaining(serverDps) : serverDps;
           return {
             ...device,
-            dps: keepLocalRuntime
-              ? { ...safeServerDps, ...withoutReportedRemaining(localDps), ...runtimeDps }
-              : { ...localDps, ...safeServerDps, ...runtimeDps },
+            // 在线状态只接受本机 Tuya SDK 的 DP；ECS DP 缓存仅供离线展示。
+            dps: nativeDpSeenRef.current.has(device.devId)
+              ? localDps
+              : device.online_status === false || device.status === 'offline'
+                ? { ...localDps, ...serverDps }
+                : localDps,
           };
         });
       });
@@ -1208,6 +1189,21 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     if (refreshAfter) await refreshData();
   };
 
+  const reportDeviceCommunication = async (devId, dps) => {
+    if (!authToken || !devId) return;
+    try {
+      await api.recordDeviceCommunication(devId, {
+        direction: 'app_to_device',
+        dps,
+        reported_at: new Date().toISOString(),
+      }, authToken);
+    } catch (error) {
+      // Observability must not prevent a safety command from reaching the
+      // machine; the next successful command/report will still be logged.
+      console.warn('Device communication log failed:', error?.message || error);
+    }
+  };
+
   useEffect(() => { refreshData(); }, [authToken]);
 
   useEffect(() => {
@@ -1224,7 +1220,15 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         if (homeId) setTuyaHomeId(homeId);
         if (!homeId || session?.platform === 'web') return;
         const nativeResult = await HeyboTuya.getDeviceList({ homeId });
-        await Promise.all((nativeResult.devices || []).map(device =>
+        const nativeDevices = nativeResult.devices || [];
+        nativeDevices.forEach(device => {
+          if (Object.keys(parseDps(device)).length) nativeDpSeenRef.current.add(device.devId);
+        });
+        setDevices(prev => uniqueDevices([
+          ...prev,
+          ...nativeDevices.map(device => ({ ...device, homeId, dps: parseDps(device) })),
+        ]));
+        await Promise.all(nativeDevices.map(device =>
           registerBoundDevice({ ...device, homeId }, false)
         ));
         if (alive) await refreshData();
@@ -1239,46 +1243,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     return () => clearInterval(timer);
   }, [authToken]);
 
-  useEffect(() => {
-    const timer = setInterval(() => setNowTick(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const runtime = readCookingRuntime();
-    if (!selectedDevice?.devId || runtime?.devId !== selectedDevice.devId || !isActiveCookingDps(runtime.dps)) return;
-    const persistedElapsedMs = Math.max(0, Number(runtime.elapsedMs) || 0);
-    setRunElapsedMs(persistedElapsedMs);
-    if (isRunningCookingDps(runtime.dps)) {
-      const persistedStartedAt = Date.parse(runtime.runStartedAt || runtime.startedAt || '');
-      setRunStartedAt(Number.isFinite(persistedStartedAt) ? persistedStartedAt : Date.now());
-    } else {
-      setRunStartedAt(0);
-    }
-  }, [selectedDevice?.devId]);
-
-  useEffect(() => {
-    const devId = selectedDevice?.devId;
-    if (!devId || !runStartedAt) return;
-    const dps = selectedDeviceDpsRef.current;
-    const runtime = readCookingRuntime();
-    const totalSeconds = Number(runtime?.plannedSeconds || cookingRef.current?.cookTime || 0);
-    const elapsedMs = runElapsedMs + Math.max(0, nowTick - runStartedAt);
-    if (!shouldAutoCompleteCooking({
-      totalSeconds,
-      elapsedMs,
-      isRunning: isRunningCookingDps(dps),
-    })) return;
-    if (completionResetRef.current.has(devId)) return;
-    completionResetRef.current.add(devId);
-    completionHandlerRef.current?.({ devId, dps }).catch(error => {
-      console.error('[CookingCenter] deadline reset failed', { devId: maskId(devId), message: error?.message || String(error) });
-      if (mountedRef.current) setMessage(t('completionResetFailed'));
-    });
-  }, [nowTick, runStartedAt, runElapsedMs, selectedDevice?.devId]);
-
   useEffect(() => () => {
-    mountedRef.current = false;
     safetyRef.current = { lidAlerted: false };
   }, []);
 
@@ -1287,12 +1252,13 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     if (!devId) return undefined;
     let listener;
     let alive = true;
-    HeyboTuya.addListener('dpUpdate', event => {
-      if (!alive || event.devId !== devId) return;
-      let nextDps = event.dps || {};
+    const applyNativeDps = rawDps => {
+      let nextDps = rawDps || {};
       if (typeof nextDps === 'string') {
         try { nextDps = JSON.parse(nextDps || '{}'); } catch { nextDps = {}; }
       }
+      if (!nextDps || typeof nextDps !== 'object' || Array.isArray(nextDps) || Object.keys(nextDps).length === 0) return false;
+      nativeDpSeenRef.current.add(devId);
       const mergedDps = { ...selectedDeviceDpsRef.current, ...nextDps };
       selectedDeviceDpsRef.current = mergedDps;
       if (authToken) {
@@ -1305,38 +1271,42 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       }
       setDevices(prev => prev.map(device => {
         const itemDevId = device.devId || device.tuya_device_id;
-        return itemDevId === devId ? { ...device, dps: { ...parseDps(device), ...nextDps } } : device;
+        return itemDevId === devId ? { ...device, dps: mergedDps } : device;
       }));
       setLastStatusAt(new Date().toISOString());
-      const active = isActiveCookingDps(mergedDps);
-      if (shouldResetAfterCompletion(completionResetRef.current, devId, mergedDps)) {
-        completionHandlerRef.current?.({ devId, dps: mergedDps }).catch(error => {
-          console.error('[CookingCenter] completion reset failed', { devId: maskId(devId), message: error?.message || String(error) });
-          if (mountedRef.current) setMessage(t('completionResetFailed'));
-        });
-        return;
-      }
-      if (!active) {
+      const state = resolveCookingState(mergedDps);
+      if (state === 'standby') {
         safetyRef.current = { lidAlerted: false };
         clearCookingRuntime(devId);
-        return;
+        return true;
       }
-      saveCookingRuntime(devId, mergedDps);
+      if (state === 'unknown') return true;
+      if (isCupMissingFault(mergedDps)) setMessage(t('deviceFaultCup'));
+      saveCookingRuntime(devId, mergedDps, { pendingStart: false });
       if (isLidOpenFault(mergedDps) && !safetyRef.current.lidAlerted) {
         safetyRef.current.lidAlerted = true;
         setMessage(t('lidCheckWarning'));
-        return;
       }
+      return true;
+    };
+    HeyboTuya.addListener('dpUpdate', event => {
+      if (!alive || event.devId !== devId) return;
+      applyNativeDps(event.dps);
     }).then(result => { listener = result; });
-    HeyboTuya.subscribeDevice({ devId }).catch(() => {});
+    HeyboTuya.subscribeDevice({ devId })
+      .then(() => HeyboTuya.getDeviceDpState({ devId }))
+      .then(result => { if (alive) applyNativeDps(result?.dps); })
+      .catch(() => {});
     return () => {
       alive = false;
+      nativeDpSeenRef.current.delete(devId);
       listener?.remove?.();
       HeyboTuya.unsubscribeDevice({ devId }).catch(() => {});
     };
   }, [selectedDevice?.devId, authToken]);
 
-  const handleStartCooking = async () => {
+  const handlePrepareCooking = async () => {
+    if (startSending) return;
     const cooking = getRecipeCookingParams(recipeContext);
     if (!selectedDevice || !cooking.recipe) {
       setMessage(t('selectRecipeFirst'));
@@ -1347,15 +1317,33 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       setMessage(t('lidStartWarning'));
       return;
     }
-    completionResetRef.current.delete(selectedDevice.devId);
+    setStartSending(true);
+    try {
+      await reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_requested' });
+      await HeyboTuya.resetCooking({ devId: selectedDevice.devId });
+      await reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_sent' });
+      setStartConfirmOpen(true);
+    } catch (error) {
+      setMessage(error?.message || t('deviceCommandFailed'));
+    } finally {
+      setStartSending(false);
+    }
+  };
+
+  const handleStartCooking = async () => {
+    if (startSending) return;
+    const cooking = getRecipeCookingParams(recipeContext);
+    if (!selectedDevice || !cooking.recipe) {
+      setMessage(t('selectRecipeFirst'));
+      return;
+    }
+    const currentDps = parseDps(selectedDevice);
     safetyRef.current = { lidAlerted: false };
     const temperature = cooking.temperature ?? 85;
     const cookMinutes = Number(cooking.cookMinutes ?? Math.ceil(Number(cooking.cookTime || 12 * 60) / 60));
     const cookTime = Number(cooking.cookTime || (cookMinutes * 60));
     const power = cooking.power ?? 8;
     const speed = String(cooking.speed ?? 1);
-    const runtimeDps = { 1: true, 3: 'diy', 5: 'cooking', 7: cookTime, 9: temperature, 102: power, 107: 'start', 108: speed };
-    selectedDeviceDpsRef.current = { ...withoutReportedRemaining(currentDps), ...runtimeDps };
     const sessionId = uniqueEventId('session');
     const requestedAtMs = Date.now();
     const requestedAtIso = new Date(requestedAtMs).toISOString();
@@ -1371,9 +1359,17 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       started_at: requestedAtIso,
       cooking_params_snapshot: cooking.params,
     };
+    setStartSending(true);
     try {
-      await HeyboTuya.resetCooking({ devId: selectedDevice.devId });
-      await delay(600);
+      await reportDeviceCommunication(selectedDevice.devId, {
+        1: true,
+        3: 'diy',
+        7: cookTime,
+        9: temperature,
+        102: power,
+        107: 'start_requested',
+        108: speed,
+      });
       await HeyboTuya.startDiyCooking({
         devId: selectedDevice.devId,
         temperature,
@@ -1381,7 +1377,9 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         power,
         speed,
       });
+      await reportDeviceCommunication(selectedDevice.devId, { 107: 'start_sent' });
     } catch (error) {
+      clearCookingRuntime(selectedDevice.devId);
       await reportCookingOperation({
         ...operationContext,
         operation_type: 'start_cooking',
@@ -1390,242 +1388,47 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         error_code: error?.code || error?.message || 'device_command_failed',
       });
       setMessage(error?.message || t('deviceCommandFailed'));
+      setStartSending(false);
       return;
     }
-    const startedAtMs = requestedAtMs;
-    const startedAtIso = requestedAtIso;
-    saveCookingRuntime(selectedDevice.devId, runtimeDps, {
+    saveCookingRuntime(selectedDevice.devId, selectedDeviceDpsRef.current || currentDps, {
+      pendingStart: true,
       sessionId,
-      startedAt: startedAtIso,
+      startedAt: requestedAtIso,
       deviceName: operationContext.device_name,
       recipeId: operationContext.recipe_id,
       recipeName: operationContext.recipe_name,
       petId: operationContext.pet_id,
       petName: operationContext.pet_name,
+      totalWeightG: operationContext.total_weight_g,
+      cookingParamsSnapshot: cooking.params,
       plannedSeconds: cookTime,
-      elapsedMs: 0,
-      runStartedAt: startedAtIso,
+      isCustomSnack: Boolean(recipeContext?.isCustomSnack),
     });
-    if (authToken) {
-      api.syncDeviceDp(selectedDevice.devId, {
-        tuya_device_id: selectedDevice.devId,
-        online: selectedDevice.isOnline,
-        dps: runtimeDps,
-        reported_at: new Date().toISOString(),
-      }, authToken).catch(() => {});
-    }
-    setRunElapsedMs(0);
-    setRunStartedAt(startedAtMs);
-    setDevices(prev => prev.map(device => {
-      const devId = device.devId || device.tuya_device_id;
-      return devId === selectedDevice.devId
-        ? { ...device, dps: { ...withoutReportedRemaining(parseDps(device)), ...runtimeDps } }
-        : device;
-    }));
     await reportCookingOperation({
       ...operationContext,
-      started_at: startedAtIso,
+      started_at: requestedAtIso,
       operation_type: 'start_cooking',
-      status: 'running',
+      status: 'sent',
       result: 'success',
     });
     setMessage(t('cookingStarted'));
     setStartConfirmOpen(false);
+    setStartSending(false);
   };
 
-  const handlePauseCooking = async () => {
-    if (!selectedDevice?.devId) return;
-    safetyRef.current = { lidAlerted: false };
-    const runtime = readCookingRuntime();
+  const handleCompleteCooking = async () => {
+    if (!selectedDevice || completeSending || getDeviceView(selectedDevice, t).statusCode !== 'done') return;
+    setCompleteSending(true);
     try {
-      await HeyboTuya.pauseCooking({ devId: selectedDevice.devId });
-    } catch (error) {
-      if (runtime?.sessionId) {
-        await reportCookingOperation({
-          session_id: runtime.sessionId,
-          tuya_device_id: selectedDevice.devId,
-          device_name: runtime.deviceName || selectedDevice.name,
-          recipe_id: runtime.recipeId || '',
-          recipe_name: runtime.recipeName || '',
-          pet_id: runtime.petId || '',
-          pet_name: runtime.petName || '',
-          operation_type: 'pause',
-          status: 'failed',
-          result: 'failed',
-          error_code: error?.code || error?.message || 'device_command_failed',
-          started_at: runtime.startedAt,
-        });
-      }
-      setMessage(error?.message || t('deviceCommandFailed'));
-      return;
-    }
-    const pausedDps = { ...parseDps(selectedDevice), 5: 'pause', 107: 'pause' };
-    const pausedAt = Date.now();
-    const pausedElapsedMs = runElapsedMs + (runStartedAt ? pausedAt - runStartedAt : 0);
-    saveCookingRuntime(selectedDevice.devId, pausedDps, { elapsedMs: pausedElapsedMs, runStartedAt: null });
-    if (authToken) {
-      api.syncDeviceDp(selectedDevice.devId, {
-        tuya_device_id: selectedDevice.devId,
-        online: selectedDevice.isOnline,
-        dps: pausedDps,
-        reported_at: new Date().toISOString(),
-      }, authToken).catch(() => {});
-    }
-    setRunElapsedMs(pausedElapsedMs);
-    setRunStartedAt(0);
-    setDevices(prev => prev.map(device => {
-      const devId = device.devId || device.tuya_device_id;
-      return devId === selectedDevice.devId
-        ? { ...device, dps: { ...parseDps(device), ...pausedDps } }
-        : device;
-    }));
-    if (runtime?.sessionId) {
-      await reportCookingOperation({
-        session_id: runtime.sessionId,
-        tuya_device_id: selectedDevice.devId,
-        device_name: runtime.deviceName || selectedDevice.name,
-        recipe_id: runtime.recipeId || '',
-        recipe_name: runtime.recipeName || '',
-        pet_id: runtime.petId || '',
-        pet_name: runtime.petName || '',
-        operation_type: 'pause',
-        status: 'paused',
-        result: 'success',
-        started_at: runtime.startedAt,
-      });
-    }
-    setMessage(t('pauseSent'));
-  };
-
-  const handleResumeCooking = async () => {
-    if (!selectedDevice?.devId) return;
-    if (isLidOpenFault(parseDps(selectedDevice))) {
-      setMessage(t('lidResumeWarning'));
-      return;
-    }
-    safetyRef.current = { lidAlerted: false };
-    const runtime = readCookingRuntime();
-    try {
-      await HeyboTuya.publishDps({ devId: selectedDevice.devId, dps: { 107: 'start' } });
-    } catch (error) {
-      if (runtime?.sessionId) {
-        await reportCookingOperation({
-          session_id: runtime.sessionId,
-          tuya_device_id: selectedDevice.devId,
-          device_name: runtime.deviceName || selectedDevice.name,
-          recipe_id: runtime.recipeId || '',
-          recipe_name: runtime.recipeName || '',
-          pet_id: runtime.petId || '',
-          pet_name: runtime.petName || '',
-          operation_type: 'resume',
-          status: 'failed',
-          result: 'failed',
-          error_code: error?.code || error?.message || 'device_command_failed',
-          started_at: runtime.startedAt,
-        });
-      }
-      setMessage(error?.message || t('deviceCommandFailed'));
-      return;
-    }
-    const resumedDps = { ...parseDps(selectedDevice), 5: 'cooking', 107: 'start' };
-    const resumedAt = Date.now();
-    saveCookingRuntime(selectedDevice.devId, resumedDps, {
-      elapsedMs: Number(runtime?.elapsedMs ?? runElapsedMs) || 0,
-      runStartedAt: new Date(resumedAt).toISOString(),
-    });
-    if (authToken) {
-      api.syncDeviceDp(selectedDevice.devId, {
-        tuya_device_id: selectedDevice.devId,
-        online: selectedDevice.isOnline,
-        dps: resumedDps,
-        reported_at: new Date().toISOString(),
-      }, authToken).catch(() => {});
-    }
-    setRunStartedAt(resumedAt);
-    setDevices(prev => prev.map(device => {
-      const devId = device.devId || device.tuya_device_id;
-      return devId === selectedDevice.devId
-        ? { ...device, dps: { ...parseDps(device), ...resumedDps } }
-        : device;
-    }));
-    if (runtime?.sessionId) {
-      await reportCookingOperation({
-        session_id: runtime.sessionId,
-        tuya_device_id: selectedDevice.devId,
-        device_name: runtime.deviceName || selectedDevice.name,
-        recipe_id: runtime.recipeId || '',
-        recipe_name: runtime.recipeName || '',
-        pet_id: runtime.petId || '',
-        pet_name: runtime.petName || '',
-        operation_type: 'resume',
-        status: 'running',
-        result: 'success',
-        started_at: runtime.startedAt,
-      });
-    }
-    setMessage(t('cookingResumed'));
-  };
-
-  const handleStopCooking = async () => {
-    if (!selectedDevice?.devId) return;
-    safetyRef.current = { lidAlerted: false };
-    const runtime = readCookingRuntime();
-    try {
+      await reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_requested' });
       await HeyboTuya.resetCooking({ devId: selectedDevice.devId });
+      await reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_sent' });
     } catch (error) {
-      if (runtime?.sessionId) {
-        await reportCookingOperation({
-          session_id: runtime.sessionId,
-          tuya_device_id: selectedDevice.devId,
-          device_name: runtime.deviceName || selectedDevice.name,
-          recipe_id: runtime.recipeId || '',
-          recipe_name: runtime.recipeName || '',
-          pet_id: runtime.petId || '',
-          pet_name: runtime.petName || '',
-          operation_type: 'cancel',
-          status: 'failed',
-          result: 'failed',
-          error_code: error?.code || error?.message || 'device_command_failed',
-          started_at: runtime.startedAt,
-        });
-      }
       setMessage(error?.message || t('deviceCommandFailed'));
-      return;
+    } finally {
+      setCompleteSending(false);
     }
-    clearCookingRuntime(selectedDevice.devId);
-    if (authToken) {
-      api.syncDeviceDp(selectedDevice.devId, {
-        tuya_device_id: selectedDevice.devId,
-        online: selectedDevice.isOnline,
-        dps: { ...parseDps(selectedDevice), 5: 'standby', 107: 'reset', 102: undefined, 108: undefined },
-        reported_at: new Date().toISOString(),
-      }, authToken).catch(() => {});
-    }
-    setRunStartedAt(0);
-    setRunElapsedMs(0);
-    setDevices(prev => prev.map(device => {
-      const devId = device.devId || device.tuya_device_id;
-      return devId === selectedDevice.devId
-        ? { ...device, dps: { ...parseDps(device), 5: 'standby', 107: 'reset', 102: undefined, 108: undefined } }
-        : device;
-    }));
-    if (runtime?.sessionId) {
-      await reportCookingOperation({
-        session_id: runtime.sessionId,
-        tuya_device_id: selectedDevice.devId,
-        device_name: runtime.deviceName || selectedDevice.name,
-        recipe_id: runtime.recipeId || '',
-        recipe_name: runtime.recipeName || '',
-        pet_id: runtime.petId || '',
-        pet_name: runtime.petName || '',
-        operation_type: 'cancel',
-        status: 'cancelled',
-        result: 'success',
-        started_at: runtime.startedAt,
-        completed_at: new Date().toISOString(),
-      });
-    }
-    setMessage(t('cookingStopped'));
   };
 
   const handleFeedbackSave = async (feedback) => {
@@ -1717,6 +1520,12 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     setDevicePickerOpen(true);
   }, [recipeContext, devices]);
 
+  useEffect(() => {
+    if (!recipeContext?.autoStart || autoStartHandledRef.current || !detailDevice || !selectedDevice) return;
+    autoStartHandledRef.current = true;
+    if (getDeviceView(selectedDevice, t).statusCode === 'standby') setStartConfirmOpen(true);
+  }, [recipeContext, detailDevice, selectedDevice]);
+
   const hasDevice = devices.length > 0;
   const view = getDeviceView(selectedDevice, t);
 
@@ -1766,23 +1575,13 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         <DeviceDetail
           device={(detailDevice.devId === selectedDevice?.devId || detailDevice.tuya_device_id === selectedDevice?.devId) ? selectedDevice : detailDevice}
           recipeContext={recipeContext}
-          lastStatusAt={lastStatusAt}
-          liveStatusError={liveStatusError}
-          runStartedAt={runStartedAt}
-          runElapsedMs={runElapsedMs}
-          nowTick={nowTick}
+          activeRuntime={activeRuntime}
+          startSending={startSending}
+          completeSending={completeSending}
           onBack={() => setDetailDevice(null)}
-          onChooseRecipe={onChooseRecipe}
-          onStart={() => {
-            if (!recipeContext) {
-              setMessage(t('selectRecipeFirst'));
-              return;
-            }
-            setStartConfirmOpen(true);
-          }}
-          onPause={handlePauseCooking}
-          onResume={handleResumeCooking}
-          onStop={handleStopCooking}
+          onOpenCustomSnack={onOpenCustomSnack}
+          onStart={handlePrepareCooking}
+          onComplete={handleCompleteCooking}
         />
       )}
       {feedbackRecord && <FeedbackModal record={feedbackRecord} saving={feedbackSaving} onCancel={() => setFeedbackRecord(null)} onConfirm={handleFeedbackSave} />}

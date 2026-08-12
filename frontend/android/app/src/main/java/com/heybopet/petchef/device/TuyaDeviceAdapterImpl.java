@@ -175,17 +175,14 @@ public class TuyaDeviceAdapterImpl implements TuyaDeviceAdapter {
             callback.onResult(TuyaDeviceResult.fail(TuyaDeviceError.INVALID_ARGUMENT, "devId is required."));
             return;
         }
-        Map<String, Object> cached = dpsCache.get(devId);
-        if (cached != null) {
-            callback.onResult(TuyaDeviceResult.ok(new HashMap<>(cached)));
-            return;
-        }
         getDeviceStatus(devId, result -> {
             if (!result.success) {
                 callback.onResult(TuyaDeviceResult.fail(result.error.code, result.error.message, result.error.tuyaCode));
                 return;
             }
-            callback.onResult(TuyaDeviceResult.ok(new HashMap<>(result.data.dps)));
+            Map<String, Object> dps = new HashMap<>(result.data.dps);
+            dpsCache.put(devId, new HashMap<>(dps));
+            callback.onResult(TuyaDeviceResult.ok(dps));
         });
     }
 

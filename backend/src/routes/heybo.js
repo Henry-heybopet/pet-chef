@@ -315,6 +315,12 @@ router.post('/devices/:id/dp-sync', authMiddleware, asyncHandler(async (req, res
   res.json({ success: true, device });
 }));
 
+router.post('/devices/:id/communication-log', authMiddleware, asyncHandler(async (req, res) => {
+  const user = await requireUser(req);
+  const logs = store.createDeviceCommunicationLogs(user.id, req.params.id, req.body || {});
+  res.json({ success: true, logs });
+}));
+
 router.delete('/devices/:id', authMiddleware, asyncHandler(async (req, res) => {
   const user = await requireUser(req);
   const device = store.unbindDevice(user.id, req.params.id);

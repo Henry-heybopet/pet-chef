@@ -2418,3 +2418,43 @@ a {
 .device-feeding-feedback time {
   margin-left: auto;
 }
+
+.device-communication-log {
+  margin-top: 18px;
+}
+
+.device-communication-timeline {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.device-communication-event {
+  display: grid;
+  grid-template-columns: 145px 90px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 12px;
+}
+
+.device-communication-event.direction-app_to_device {
+  border-left: 4px solid #0ea5e9;
+}
+
+.device-communication-event.direction-device_to_app {
+  border-left: 4px solid #10b981;
+}
+
+.device-communication-event time {
+  color: var(--muted);
+}
+
+.device-communication-event code {
+  overflow-wrap: anywhere;
+  color: var(--accent-dark);
+}

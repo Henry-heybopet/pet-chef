@@ -688,6 +688,28 @@ public class HeyboTuyaPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void getDeviceDpState(PluginCall call) {
+        if (!ensureInitialized(call)) return;
+        String devId = call.getString("devId");
+        if (TextUtils.isEmpty(devId)) {
+            call.reject("devId is required.");
+            return;
+        }
+        adapter().getDeviceDpState(devId, result -> {
+            if (!result.success) {
+                String message = result.error == null ? "Get device DP state failed." : result.error.message;
+                call.reject(message);
+                return;
+            }
+            JSObject response = new JSObject();
+            response.put("success", true);
+            response.put("devId", devId);
+            response.put("dps", mapToJsObject(result.data));
+            call.resolve(response);
+        });
+    }
+
+    @PluginMethod
     public void unsubscribeDevice(PluginCall call) {
         String devId = call.getString("devId");
         if (TextUtils.isEmpty(devId)) {

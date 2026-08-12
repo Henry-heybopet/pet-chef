@@ -131,6 +131,7 @@ export const api = {
   listDevices: (token) => authedGet('/api/devices', token),
   unbindDevice: (deviceId, token) => authedDelete(`/api/devices/${encodeURIComponent(deviceId)}`, token),
   syncDeviceDp: (deviceId, body, token) => authedPost(`/api/devices/${encodeURIComponent(deviceId)}/dp-sync`, body, token),
+  recordDeviceCommunication: (deviceId, body, token) => authedPost(`/api/devices/${encodeURIComponent(deviceId)}/communication-log`, body, token),
   recordCookingOperation: (body, token) => authedPost('/api/operations/cooking', body, token),
   listCookingOperations: (token) => authedGet('/api/operations/cooking', token),
   listFeedingRecords: (token) => authedGet('/api/feeding-records', token),

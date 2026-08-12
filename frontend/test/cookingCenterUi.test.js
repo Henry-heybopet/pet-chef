@@ -3,10 +3,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { useTranslation } from '../src/i18n/translations.js';
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cookingSource = fs.readFileSync(
   path.join(frontendRoot, 'src/components/CookingCenterPage.jsx'),
+  'utf8',
+);
+const customSnackSource = fs.readFileSync(
+  path.join(frontendRoot, 'src/components/CustomSnackPage.jsx'),
   'utf8',
 );
 const recipeMakeSource = fs.readFileSync(
@@ -52,6 +57,18 @@ test('启动前确认只保留幼童和宠物安全项', () => {
   assert.doesNotMatch(checksBlock, /startCheckIngredients|startCheckWater|startCheckLid/);
 });
 
+test('烹饪控制指令在 SDK 调用前后都记录通讯事件，日志失败不阻断设备命令', () => {
+  const prepareBlock = cookingSource.match(/const handlePrepareCooking = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] || '';
+  const startBlock = cookingSource.match(/const handleStartCooking = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] || '';
+  assert.match(prepareBlock, /107: 'reset_requested'/);
+  assert.match(prepareBlock, /HeyboTuya\.resetCooking/);
+  assert.match(prepareBlock, /107: 'reset_sent'/);
+  assert.match(startBlock, /107: 'start_requested'/);
+  assert.match(startBlock, /HeyboTuya\.startDiyCooking/);
+  assert.match(startBlock, /107: 'start_sent'/);
+  assert.match(cookingSource, /console\.warn\('Device communication log failed:'/);
+});
+
 test('一键烹饪使用整幅设备图且不显示工程数据面板', () => {
   assert.match(cookingSource, /<div className="cooking-lux-panel">[\s\S]*?src="\/machine\.jpg"/);
   assert.doesNotMatch(cookingSource, /className="cooking-lux-metrics"/);
@@ -59,15 +76,41 @@ test('一键烹饪使用整幅设备图且不显示工程数据面板', () => {
 
 test('一键烹饪提示按启动前、烹饪中和完成三种状态显示动态文案', () => {
   const guidanceBlock = cookingSource.match(/const cookingGuidanceKey[\s\S]*?<div className="cooking-lux-steps">[\s\S]*?<\/div>/)?.[0] || '';
-  assert.match(guidanceBlock, /view\.statusCode === 'done'/);
+  assert.match(guidanceBlock, /isDone/);
   assert.match(guidanceBlock, /isActive/);
   assert.match(guidanceBlock, /cookingGuidanceBeforeStart/);
   assert.match(guidanceBlock, /\{ pet: petName, grams: servingGrams, recipe: recipeName \}/);
   assert.doesNotMatch(guidanceBlock, /cookingTemperature|cookingTime|cookingSpeed|cookingPower/);
   assert.match(translationsSource, /'cookingGuidanceBeforeStart'/);
-  assert.match(translationsSource, /即将为“\{pet\}”制作“\{grams\}克”的“\{recipe\}”健康鲜食/);
-  assert.match(translationsSource, /正在为“\{pet\}”制作“\{grams\}克”的“\{recipe\}”健康鲜食/);
-  assert.match(translationsSource, /完成为“\{pet\}”制作“\{grams\}克”的“\{recipe\}”健康鲜食/);
+  assert.match(translationsSource, /即将制作\{grams\}克\{recipe\}健康鲜食，放入食材和对应的水后（请勿放入全价营养包），请点击下方一键烹饪按钮。/);
+  assert.match(translationsSource, /正在制作\{grams\}克\{recipe\}健康鲜食，请注意鲜食杯体和杯盖蒸汽孔位置高温，小心烫伤。/);
+  assert.match(translationsSource, /完成\{recipe\}健康鲜食制作，请先打开蒸汽孔排气，再打开杯盖，小心烫伤。全价营养包需最后拌入宠物食碗中。/);
+});
+
+test('八种语言的烹饪文案使用同一组新语义和占位符', () => {
+  for (const lang of ['zh', 'en', 'de', 'fr', 'es', 'it', 'ja', 'ko']) {
+    const t = useTranslation(lang);
+    const params = { pet: 'PET_SENTINEL', grams: 321, recipe: 'RECIPE_SENTINEL' };
+    const before = t('cookingGuidanceBeforeStart', params);
+    const active = t('cookingGuidanceActive', params);
+    const done = t('cookingGuidanceDone', params);
+
+    assert.match(before, /321/);
+    assert.match(active, /321/);
+    assert.doesNotMatch(done, /321/);
+    assert.match(before, /RECIPE_SENTINEL/);
+    assert.match(active, /RECIPE_SENTINEL/);
+    assert.match(done, /RECIPE_SENTINEL/);
+    assert.doesNotMatch(before, /PET_SENTINEL/);
+    assert.doesNotMatch(active, /PET_SENTINEL/);
+    assert.doesNotMatch(done, /PET_SENTINEL/);
+    assert.doesNotMatch(`${before}${active}${done}`, /\{(?:grams|recipe|pet)\}/);
+  }
+});
+
+test('鲜食机暂停状态使用只读的烹饪暂停中状态文案', () => {
+  const t = useTranslation('zh');
+  assert.equal(t('deviceStatusPaused'), '烹饪暂停中');
 });
 
 test('杯盖故障文案不显示 E01 代码', () => {
@@ -117,23 +160,95 @@ test('一键烹饪总时长不再叠加历史预热时间', () => {
   assert.match(cookingSource, /Number\(cookMinutes\) \* 60/);
 });
 
-test('实机使用DP7计划时长且App在计划截止时主动复位停机', () => {
-  assert.match(cookingSource, /runtimeDps = \{[^}]*7: cookTime[^}]*107: 'start'/);
+test('APP只保留一键启动，不再提供暂停恢复或长按停止命令', () => {
+  assert.match(cookingSource, /const handleStartCooking = async \(\) =>/);
   assert.match(cookingSource, /HeyboTuya\.startDiyCooking\(/);
-  assert.match(cookingSource, /shouldAutoCompleteCooking\(/);
-  assert.match(cookingSource, /completionHandlerRef\.current\?\.\(\{ devId, dps \}\)/);
-  assert.match(cookingSource, /HeyboTuya\.resetCooking\(\{ devId \}\)/);
-  assert.match(cookingSource, /withoutReportedRemaining\(serverDps\)/);
+  assert.doesNotMatch(cookingSource, /handlePauseCooking|handleResumeCooking|handleStopCooking/);
+  assert.doesNotMatch(cookingSource, /HeyboTuya\.pauseCooking|resumeOrHoldStop|onPointerDown/);
+  assert.match(cookingSource, /className=\{`cooking-device-status cooking-device-status-\$\{displayStatusCode\}`\}/);
   assert.match(nativeBridgeSource, /await this\.publishDps\(\{ devId, dps \}\);\s*await this\.publishDps\(\{ devId, dps: \{ 107: 'start' \} \}\);/);
   assert.match(androidCommandSource, /dps\.put\(DP_COOK_TIME, cookTime\)/);
   assert.doesNotMatch(androidCommandSource, /dps\.put\(DP_COOK_START_PAUSE_RESET, "start"\)/);
   assert.match(androidAdapterSource, /publishDps\(DeviceCommand\.diyCooking[\s\S]*?publishDps\(DeviceCommand\.cookingAction\(devId, "start"\), callback\)/);
 });
 
-test('App倒计时使用请求时间和本地时钟，不被间歇DP8上报卡住', () => {
-  assert.match(cookingSource, /const requestedAtMs = Date\.now\(\)/);
-  assert.match(cookingSource, /const startedAtMs = requestedAtMs/);
-  assert.match(cookingSource, /hasLocalClock: Boolean\(runStartedAt \|\| runElapsedMs > 0\)/);
+test('鲜食杯故障只展示和阻止启动，不由APP发送暂停命令', () => {
+  assert.match(cookingSource, /function isCupMissingFault\(dps\)/);
+  assert.match(cookingSource, /const hasCupMissingFault = isCupMissingFault\(deviceDps\)/);
+  assert.match(cookingSource, /startSending \|\| hasCupMissingFault \|\| !hasRecipe/);
+  assert.doesNotMatch(cookingSource, /cupFaultPauseRef|faultRemainingSeconds|pauseCooking/);
+});
+
+test('状态只读取DP5，倒计时只显示DP8，不使用手机定时器插值', () => {
+  assert.match(cookingSource, /const displayStatusCode = view\.statusCode/);
+  assert.match(cookingSource, /const rawRemaining = deviceDps\[8\]/);
+  assert.match(cookingSource, /hasReportedRemaining \? formatCountdown\(remainingSeconds\) : '--:--'/);
+  assert.match(cookingSource, /displayStatusCode === 'cooking'/);
+  assert.match(cookingSource, /displayStatusCode === 'pause'/);
+  assert.match(cookingSource, /displayStatusCode === 'done'/);
+  assert.doesNotMatch(cookingSource, /setInterval\(\(\) => setNowTick|runStartedAt|runElapsedMs|shouldAutoCompleteCooking/);
+  assert.doesNotMatch(cookingSource, /const doneDps|5: 'done'|5: 'standby'/);
+});
+
+test('运行中锁定启动时的食谱展示，但不让缓存决定设备状态', () => {
+  assert.match(cookingSource, /const activeRuntime = readCookingRuntime\(selectedDevice\?\.devId\)/);
+  assert.match(cookingSource, /const runtimeOwnsDisplay = Boolean\(/);
+  assert.match(cookingSource, /name: activeRuntime\.recipeName/);
+  assert.match(cookingSource, /isCustomSnack: activeRuntime\.isCustomSnack/);
+  assert.match(cookingSource, /saveCookingRuntime\(selectedDevice\.devId/);
+  assert.match(cookingSource, /nativeDpSeenRef = useRef\(new Set\(\)\)/);
+  assert.match(cookingSource, /nativeDpSeenRef\.current\.has\(device\.devId\)/);
+  assert.doesNotMatch(cookingSource, /resolveCookingDisplayState|START_STATUS_FENCE_MS|preservePendingStart/);
+});
+
+test('订阅后立即用原生DP快照校正ECS缓存，待机时清除旧运行上下文', () => {
+  assert.match(cookingSource, /HeyboTuya\.subscribeDevice\(\{ devId \}\)\s*\.then\(\(\) => HeyboTuya\.getDeviceDpState\(\{ devId \}\)\)/);
+  assert.doesNotMatch(cookingSource, /hasCookingStatusDps/);
+  assert.match(cookingSource, /Object\.keys\(nextDps\)\.length === 0\) return false;/);
+  assert.match(cookingSource, /nativeDpSeenRef\.current\.add\(devId\)/);
+  assert.match(cookingSource, /if \(state === 'standby'\) \{[\s\S]*?clearCookingRuntime\(devId\);/);
+  assert.match(nativeBridgeSource, /async getDeviceDpState\(\{ devId \}\)/);
+  assert.match(androidPluginSource, /public void getDeviceDpState\(PluginCall call\)/);
+  assert.match(androidAdapterSource, /getDeviceStatus\(devId, result -> \{/);
+  assert.doesNotMatch(androidAdapterSource, /Map<String, Object> cached = dpsCache\.get\(devId\);[\s\S]*?getDeviceStatus\(devId/);
+  assert.match(iosPluginSource, /@objc func getDeviceDpState\(_ call: CAPPluginCall\)/);
+});
+
+test('完成确认仅向设备请求复位，并等待DP5待机回报切换页面', () => {
+  assert.match(cookingSource, /displayStatusCode === 'done' \? \([\s\S]*?deviceStatusDone/);
+  assert.match(cookingSource, /const handleCompleteCooking = async \(\) => \{[\s\S]*?HeyboTuya\.resetCooking\(\{ devId: selectedDevice\.devId \}\)/);
+  assert.doesNotMatch(cookingSource, /handleCompleteCooking[\s\S]{0,700}5:\s*'standby'/);
+});
+
+test('启动先复位、确认后才下发参数与 start，并记录通讯命令', () => {
+  assert.match(cookingSource, /const handlePrepareCooking = async \(\) => \{[\s\S]*?HeyboTuya\.resetCooking\([\s\S]*?setStartConfirmOpen\(true\)/);
+  assert.match(cookingSource, /const handleStartCooking = async \(\) => \{[\s\S]*?107: 'start_requested'[\s\S]*?HeyboTuya\.startDiyCooking\([\s\S]*?107: 'start_sent'/);
+  assert.doesNotMatch(cookingSource, /handleStartCooking[\s\S]{0,1400}HeyboTuya\.resetCooking/);
+  assert.match(cookingSource, /api\.recordDeviceCommunication/);
+});
+
+test('零食自制提供完整参数并复用启动前确认流程', () => {
+  assert.match(customSnackSource, /const \[blade, setBlade\] = useState\(1\)/);
+  assert.match(customSnackSource, /min=\{40\}[\s\S]*max=\{120\}/);
+  assert.match(customSnackSource, /min=\{1\}[\s\S]*max=\{10\}/);
+  assert.match(customSnackSource, /setDuration\(600\)/);
+  assert.match(customSnackSource, /setDuration\(1080\)/);
+  assert.match(customSnackSource, /setDuration\(1440\)/);
+  assert.match(customSnackSource, /function TimeWheelColumn/);
+  assert.match(customSnackSource, /className="custom-snack-duration custom-snack-time-wheel"/);
+  assert.match(customSnackSource, /scrollTo\(\{ top: nextValue \* TIME_WHEEL_ROW_HEIGHT, behavior: 'smooth' \}\)/);
+  assert.doesNotMatch(customSnackSource, /<DialStepper compact/);
+  assert.match(stylesSource, /\.custom-snack-time-wheel-scroll\s*\{[^}]*scroll-snap-type:\s*y mandatory/s);
+  assert.match(customSnackSource, /custom-snack-table-row is-header/);
+  assert.match(customSnackSource, /custom-snack-tip/);
+  assert.match(customSnackSource, /customSnackSuggestedDuration/);
+  assert.doesNotMatch(customSnackSource, /custom-snack-guide-row/);
+  assert.match(customSnackSource, /power: 8/);
+  assert.match(customSnackSource, /isCustomSnack: true/);
+  assert.match(customSnackSource, /autoStart: true/);
+  assert.match(cookingSource, /recipeContext\?\.autoStart/);
+  assert.match(cookingSource, /setStartConfirmOpen\(true\)/);
+  assert.match(translationsSource, /'customSnack'/);
 });
 
 test('多台鲜食机从一键烹饪进入时必须先选择设备', () => {
