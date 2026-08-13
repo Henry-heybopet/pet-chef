@@ -4,6 +4,7 @@ const crypto = require('crypto');
 
 const dataDir = path.resolve(__dirname, '../../.data');
 const dataFile = path.join(dataDir, 'heybo-db.json');
+const MAX_DEVICE_COMMUNICATION_LOGS = 2000;
 
 const seedProducts = [
   {
@@ -149,6 +150,13 @@ function deviceCommunicationLogs() {
   return db.device_communication_logs;
 }
 
+function trimDeviceCommunicationLogs() {
+  const logs = deviceCommunicationLogs();
+  if (logs.length > MAX_DEVICE_COMMUNICATION_LOGS) {
+    logs.splice(0, logs.length - MAX_DEVICE_COMMUNICATION_LOGS);
+  }
+}
+
 function now() {
   return new Date().toISOString();
 }
@@ -183,10 +191,13 @@ function loadDb() {
 }
 
 function saveDb() {
+  const temporaryFile = `${dataFile}.${process.pid}.tmp`;
   try {
     fs.mkdirSync(dataDir, { recursive: true });
-    fs.writeFileSync(dataFile, JSON.stringify(db, null, 2));
+    fs.writeFileSync(temporaryFile, JSON.stringify(db, null, 2));
+    fs.renameSync(temporaryFile, dataFile);
   } catch (error) {
+    try { fs.unlinkSync(temporaryFile); } catch {}
     console.warn('Heybo store save skipped:', error.message);
   }
 }
@@ -534,9 +545,9 @@ function syncDeviceDp(userId, deviceId, payload = {}) {
     updated_at: now(),
   });
 
-  // DP5/DP12 are support-relevant device-to-App events. DP8 is intentionally
-  // excluded: it reports every second and belongs only to the live UI.
-  [5, 12].forEach(dpId => {
+  // Keep the raw device timing sequence observable: DP5 owns cooking state,
+  // DP8 is the device countdown, and DP12 reports safety faults.
+  [5, 8, 12].forEach(dpId => {
     if (payload.dps[dpId] === undefined || previousDps[dpId] === payload.dps[dpId]) return;
     deviceCommunicationLogs().push({
       id: id('dcl'),
@@ -551,6 +562,7 @@ function syncDeviceDp(userId, deviceId, payload = {}) {
       created_at: now(),
     });
   });
+  trimDeviceCommunicationLogs();
 
   saveDb();
   return device;
@@ -588,6 +600,7 @@ function createDeviceCommunicationLogs(userId, deviceId, payload = {}) {
       created_at: now(),
     }));
   deviceCommunicationLogs().push(...logs);
+  trimDeviceCommunicationLogs();
   saveDb();
   return logs;
 }
