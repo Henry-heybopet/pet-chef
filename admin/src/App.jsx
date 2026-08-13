@@ -495,6 +495,9 @@ function App() {
   const [deviceOperationError, setDeviceOperationError] = useState('');
   const [deviceCommunications, setDeviceCommunications] = useState([]);
   const [deviceCommunicationError, setDeviceCommunicationError] = useState('');
+  const [showDp8Logs, setShowDp8Logs] = useState(true);
+  const [operationFiltersOpen, setOperationFiltersOpen] = useState(false);
+  const [operationFilters, setOperationFilters] = useState({ pet: '', recipe: '', palatability: '', stool: '' });
 
   // 处方药品维护列表状态
   const [medicines, setMedicines] = useState(MEDICINE_REGISTRY);
@@ -615,6 +618,36 @@ function App() {
       log.tuya_device_id === selectedDevice.tuya_device_id
     );
   }, [deviceCommunications, selectedDevice]);
+
+  const visibleDeviceCommunications = useMemo(() => (
+    showDp8Logs
+      ? selectedDeviceCommunications
+      : selectedDeviceCommunications.filter(log => String(log.dp_id) !== '8')
+  ), [selectedDeviceCommunications, showDp8Logs]);
+
+  const operationFilterOptions = useMemo(() => {
+    const unique = values => [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'));
+    const feedback = selectedDeviceOperations.flatMap(operation => operation.feedback || []);
+    return {
+      pets: unique(selectedDeviceOperations.map(operation => operation.pet_name)),
+      recipes: unique(selectedDeviceOperations.map(operation => operation.recipe_name)),
+      palatability: unique(feedback.map(item => item.palatability)),
+      stools: unique(feedback.map(item => item.stool_status)),
+    };
+  }, [selectedDeviceOperations]);
+
+  const visibleDeviceOperations = useMemo(() => selectedDeviceOperations.filter(operation => {
+    const feedback = operation.feedback || [];
+    return (!operationFilters.pet || operation.pet_name === operationFilters.pet)
+      && (!operationFilters.recipe || operation.recipe_name === operationFilters.recipe)
+      && (!operationFilters.palatability || feedback.some(item => item.palatability === operationFilters.palatability))
+      && (!operationFilters.stool || feedback.some(item => item.stool_status === operationFilters.stool));
+  }), [selectedDeviceOperations, operationFilters]);
+
+  useEffect(() => {
+    setOperationFilters({ pet: '', recipe: '', palatability: '', stool: '' });
+    setOperationFiltersOpen(false);
+  }, [selectedDevice?.id]);
 
   const filteredProducts = useMemo(() => {
     // 料包做区域隔离，配件全局显示
@@ -772,7 +805,7 @@ function App() {
     }
     setDeviceCommunicationError('');
     try {
-      const res = await adminFetch('/api/admin/devices/communications');
+      const res = await adminFetch('/api/admin/devices/communications?limit=1000');
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || '加载设备通讯日志失败');
       setDeviceCommunications(data.logs || []);
@@ -1733,75 +1766,36 @@ function App() {
                   <div className="modal-body">
                     <div className="device-diag-title">
                       <h4>{selectedDevice.device_name}</h4>
-                      <p>Tuya ID: <code>{selectedDevice.tuya_device_id}</code> | PID: <code>{selectedDevice.tuya_pid}</code></p>
-                    </div>
-
-                    <div className="diag-layout">
-                      <div className="diag-column">
-                        <h5>远程测试动作</h5>
-                        <div className="btn-stack">
-                          {selectedDevice.product_type === 'pet_chef' && (
-                            <>
-                              <button className="action-btn" onClick={() => alert('启动设备加热模拟指令已发送')}>🔥 下发 85°C 加热烹饪</button>
-                              <button className="action-btn" onClick={() => alert('水泵自清洗指令已下发')}>🚿 加水出料自清洁</button>
-                            </>
-                          )}
-                          {selectedDevice.product_type === 'smart_litter_box' && (
-                            <button className="action-btn" onClick={() => alert('正在下发清理滚筒复位指令')}>🔄 下发滚筒回零复位</button>
-                          )}
-                          {selectedDevice.product_type === 'smart_feeder' && (
-                            <button className="action-btn" onClick={() => alert('远程手动出粮 50g 指令已发送')}>🍖 手动出粮 50g</button>
-                          )}
-                          {selectedDevice.product_type === 'smart_water_fountain' && (
-                            <button className="action-btn" onClick={() => alert('水泵滤芯更换重置成功')}>♻️ 滤芯寿命计数重置</button>
-                          )}
-                          {selectedDevice.product_type === 'smart_tracker' && (
-                            <button className="action-btn" onClick={() => alert('高精度 GPS 实时唤醒定位指令已发送')}>📍 实时高频寻宠定位</button>
-                          )}
-                          <button className="action-btn danger" onClick={() => alert('强制重启设备指令已下发')}>🔌 强制远程复位重启</button>
-                        </div>
-                      </div>
-
-                      <div className="diag-column">
-                        <h5>设备状态快照表 (Tuya DPs)</h5>
-                        <table className="telemetry-table">
-                          <thead>
-                            <tr>
-                              <th>DP 键</th>
-                              <th>遥测描述</th>
-                              <th>上报数值</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {Object.entries(selectedDevice.telemetry || {}).map(([key, val]) => {
-                              const displayValue = val === null || val === undefined || val === '' ? '-' : String(val);
-                              return (
-                                <tr key={key}>
-                                  <td><code>{key}</code></td>
-                                  <td>{key === 'online' ? '通信状态' : key === 'error_code' ? '故障自检码' : '传感器上报'}</td>
-                                  <td><strong style={{ color: displayValue.includes('E') ? 'red' : 'inherit' }}>{displayValue}</strong></td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                      <p>
+                        Tuya ID: <code>{selectedDevice.tuya_device_id}</code>
+                        {' | '}PID: <code>{selectedDevice.tuya_pid}</code>
+                        {' | '}MAC: <code>{selectedDevice.mac_address || '未上报'}</code>
+                      </p>
                     </div>
 
                     <section className="device-operation-log device-communication-log">
                       <div className="device-operation-log-header">
                         <div>
                           <h5>设备通讯日志</h5>
-                          <p>仅记录 App 与设备的控制指令、DP5 状态和 DP12 故障；不记录 DP8 倒计时。</p>
+                          <p>记录 App 控制指令，以及设备上报的 DP5 状态、DP8 倒计时和 DP12 故障，用于分析实际通讯时序。</p>
                         </div>
-                        <span>{selectedDeviceCommunications.length} 条</span>
+                        <div className="device-log-header-actions">
+                          <label className="device-log-switch">
+                            <input type="checkbox" checked={showDp8Logs} onChange={event => setShowDp8Logs(event.target.checked)} />
+                            <span>显示 DP8</span>
+                          </label>
+                          <span className="device-log-count">{visibleDeviceCommunications.length} 条</span>
+                        </div>
                       </div>
                       {deviceCommunicationError && <p className="inline-error">日志加载失败：{deviceCommunicationError}</p>}
                       {!deviceCommunicationError && selectedDeviceCommunications.length === 0 && (
                         <p className="muted-text">暂无设备通讯记录。请先使用新版 APK 完成一次启动操作。</p>
                       )}
+                      {!deviceCommunicationError && selectedDeviceCommunications.length > 0 && visibleDeviceCommunications.length === 0 && (
+                        <p className="muted-text">当前仅有 DP8 记录，打开“显示 DP8”即可查看。</p>
+                      )}
                       <div className="device-communication-timeline">
-                        {selectedDeviceCommunications.map(log => (
+                        {visibleDeviceCommunications.map(log => (
                           <article className={`device-communication-event direction-${log.direction}`} key={log.id}>
                             <time>{formatAdminTime(log.event_at || log.created_at)}</time>
                             <strong>{log.direction === 'app_to_device' ? 'APP→设备' : '设备→APP'}</strong>
@@ -1817,14 +1811,31 @@ function App() {
                           <h5>设备操作日志</h5>
                           <p>记录用户、宠物、食谱、操作结果及两项喂食反馈</p>
                         </div>
-                        <span>{selectedDeviceOperations.length} 条</span>
+                        <div className="device-log-header-actions">
+                          <button className="device-log-filter-button" type="button" onClick={() => setOperationFiltersOpen(open => !open)}>
+                            {operationFiltersOpen ? '收起筛选' : '筛选'}
+                          </button>
+                          <span className="device-log-count">{visibleDeviceOperations.length} 条</span>
+                        </div>
                       </div>
+                      {operationFiltersOpen && (
+                        <div className="device-operation-filters">
+                          <label>宠物名<select value={operationFilters.pet} onChange={event => setOperationFilters(filters => ({ ...filters, pet: event.target.value }))}><option value="">全部</option>{operationFilterOptions.pets.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+                          <label>食谱名字<select value={operationFilters.recipe} onChange={event => setOperationFilters(filters => ({ ...filters, recipe: event.target.value }))}><option value="">全部</option>{operationFilterOptions.recipes.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+                          <label>适口性状态<select value={operationFilters.palatability} onChange={event => setOperationFilters(filters => ({ ...filters, palatability: event.target.value }))}><option value="">全部</option>{operationFilterOptions.palatability.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+                          <label>大便状态<select value={operationFilters.stool} onChange={event => setOperationFilters(filters => ({ ...filters, stool: event.target.value }))}><option value="">全部</option>{operationFilterOptions.stools.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+                          <button type="button" onClick={() => setOperationFilters({ pet: '', recipe: '', palatability: '', stool: '' })}>清除筛选</button>
+                        </div>
+                      )}
                       {deviceOperationError && <p className="inline-error">日志加载失败：{deviceOperationError}</p>}
                       {!deviceOperationError && selectedDeviceOperations.length === 0 && (
                         <p className="muted-text">暂无设备操作记录。安装新版 APK 并完成一次操作后会显示在这里。</p>
                       )}
+                      {!deviceOperationError && selectedDeviceOperations.length > 0 && visibleDeviceOperations.length === 0 && (
+                        <p className="muted-text">没有符合当前筛选条件的操作记录。</p>
+                      )}
                       <div className="device-operation-timeline">
-                        {selectedDeviceOperations.map(operation => (
+                        {visibleDeviceOperations.map(operation => (
                           <article className={`device-operation-event status-${operation.status || 'created'}`} key={operation.id}>
                             <div className="device-operation-event-head">
                               <strong>{DEVICE_OPERATION_LABELS[operation.operation_type] || operation.operation_type}</strong>
