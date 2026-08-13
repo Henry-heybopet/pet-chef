@@ -17,16 +17,29 @@ test('缺少DP5时不推测待机状态', () => {
   assert.equal(resolveCookingState({ 5: '' }), 'unknown');
 });
 
-test('运行与暂停界面都原样显示机器DP8剩余秒数', () => {
+test('运行时以DP8为锚点逐秒显示，并由新DP8立即校准', () => {
   assert.equal(resolveCookingRemainingSeconds({
     reportedRemaining: 487,
-  }), 487);
+    isCooking: true,
+    reportedAtMs: 1_000,
+    nowMs: 4_500,
+  }), 484);
+  assert.equal(resolveCookingRemainingSeconds({
+    reportedRemaining: 480,
+    isCooking: true,
+    reportedAtMs: 5_000,
+    nowMs: 5_500,
+  }), 480);
+});
+
+test('暂停时冻结DP8，完成状态强制显示零', () => {
   assert.equal(resolveCookingRemainingSeconds({
     reportedRemaining: 487,
+    isCooking: false,
+    reportedAtMs: 1_000,
+    nowMs: 20_000,
   }), 487);
-  assert.equal(resolveCookingRemainingSeconds({
-    reportedRemaining: 0,
-  }), 0);
+  assert.equal(resolveCookingRemainingSeconds({ reportedRemaining: 12, isDone: true }), 0);
 });
 
 test('完成状态显示零，缺少DP8时不伪造运行进度', () => {

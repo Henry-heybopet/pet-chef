@@ -950,16 +950,34 @@ function DeviceDetail({ device, recipeContext, activeRuntime, startSending, comp
   const reportedRemaining = rawRemaining === undefined || rawRemaining === null || rawRemaining === ''
     ? Number.NaN
     : Number(rawRemaining);
+  const hasReportedRemaining = Number.isFinite(reportedRemaining) && reportedRemaining >= 0;
+  const dp8AnchorRef = useRef({ key: '', reportedAtMs: Date.now() });
+  const dp8AnchorKey = `${view.devId}:${reportedRemaining}:${device?.dp8ReportedAt || ''}`;
+  if (dp8AnchorRef.current.key !== dp8AnchorKey) {
+    dp8AnchorRef.current = {
+      key: dp8AnchorKey,
+      reportedAtMs: Number(device?.dp8ReportedAt) || Date.now(),
+    };
+  }
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    setNowTick(Date.now());
+    if (!isCooking || !hasReportedRemaining) return undefined;
+    const timer = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [isCooking, hasReportedRemaining, dp8AnchorKey]);
   const remainingSeconds = resolveCookingRemainingSeconds({
     reportedRemaining,
     isDone,
+    isCooking,
+    reportedAtMs: dp8AnchorRef.current.reportedAtMs,
+    nowMs: nowTick,
   });
   const progressPercent = isDone
     ? 100
     : isActive && totalSeconds > 0 && Number.isFinite(remainingSeconds)
       ? Math.min(100, Math.max(0, ((totalSeconds - remainingSeconds) / totalSeconds) * 100))
       : 0;
-  const hasReportedRemaining = Number.isFinite(reportedRemaining) && reportedRemaining >= 0;
   const countdownText = hasReportedRemaining ? formatCountdown(remainingSeconds) : '--:--';
   const statusLabel = displayStatusCode === 'offline'
     ? t('deviceStatusOffline')
@@ -1067,6 +1085,8 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const operationFlushRef = useRef(Promise.resolve());
   const deviceCommunicationFlushRef = useRef(new Map());
   const selectedDeviceDpsRef = useRef({});
+  const nativeDpSyncRef = useRef({ devId: '', ready: Promise.resolve(false), apply: null });
+  const snackAnalysisRef = useRef({ key: '', promise: null });
   const recipeEntryHandledRef = useRef(false);
   const autoStartHandledRef = useRef(false);
 
@@ -1166,6 +1186,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
           const localDps = parseDps(local);
           return {
             ...device,
+            dp8ReportedAt: local?.dp8ReportedAt,
             // 在线状态只接受本机 Tuya SDK 的 DP；ECS DP 缓存仅供离线展示。
             dps: nativeDpSeenRef.current.has(device.devId)
               ? localDps
@@ -1247,6 +1268,35 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   }, [authToken]);
 
   useEffect(() => {
+    const request = recipeContext?.isCustomSnack && recipeContext?.snackAnalysisRequest;
+    if (!request || !authToken) {
+      snackAnalysisRef.current = { key: '', promise: null };
+      return;
+    }
+    const key = JSON.stringify(request);
+    if (snackAnalysisRef.current.key === key) return;
+    const promise = api.freshCheckAnalyze(request, authToken)
+      .then(result => {
+        const blocked = (result.findings || []).some(item => item.level === 'danger' || item.risk_level === 'danger');
+        const kcalPerGram = Number(result.energy?.kcal_per_gram ?? result.daily_need?.recipe_kcal_per_gram);
+        if (blocked) throw new Error(t('customSnackUnsafeIngredients'));
+        if (!Number.isFinite(kcalPerGram) || kcalPerGram < 0) throw new Error(t('customSnackEnergyUnavailable'));
+        return {
+          ok: true,
+          displayGrams: Number(result.recipe?.total_weight_g) || recipeContext.displayGrams || 0,
+          snackIngredients: result.recipe?.ingredients || recipeContext.snackIngredients,
+          estimatedEnergy: {
+            totalKcal: Number(result.energy?.total_kcal) || 0,
+            kcalPerGram,
+            source: result.energy_lookup?.source || 'estimated',
+          },
+        };
+      })
+      .catch(error => ({ ok: false, error }));
+    snackAnalysisRef.current = { key, promise };
+  }, [recipeContext, authToken, lang]);
+
+  useEffect(() => {
     if (!authToken) return undefined;
     let alive = true;
     HeyboTuya.ensureNativeSession()
@@ -1257,13 +1307,26 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         if (!homeId || session?.platform === 'web') return;
         const nativeResult = await HeyboTuya.getDeviceList({ homeId });
         const nativeDevices = nativeResult.devices || [];
-        nativeDevices.forEach(device => {
-          if (Object.keys(parseDps(device)).length) nativeDpSeenRef.current.add(device.devId);
+        setDevices(prev => {
+          const previousByDevId = Object.fromEntries(prev.map(device => [device.devId || device.tuya_device_id, device]));
+          const discoveredIds = new Set(nativeDevices.map(device => device.devId));
+          return uniqueDevices([
+            ...nativeDevices.map(device => {
+              const local = previousByDevId[device.devId];
+              return {
+                ...device,
+                homeId,
+                dp8ReportedAt: local?.dp8ReportedAt,
+                // Discovery is not a live subscription. Never let its older DP
+                // snapshot replace a callback already received for this device.
+                dps: local && nativeDpSeenRef.current.has(device.devId)
+                  ? parseDps(local)
+                  : parseDps(device),
+              };
+            }),
+            ...prev.filter(device => !discoveredIds.has(device.devId || device.tuya_device_id)),
+          ]);
         });
-        setDevices(prev => uniqueDevices([
-          ...prev,
-          ...nativeDevices.map(device => ({ ...device, homeId, dps: parseDps(device) })),
-        ]));
         await Promise.all(nativeDevices.map(device =>
           registerBoundDevice({ ...device, homeId }, false)
         ));
@@ -1300,12 +1363,17 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       if (source === 'snapshot' && receivedRealtimeUpdate) return false;
       if (source === 'realtime') receivedRealtimeUpdate = true;
       nativeDpSeenRef.current.add(devId);
+      const receivedAt = Date.now();
+      const hasDp8 = [8, 'remain_time', 'remainTime']
+        .some(key => Object.prototype.hasOwnProperty.call(nextDps, key));
       const mergedDps = { ...selectedDeviceDpsRef.current, ...nextDps };
       selectedDeviceDpsRef.current = mergedDps;
       void syncNativeDpsToBackend(devId, nextDps, selectedDevice?.isOnline);
       setDevices(prev => prev.map(device => {
         const itemDevId = device.devId || device.tuya_device_id;
-        return itemDevId === devId ? { ...device, dps: mergedDps } : device;
+        return itemDevId === devId
+          ? { ...device, dps: mergedDps, ...(hasDp8 ? { dp8ReportedAt: receivedAt } : {}) }
+          : device;
       }));
       setLastStatusAt(new Date().toISOString());
       const state = resolveCookingState(mergedDps);
@@ -1323,7 +1391,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       }
       return true;
     };
-    HeyboTuya.addListener('dpUpdate', event => {
+    const subscriptionReady = HeyboTuya.addListener('dpUpdate', event => {
       if (!alive || event.devId !== devId) return;
       applyNativeDps(event.dps, 'realtime');
     })
@@ -1331,16 +1399,43 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         listener = result;
         return HeyboTuya.subscribeDevice({ devId });
       })
-      .then(() => HeyboTuya.getDeviceDpState({ devId }))
-      .then(result => { if (alive) applyNativeDps(result?.dps, 'snapshot'); })
-      .catch(() => {});
+      .then(() => true)
+      .catch(error => {
+        if (alive) setLiveStatusError(error?.message || t('tuyaSessionInitFailed'));
+        return false;
+      });
+    nativeDpSyncRef.current = { devId, ready: subscriptionReady, apply: applyNativeDps };
+    subscriptionReady.then(ready => {
+      if (!ready || !alive) return;
+      HeyboTuya.getDeviceDpState({ devId })
+        .then(result => { if (alive) applyNativeDps(result?.dps, 'snapshot'); })
+        .catch(error => { if (alive) setLiveStatusError(error?.message || t('deviceCacheRefreshFailed')); });
+    });
     return () => {
       alive = false;
       nativeDpSeenRef.current.delete(devId);
+      if (nativeDpSyncRef.current.devId === devId) {
+        nativeDpSyncRef.current = { devId: '', ready: Promise.resolve(false), apply: null };
+      }
       listener?.remove?.();
       HeyboTuya.unsubscribeDevice({ devId }).catch(() => {});
     };
   }, [selectedDevice?.devId, authToken]);
+
+  const waitForNativeDpSync = async devId => {
+    const sync = nativeDpSyncRef.current;
+    if (sync.devId !== devId || !await sync.ready) {
+      throw new Error(t('tuyaSessionInitFailed'));
+    }
+    return sync;
+  };
+
+  const waitForSnackAnalysis = async () => {
+    if (!recipeContext?.isCustomSnack) return null;
+    const analysis = await snackAnalysisRef.current.promise;
+    if (!analysis?.ok) throw analysis?.error || new Error(t('freshCheckAnalyzeFailed'));
+    return analysis;
+  };
 
   const handlePrepareCooking = async () => {
     if (startSending) return;
@@ -1356,6 +1451,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     }
     setStartSending(true);
     try {
+      await waitForNativeDpSync(selectedDevice.devId);
       void reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_requested' });
       await HeyboTuya.resetCooking({ devId: selectedDevice.devId });
       void reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_sent' });
@@ -1381,6 +1477,15 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     const cookTime = Number(cooking.cookTime || (cookMinutes * 60));
     const power = cooking.power ?? 8;
     const speed = String(cooking.speed ?? 1);
+    setStartSending(true);
+    let snackAnalysis;
+    try {
+      snackAnalysis = await waitForSnackAnalysis();
+    } catch (error) {
+      setMessage(error?.message || t('freshCheckAnalyzeFailed'));
+      setStartSending(false);
+      return;
+    }
     const sessionId = uniqueEventId('session');
     const requestedAtMs = Date.now();
     const requestedAtIso = new Date(requestedAtMs).toISOString();
@@ -1392,15 +1497,15 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       recipe_name: cooking.recipe.name || cooking.recipe.recipeName || t('currentRecipe'),
       pet_id: recipeContext?.profile?.id || '',
       pet_name: recipeContext?.profile?.name || '',
-      total_weight_g: recipeContext?.displayGrams || 0,
+      total_weight_g: snackAnalysis?.displayGrams ?? recipeContext?.displayGrams ?? 0,
       is_custom_snack: Boolean(recipeContext?.isCustomSnack),
-      ingredients_snapshot: recipeContext?.snackIngredients || undefined,
-      estimated_energy: recipeContext?.estimatedEnergy || undefined,
+      ingredients_snapshot: snackAnalysis?.snackIngredients || recipeContext?.snackIngredients || undefined,
+      estimated_energy: snackAnalysis?.estimatedEnergy || recipeContext?.estimatedEnergy || undefined,
       started_at: requestedAtIso,
       cooking_params_snapshot: cooking.params,
     };
-    setStartSending(true);
     try {
+      const nativeDpSync = await waitForNativeDpSync(selectedDevice.devId);
       void reportDeviceCommunication(selectedDevice.devId, {
         1: true,
         3: 'diy',
@@ -1418,6 +1523,15 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
         speed,
       });
       void reportDeviceCommunication(selectedDevice.devId, { 107: 'start_sent' });
+      try {
+        const latestState = await HeyboTuya.getDeviceDpState({ devId: selectedDevice.devId });
+        nativeDpSync.apply?.(latestState?.dps, 'reconcile');
+      } catch (error) {
+        // The start command already succeeded. A temporary reconciliation read
+        // must not report the cooking operation as failed; the live listener can
+        // still deliver the authoritative DP5 update.
+        setLiveStatusError(error?.message || t('deviceCacheRefreshFailed'));
+      }
     } catch (error) {
       clearCookingRuntime(selectedDevice.devId);
       await reportCookingOperation({
@@ -1444,8 +1558,8 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       cookingParamsSnapshot: cooking.params,
       plannedSeconds: cookTime,
       isCustomSnack: Boolean(recipeContext?.isCustomSnack),
-      snackIngredients: recipeContext?.snackIngredients || undefined,
-      estimatedEnergy: recipeContext?.estimatedEnergy || undefined,
+      snackIngredients: snackAnalysis?.snackIngredients || recipeContext?.snackIngredients || undefined,
+      estimatedEnergy: snackAnalysis?.estimatedEnergy || recipeContext?.estimatedEnergy || undefined,
     });
     await reportCookingOperation({
       ...operationContext,

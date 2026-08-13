@@ -183,14 +183,17 @@ test('鲜食杯故障只展示和阻止启动，不由APP发送暂停命令', ()
   assert.doesNotMatch(cookingSource, /cupFaultPauseRef|faultRemainingSeconds|pauseCooking/);
 });
 
-test('状态只读取DP5，倒计时只显示DP8，不使用手机定时器插值', () => {
+test('状态只读取DP5，倒计时以SDK的DP8为锚点逐秒显示并按新上报校准', () => {
   assert.match(cookingSource, /const displayStatusCode = view\.statusCode/);
   assert.match(cookingSource, /const rawRemaining = deviceDps\[8\]/);
   assert.match(cookingSource, /hasReportedRemaining \? formatCountdown\(remainingSeconds\) : '--:--'/);
   assert.match(cookingSource, /displayStatusCode === 'cooking'/);
   assert.match(cookingSource, /displayStatusCode === 'pause'/);
   assert.match(cookingSource, /displayStatusCode === 'done'/);
-  assert.doesNotMatch(cookingSource, /setInterval\(\(\) => setNowTick|runStartedAt|runElapsedMs|shouldAutoCompleteCooking/);
+  assert.match(cookingSource, /setInterval\(\(\) => setNowTick\(Date\.now\(\)\), 1000\)/);
+  assert.match(cookingSource, /reportedAtMs: dp8AnchorRef\.current\.reportedAtMs/);
+  assert.match(cookingSource, /hasDp8 \? \{ dp8ReportedAt: receivedAt \} : \{\}/);
+  assert.doesNotMatch(cookingSource, /runStartedAt|runElapsedMs|shouldAutoCompleteCooking/);
   assert.doesNotMatch(cookingSource, /const doneDps|5: 'done'|5: 'standby'/);
 });
 
@@ -205,8 +208,21 @@ test('运行中锁定启动时的食谱展示，但不让缓存决定设备状�
   assert.doesNotMatch(cookingSource, /resolveCookingDisplayState|START_STATUS_FENCE_MS|preservePendingStart/);
 });
 
-test('订阅后仅用首个原生DP快照校正缓存，实时回调不可被快照覆盖', () => {
-  assert.match(cookingSource, /HeyboTuya\.addListener\('dpUpdate'[,\s\S]*?return HeyboTuya\.subscribeDevice\(\{ devId \}\);[\s\S]*?\.then\(\(\) => HeyboTuya\.getDeviceDpState\(\{ devId \}\)\)/);
+test('启动前等待DP订阅就绪，启动后读取实机快照补偿遗漏回调', () => {
+  const prepareBlock = cookingSource.match(/const handlePrepareCooking = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] || '';
+  const startBlock = cookingSource.match(/const handleStartCooking = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] || '';
+  assert.match(cookingSource, /const nativeDpSyncRef = useRef\(/);
+  assert.match(cookingSource, /const subscriptionReady = HeyboTuya\.addListener\('dpUpdate'/);
+  assert.match(cookingSource, /nativeDpSyncRef\.current = \{ devId, ready: subscriptionReady, apply: applyNativeDps \}/);
+  assert.match(prepareBlock, /await waitForNativeDpSync\(selectedDevice\.devId\)[\s\S]*?HeyboTuya\.resetCooking/);
+  assert.match(startBlock, /const nativeDpSync = await waitForNativeDpSync\(selectedDevice\.devId\)[\s\S]*?HeyboTuya\.startDiyCooking/);
+  assert.match(startBlock, /try \{[\s\S]*?HeyboTuya\.getDeviceDpState\(\{ devId: selectedDevice\.devId \}\)[\s\S]*?nativeDpSync\.apply\?\.\(latestState\?\.dps, 'reconcile'\)[\s\S]*?setLiveStatusError/);
+  assert.doesNotMatch(startBlock, /5:\s*'cooking'/);
+});
+
+test('订阅后仅用首个原生DP快照校正缓存，实时回调不可被初始快照覆盖', () => {
+  assert.match(cookingSource, /const subscriptionReady = HeyboTuya\.addListener\('dpUpdate'[,\s\S]*?return HeyboTuya\.subscribeDevice\(\{ devId \}\);/);
+  assert.match(cookingSource, /subscriptionReady\.then\(ready => \{[\s\S]*?HeyboTuya\.getDeviceDpState\(\{ devId \}\)/);
   assert.doesNotMatch(cookingSource, /hasCookingStatusDps/);
   assert.match(cookingSource, /Object\.keys\(nextDps\)\.length === 0\) return false;/);
   assert.match(cookingSource, /source === 'snapshot' && receivedRealtimeUpdate/);
@@ -225,10 +241,13 @@ test('订阅后仅用首个原生DP快照校正缓存，实时回调不可被快
   assert.doesNotMatch(androidAdapterSource, /listener\.onDpUpdate\(updatedDevId, new HashMap<>\(merged\)\)/);
 });
 
-test('设备列表只登记元数据，不用发现快照覆盖订阅后的实时DP', () => {
+test('设备列表和会话发现只登记元数据，不用发现快照覆盖订阅后的实时DP', () => {
   const registrationBlock = cookingSource.match(/const registerBoundDevice = async \(device, refreshAfter = true\) => \{([\s\S]*?)\n  \};/)?.[1] || '';
   assert.match(registrationBlock, /Device-list DP data is only a discovery snapshot/);
   assert.doesNotMatch(registrationBlock, /api\.syncDeviceDp/);
+  assert.match(cookingSource, /Discovery is not a live subscription/);
+  assert.match(cookingSource, /local && nativeDpSeenRef\.current\.has\(device\.devId\)[\s\S]*?parseDps\(local\)/);
+  assert.doesNotMatch(cookingSource, /nativeDevices\.forEach\(device => \{[\s\S]*?nativeDpSeenRef\.current\.add/);
 });
 
 test('完成确认仅向设备请求复位，并等待DP5待机回报切换页面', () => {
@@ -268,17 +287,20 @@ test('零食自制提供完整参数并复用启动前确认流程', () => {
   assert.match(translationsSource, /'customSnack'/);
 });
 
-test('零食自制必须保存宠物、食材和克重，并在启动前使用现有鲜食验证估算能量', () => {
+test('零食自制立即进入设备页，后台完成鲜食验证并在下发命令前保留安全门', () => {
   assert.match(customSnackSource, /profiles = \[\], authToken, onAddPet/);
   assert.match(customSnackSource, /pet_id: pet\.id/);
   assert.match(customSnackSource, /ingredients: snackIngredients/);
   assert.match(customSnackSource, /meal_intent: 'snack'/);
-  assert.match(customSnackSource, /api\.freshCheckAnalyze/);
-  assert.match(customSnackSource, /snackIngredients: result\.recipe\?\.ingredients \|\| snackIngredients/);
-  assert.match(customSnackSource, /estimatedEnergy:/);
+  assert.match(customSnackSource, /snackAnalysisRequest:/);
+  assert.doesNotMatch(customSnackSource, /api\.freshCheckAnalyze|setSubmitting|t\('processing'\)/);
+  assert.match(cookingSource, /api\.freshCheckAnalyze\(request, authToken\)/);
+  assert.match(cookingSource, /if \(blocked\) throw new Error\(t\('customSnackUnsafeIngredients'\)\)/);
+  assert.match(cookingSource, /snackAnalysis = await waitForSnackAnalysis\(\)/);
+  assert.match(cookingSource, /estimated_energy: snackAnalysis\?\.estimatedEnergy/);
   assert.match(customSnackSource, /custom-snack-ingredient-row/);
   assert.match(cookingSource, /is_custom_snack: Boolean\(recipeContext\?\.isCustomSnack\)/);
-  assert.match(cookingSource, /ingredients_snapshot: recipeContext\?\.snackIngredients/);
+  assert.match(cookingSource, /ingredients_snapshot: snackAnalysis\?\.snackIngredients \|\| recipeContext\?\.snackIngredients/);
   assert.match(cookingSource, /cooking-record-snack-ingredients/);
 });
 
