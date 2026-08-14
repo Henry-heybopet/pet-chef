@@ -1,5 +1,8 @@
 import Foundation
 import Capacitor
+import CoreBluetooth
+import CoreLocation
+import UIKit
 import ThingSmartHomeKit
 import ThingSmartBLECoreKit
 import ThingSmartBLEKit
@@ -8,12 +11,13 @@ import ThingSmartBaseKit
 import ThingSmartActivatorKit
 
 @objc(HeyboTuyaPlugin)
-public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerDelegate, ThingSmartBLEWifiActivatorDelegate, ThingSmartDeviceDelegate, ThingSmartActivatorDelegate {
+public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, CBCentralManagerDelegate, CLLocationManagerDelegate, ThingSmartBLEManagerDelegate, ThingSmartBLEWifiActivatorDelegate, ThingSmartDeviceDelegate, ThingSmartActivatorDelegate {
     public let identifier = "HeyboTuyaPlugin"
     public let jsName = "HeyboTuya"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "status", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "init", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "ensureNativeSession", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "loginOrRegisterWithHeyboUid", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getHomeList", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "ensureDefaultHome", returnType: CAPPluginReturnPromise),
@@ -23,6 +27,8 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
         CAPPluginMethod(name: "stopPairing", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "renameDevice", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "unbindDevice", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "checkPairingPermissions", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestPairingPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startBleScan", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopBleScan", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "connectBleDevice", returnType: CAPPluginReturnPromise),
@@ -30,6 +36,10 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
         CAPPluginMethod(name: "unsubscribeDevice", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getDeviceDpState", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "publishDps", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getAuthToken", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "syncAuthState", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clearAuthState", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openAppSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openBluetoothSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startDiyCooking", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pauseCooking", returnType: CAPPluginReturnPromise),
@@ -44,18 +54,146 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
     private var activeWifiCall: CAPPluginCall?
     private var activeWifiToken = ""
     private var activeWifiMode = "EZ"
+    private var pairingBluetoothManager: CBCentralManager?
+    private lazy var pairingLocationManager: CLLocationManager = {
+        let manager = CLLocationManager()
+        manager.delegate = self
+        return manager
+    }()
+    private var activePermissionCall: CAPPluginCall?
+    private let authDefaults = UserDefaults.standard
+    private let authTokenKey = "heybo_native_auth.token"
+    private let authUserIdKey = "heybo_native_auth.user_id"
+    private let authNicknameKey = "heybo_native_auth.nickname"
+    private let authTuyaUidKey = "heybo_native_auth.tuya_uid"
+    private let authTuyaPasswordKey = "heybo_native_auth.tuya_password"
     
     // MARK: - Core Plugin Methods
     
     @objc func status(_ call: CAPPluginCall) {
+        let permissions = pairingPermissionPayload()
         call.resolve([
             "platform": "ios",
             "nativeAvailable": true,
             "configured": true,
             "initialized": isInitialized,
             "pid": "ak2kofibhuvdtqip",
-            "homeId": currentHomeId != 0 ? Double(currentHomeId) : 0
+            "homeId": currentHomeId != 0 ? Double(currentHomeId) : 0,
+            "permBluetoothScan": permissions["bluetoothGranted"] as? Bool ?? false,
+            "permBluetoothConnect": permissions["bluetoothGranted"] as? Bool ?? false,
+            "permLocation": permissions["locationGranted"] as? Bool ?? false,
+            "gpsEnabled": permissions["gpsEnabled"] as? Bool ?? false
         ])
+    }
+
+    private func permissionLabel(_ status: CBManagerAuthorization) -> String {
+        switch status {
+        case .allowedAlways: return "granted"
+        case .denied: return "denied"
+        case .restricted: return "restricted"
+        case .notDetermined: return "not_determined"
+        @unknown default: return "unknown"
+        }
+    }
+
+    private func permissionLabel(_ status: CLAuthorizationStatus) -> String {
+        switch status {
+        case .authorizedAlways, .authorizedWhenInUse: return "granted"
+        case .denied: return "denied"
+        case .restricted: return "restricted"
+        case .notDetermined: return "not_determined"
+        @unknown default: return "unknown"
+        }
+    }
+
+    private func pairingPermissionPayload() -> [String: Any] {
+        let bluetoothStatus = CBManager.authorization
+        let locationStatus = pairingLocationManager.authorizationStatus
+        let bluetoothGranted = bluetoothStatus == .allowedAlways
+        let locationGranted = locationStatus == .authorizedAlways || locationStatus == .authorizedWhenInUse
+        var missingPermissions: [String] = []
+        if !bluetoothGranted {
+            missingPermissions.append("BLUETOOTH_SCAN")
+            missingPermissions.append("BLUETOOTH_CONNECT")
+        }
+        if !locationGranted {
+            missingPermissions.append("ACCESS_FINE_LOCATION")
+        }
+        return [
+            "platform": "ios",
+            "bluetoothGranted": bluetoothGranted,
+            "locationGranted": locationGranted,
+            "bluetoothRequired": true,
+            "locationRequired": true,
+            "missingPermissions": missingPermissions,
+            "permissions": [
+                "BLUETOOTH_SCAN": permissionLabel(bluetoothStatus),
+                "BLUETOOTH_CONNECT": permissionLabel(bluetoothStatus),
+                "ACCESS_FINE_LOCATION": permissionLabel(locationStatus)
+            ],
+            "canStartBleScan": bluetoothGranted && locationGranted,
+            "shouldOpenSettings": bluetoothStatus == .denied || bluetoothStatus == .restricted || locationStatus == .denied || locationStatus == .restricted,
+            "gpsEnabled": CLLocationManager.locationServicesEnabled()
+        ]
+    }
+
+    @objc func checkPairingPermissions(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            let payload = self.pairingPermissionPayload()
+            print("[HeyboTuya Permission] check \(payload)")
+            call.resolve(payload)
+        }
+    }
+
+    @objc func requestPairingPermissions(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard self.activePermissionCall == nil else {
+                call.reject("A pairing permission request is already active")
+                return
+            }
+            self.activePermissionCall = call
+            print("[HeyboTuya Permission] request started \(self.pairingPermissionPayload())")
+            self.advancePairingPermissionRequest()
+        }
+    }
+
+    private func advancePairingPermissionRequest() {
+        guard activePermissionCall != nil else { return }
+        if CBManager.authorization == .notDetermined {
+            print("[HeyboTuya Permission] requesting Bluetooth authorization")
+            if pairingBluetoothManager == nil {
+                pairingBluetoothManager = CBCentralManager(
+                    delegate: self,
+                    queue: .main,
+                    options: [CBCentralManagerOptionShowPowerAlertKey: false]
+                )
+            }
+            return
+        }
+        if pairingLocationManager.authorizationStatus == .notDetermined {
+            print("[HeyboTuya Permission] requesting location authorization")
+            pairingLocationManager.requestWhenInUseAuthorization()
+            return
+        }
+        let call = activePermissionCall
+        activePermissionCall = nil
+        let payload = pairingPermissionPayload()
+        print("[HeyboTuya Permission] request finished \(payload)")
+        call?.resolve(payload)
+    }
+
+    public func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        print("[HeyboTuya Permission] Bluetooth callback authorization=\(permissionLabel(CBManager.authorization)) state=\(central.state.rawValue)")
+        if CBManager.authorization != .notDetermined {
+            advancePairingPermissionRequest()
+        }
+    }
+
+    public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        print("[HeyboTuya Permission] location callback authorization=\(permissionLabel(manager.authorizationStatus))")
+        if manager.authorizationStatus != .notDetermined {
+            advancePairingPermissionRequest()
+        }
     }
     
     @objc func `init`(_ call: CAPPluginCall) {
@@ -70,6 +208,137 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
                 "appKey": appKey
             ])
         }
+    }
+
+    private func startSdkIfNeeded() {
+        guard !isInitialized else { return }
+        ThingSmartSDK.sharedInstance().start(
+            withAppKey: "8kjrnvjwpr9vyxnare5j",
+            secretKey: "vtkra5yp7mfcds7ruprjjgnrcqmnyc9a"
+        )
+        isInitialized = true
+    }
+
+    @objc func syncAuthState(_ call: CAPPluginCall) {
+        let token = call.getString("token") ?? ""
+        let userId = call.getString("userId") ?? ""
+        guard !token.isEmpty, !userId.isEmpty else {
+            call.reject("AUTH_SYNC_INVALID: token and userId are required.")
+            return
+        }
+        let requestedUid = call.getString("tuyaUid") ?? ""
+        let tuyaUid = requestedUid.isEmpty ? "heybo_\(userId)" : requestedUid
+        let requestedPassword = call.getString("tuyaPassword") ?? ""
+        let tuyaPassword = requestedPassword.isEmpty ? tuyaUid : requestedPassword
+        authDefaults.set(token, forKey: authTokenKey)
+        authDefaults.set(userId, forKey: authUserIdKey)
+        authDefaults.set(call.getString("nickname") ?? "", forKey: authNicknameKey)
+        authDefaults.set(tuyaUid, forKey: authTuyaUidKey)
+        authDefaults.set(tuyaPassword, forKey: authTuyaPasswordKey)
+        call.resolve(["success": true, "userId": userId])
+    }
+
+    @objc func getAuthToken(_ call: CAPPluginCall) {
+        let token = authDefaults.string(forKey: authTokenKey) ?? ""
+        let userId = authDefaults.string(forKey: authUserIdKey) ?? ""
+        guard !token.isEmpty, !userId.isEmpty else {
+            call.resolve(["success": false, "token": "", "reason": "AUTH_NOT_SYNCED"])
+            return
+        }
+        call.resolve([
+            "success": true,
+            "token": token,
+            "userId": userId,
+            "nickname": authDefaults.string(forKey: authNicknameKey) ?? ""
+        ])
+    }
+
+    @objc func clearAuthState(_ call: CAPPluginCall) {
+        [authTokenKey, authUserIdKey, authNicknameKey, authTuyaUidKey, authTuyaPasswordKey]
+            .forEach { authDefaults.removeObject(forKey: $0) }
+        currentHomeId = 0
+        subscribedDevices.removeAll()
+        call.resolve(["success": true])
+    }
+
+    @objc func ensureNativeSession(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            self.startSdkIfNeeded()
+            let token = self.authDefaults.string(forKey: self.authTokenKey) ?? ""
+            let userId = self.authDefaults.string(forKey: self.authUserIdKey) ?? ""
+            guard !token.isEmpty, !userId.isEmpty else {
+                call.reject("AUTH_NOT_SYNCED: H5 login state has not been synced to native.")
+                return
+            }
+            let storedUid = self.authDefaults.string(forKey: self.authTuyaUidKey) ?? ""
+            let tuyaUid = storedUid.isEmpty ? "heybo_\(userId)" : storedUid
+            let storedPassword = self.authDefaults.string(forKey: self.authTuyaPasswordKey) ?? ""
+            let password = storedPassword.isEmpty ? tuyaUid : storedPassword
+            let user = ThingSmartUser.sharedInstance()
+
+            if user.isLogin, user.uid == tuyaUid {
+                self.ensureSessionHome(call, tuyaUid: tuyaUid)
+                return
+            }
+
+            let login = {
+                user.loginOrRegister(withCountryCode: "86", uid: tuyaUid, password: password, createHome: true) { _ in
+                    self.ensureSessionHome(call, tuyaUid: tuyaUid)
+                } failure: { error in
+                    call.reject("Tuya UID login failed: \(error?.localizedDescription ?? "unknown error")")
+                }
+            }
+            if user.isLogin {
+                user.loginOut({ login() }, failure: { error in
+                    call.reject("Tuya account switch failed: \(error?.localizedDescription ?? "unknown error")")
+                })
+            } else {
+                login()
+            }
+        }
+    }
+
+    private func ensureSessionHome(_ call: CAPPluginCall, tuyaUid: String) {
+        let homeManager = ThingSmartHomeManager()
+        homeManager.getHomeList(success: { homes in
+            if let home = homes?.first {
+                self.loadSessionHome(call, homeId: home.homeId, tuyaUid: tuyaUid)
+                return
+            }
+            homeManager.addHome(
+                withName: "Heybo Pet",
+                geoName: "China",
+                rooms: [],
+                latitude: 0,
+                longitude: 0,
+                success: { homeId in self.loadSessionHome(call, homeId: homeId, tuyaUid: tuyaUid) },
+                failure: { error in
+                    call.reject("Create Tuya default home failed: \(error?.localizedDescription ?? "unknown error")")
+                }
+            )
+        }, failure: { error in
+            call.reject("Query Tuya home list failed: \(error?.localizedDescription ?? "unknown error")")
+        })
+    }
+
+    private func loadSessionHome(_ call: CAPPluginCall, homeId: Int64, tuyaUid: String) {
+        guard let home = ThingSmartHome(homeId: homeId) else {
+            call.reject("Failed to initialize Tuya home: \(homeId)")
+            return
+        }
+        home.getDataWithSuccess({ _ in
+            self.currentHomeId = homeId
+            call.resolve([
+                "success": true,
+                "ready": true,
+                "platform": "ios",
+                "tuyaUid": tuyaUid,
+                "homeId": Double(homeId),
+                "deviceCount": (home.deviceList ?? []).count
+            ])
+        }, failure: { error in
+            call.reject("Load Tuya home failed: \(error?.localizedDescription ?? "unknown error")")
+        })
     }
     
     @objc func loginOrRegisterWithHeyboUid(_ call: CAPPluginCall) {
@@ -169,6 +438,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
                         "devId": device.devId ?? "",
                         "name": device.name ?? "",
                         "productId": device.productId ?? "",
+                        "macAddress": device.mac ?? "",
                         "isOnline": device.isOnline,
                         "dps": device.dps ?? [:]
                     ] as [String : Any]
@@ -186,6 +456,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
                         "devId": device.devId ?? "",
                         "name": device.name ?? "",
                         "productId": device.productId ?? "",
+                        "macAddress": device.mac ?? "",
                         "isOnline": device.isOnline,
                         "dps": device.dps ?? [:]
                     ] as [String : Any]
@@ -326,6 +597,12 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
     
     @objc func startBleScan(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
+            let permissions = self.pairingPermissionPayload()
+            guard permissions["canStartBleScan"] as? Bool == true else {
+                let missing = permissions["missingPermissions"] as? [String] ?? []
+                call.reject("PAIRING_PERMISSION_MISSING: \(missing.joined(separator: ","))")
+                return
+            }
             ThingSmartBLEManager.sharedInstance().delegate = self
             ThingSmartBLEManager.sharedInstance().startListening(true)
             call.resolve(["success": true])
@@ -426,7 +703,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
                 }
                 call.resolve(["success": true, "devId": devId, "dps": device.dps ?? [:]])
             }, failure: { error in
-                call.reject("Get device DP state failed: \(error?.localizedDescription ?? \"unknown error\")")
+                call.reject("Get device DP state failed: \(error?.localizedDescription ?? "unknown error")")
             })
         }
     }
@@ -476,6 +753,22 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             }
         }
     }
+
+    @objc func openAppSettings(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let url = URL(string: UIApplication.openSettingsURLString) else {
+                call.reject("Cannot open app settings")
+                return
+            }
+            UIApplication.shared.open(url, options: [:]) { opened in
+                if opened {
+                    call.resolve(["success": true])
+                } else {
+                    call.reject("Cannot open app settings")
+                }
+            }
+        }
+    }
     
     // MARK: - Cooking Custom Helper Commands (Native side mirroring for JS parity)
     
@@ -489,27 +782,33 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
         let power = call.getInt("power") ?? 8
         let speed = call.getString("speed") ?? "1"
         
-        let dps: [AnyHashable: Any] = [
-            1: true,
-            3: "diy",
-            7: cookTime,
-            9: temperature,
-            102: power,
-            107: "start",
-            108: speed
+        let parameterDps: [AnyHashable: Any] = [
+            "1": true,
+            "3": "diy",
+            "7": cookTime,
+            "9": temperature,
+            "102": power,
+            "108": speed
+        ]
+        let startDps: [AnyHashable: Any] = [
+            "107": "start"
         ]
         
         DispatchQueue.main.async {
             let device = self.subscribedDevices[devId] ?? ThingSmartDevice(deviceId: devId)
             if let device = device {
-                device.publishDps(dps, success: {
-                    call.resolve([
-                        "success": true,
-                        "devId": devId,
-                        "dps": self.jsonStringOf(dps)
-                    ])
+                device.publishDps(parameterDps, success: {
+                    device.publishDps(startDps, success: {
+                        call.resolve([
+                            "success": true,
+                            "devId": devId,
+                            "dps": self.jsonStringOf(parameterDps.merging(startDps) { _, latest in latest })
+                        ])
+                    }, failure: { (error) in
+                        call.reject("Start DIY cooking failed: \(error?.localizedDescription ?? "unknown error")")
+                    })
                 }, failure: { (error) in
-                    call.reject("Start DIY cooking failed: \(error?.localizedDescription ?? "unknown error")")
+                    call.reject("Set DIY cooking parameters failed: \(error?.localizedDescription ?? "unknown error")")
                 })
             } else {
                 call.reject("Failed to initialize ThingSmartDevice for devId: \(devId)")
@@ -523,7 +822,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             return
         }
         let dps: [AnyHashable: Any] = [
-            107: "pause"
+            "107": "pause"
         ]
         
         DispatchQueue.main.async {
@@ -550,7 +849,7 @@ public class HeyboTuyaPlugin: CAPPlugin, CAPBridgedPlugin, ThingSmartBLEManagerD
             return
         }
         let dps: [AnyHashable: Any] = [
-            107: "reset"
+            "107": "reset"
         ]
         
         DispatchQueue.main.async {

@@ -182,6 +182,16 @@ Heybo 用户注册/登录
 - `pauseCooking`
 - `resetCooking`
 
+iOS 向 Tuya SDK 下发 DP 时必须使用字符串 DP 键（例如 `"107"`，不能使用数字键
+`107`）。一键启动与 Android 保持相同时序：先下发 DP1/3/7/9/102/108 参数，成功后
+再单独下发 `{"107":"start"}`；复位单独下发 `{"107":"reset"}`。设备拒绝任一步骤时
+不得继续后续启动指令。
+
+iOS `getDeviceList` 必须把 `ThingSmartDeviceModel.mac` 映射为 `macAddress`，复用前端现有
+设备登记接口上报到后端；已绑定但缺少 MAC 的设备会在下一次设备列表同步时补齐。
+APP→设备日志分别记录 `reset_requested/reset_sent/reset_failed` 与
+`start_requested/start_sent/start_failed`，不能把仅发起的请求显示成已成功送达。
+
 ## Pet Chef DP 控制
 
 当前 PID：
@@ -360,3 +370,29 @@ lib/armeabi-v7a/libthing_security_algorithm.so
 *   **构建结果**：
     *   新版 debug APK（B1.00.04）已重新 clean 打包输出至：
         `/Users/yhl/Antigravity/pet chef/frontend/android/app/build/outputs/apk/debug/app-debug.apk`
+
+## 2026-08-14 iOS 配网运行时权限修复
+
+### 根本原因
+
+`Info.plist` 中的蓝牙和定位用途说明只决定系统授权弹窗显示的文案，不会主动触发授权。此前 iOS 原生插件没有实现配网权限检查和申请接口，前端又回退调用了 Capacitor 默认的空权限方法，导致没有弹出蓝牙、定位授权框便直接开始扫描，最终显示“没有发现可添加设备”。
+
+真机日志进一步确认，Swift 插件虽然参与编译，但 Capacitor 的 `packageClassList` 为空，默认 `CAPBridgeViewController` 没有加载 `HeyboTuyaPlugin`，所有调用实际返回 `plugin is not implemented on ios`。因此主 Storyboard 必须使用项目自定义的 `HeyboBridgeViewController`，并在 `capacitorDidLoad()` 中通过 `registerPluginInstance` 显式注册插件。
+
+iOS 原生插件还必须实现与 Android 一致的 `syncAuthState` 和 `ensureNativeSession`：先恢复 Heybo 登录映射，再初始化 Tuya SDK、登录对应 Tuya UID、加载默认家庭，最后才允许启动 BLE 扫描。
+
+进入鲜食中心时，设备列表 API 可能先于 Tuya SDK 会话完成。DP 监听器可以先注册，但 `subscribeDevice`、DP 快照和烹饪命令必须复用同一个 `ensureNativeSession` Promise，等待登录和家庭缓存加载完毕后再执行；否则 iOS 会出现 `Failed to initialize ThingSmartDevice`，并使启动前 DP 安全门持续失败。
+
+### 修复规则
+
+*   iOS 原生插件统一提供 `checkPairingPermissions`、`requestPairingPermissions` 和 `openAppSettings`。
+*   首次配网按顺序申请蓝牙、定位权限，避免两个系统授权弹窗同时竞争。
+*   `startBleScan` 在原生层再次校验权限；缺少任一配网权限时拒绝扫描并返回缺失项，防止静默空扫描。
+*   用户拒绝或限制权限后，App 提示进入本应用的系统设置页重新授权。
+
+### iPhone 验证步骤
+
+1. 删除手机中旧测试包并通过 Xcode 重新安装新构建，确保首次授权状态可复现。
+2. 登录后进入“烹饪”，点击“添加鲜食机”，依次允许蓝牙和使用 App 时的定位权限。
+3. 让鲜食机进入配网模式，确认扫描日志先显示权限均为 `granted`，再出现原始 BLE 广播和匹配设备。
+4. 分别验证拒绝蓝牙、拒绝定位时不会启动扫描，并可通过按钮进入系统设置重新授权。

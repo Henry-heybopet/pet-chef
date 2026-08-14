@@ -62,6 +62,40 @@ export function hasUploadedPetAvatar(pet = {}) {
   return Boolean(uploadedAvatar(pet));
 }
 
+export function preparePetAvatarForUpload(file, maxDimension = 1280) {
+  return new Promise((resolve, reject) => {
+    if (!file?.type?.startsWith('image/')) {
+      reject(new Error('请选择图片文件'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('无法读取图片'));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error('无法解析图片'));
+      image.onload = () => {
+        const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+        const width = Math.max(1, Math.round(image.naturalWidth * scale));
+        const height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        if (!context) {
+          reject(new Error('无法处理图片'));
+          return;
+        }
+        context.fillStyle = '#fff';
+        context.fillRect(0, 0, width, height);
+        context.drawImage(image, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      image.src = String(reader.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function prefetchPetAvatars(pets = [], breeds = [], options = {}) {
   const urls = [...new Set(pets.map(pet => getPetAvatarUrl(pet, breeds))
     .filter(url => url && !String(url).startsWith('data:')))];

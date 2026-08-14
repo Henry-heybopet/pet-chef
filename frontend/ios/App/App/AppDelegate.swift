@@ -1,6 +1,13 @@
 import UIKit
 import Capacitor
 
+@objc(HeyboBridgeViewController)
+class HeyboBridgeViewController: CAPBridgeViewController {
+    override func capacitorDidLoad() {
+        bridge?.registerPluginInstance(HeyboTuyaPlugin())
+    }
+}
+
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
@@ -8,8 +15,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
-        // Force the linker to include the HeyboTuyaPlugin class and not strip it
-        _ = HeyboTuyaPlugin.self
         return true
     }
 

@@ -50,6 +50,14 @@ const iosPluginSource = fs.readFileSync(
   path.join(frontendRoot, 'ios/App/App/HeyboTuyaPlugin.swift'),
   'utf8',
 );
+const iosAppDelegateSource = fs.readFileSync(
+  path.join(frontendRoot, 'ios/App/App/AppDelegate.swift'),
+  'utf8',
+);
+const iosMainStoryboardSource = fs.readFileSync(
+  path.join(frontendRoot, 'ios/App/App/Base.lproj/Main.storyboard'),
+  'utf8',
+);
 
 test('启动前确认只保留幼童和宠物安全项', () => {
   const checksBlock = cookingSource.match(/const START_CHECKS = \[([\s\S]*?)\];/)?.[1] || '';
@@ -212,7 +220,10 @@ test('启动前等待DP订阅就绪，启动后读取实机快照补偿遗漏回
   const prepareBlock = cookingSource.match(/const handlePrepareCooking = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] || '';
   const startBlock = cookingSource.match(/const handleStartCooking = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] || '';
   assert.match(cookingSource, /const nativeDpSyncRef = useRef\(/);
+  assert.match(cookingSource, /const nativeSessionRef = useRef\(\{ authToken: '', promise: null \}\)/);
+  assert.match(cookingSource, /const ensureNativeSessionReady = \(\) =>/);
   assert.match(cookingSource, /const subscriptionReady = HeyboTuya\.addListener\('dpUpdate'/);
+  assert.match(cookingSource, /listener = result;[\s\S]*?return ensureNativeSessionReady\(\);[\s\S]*?HeyboTuya\.subscribeDevice\(\{ devId \}\)/);
   assert.match(cookingSource, /nativeDpSyncRef\.current = \{ devId, ready: subscriptionReady, apply: applyNativeDps \}/);
   assert.match(prepareBlock, /await waitForNativeDpSync\(selectedDevice\.devId\)[\s\S]*?HeyboTuya\.resetCooking/);
   assert.match(startBlock, /const nativeDpSync = await waitForNativeDpSync\(selectedDevice\.devId\)[\s\S]*?HeyboTuya\.startDiyCooking/);
@@ -261,6 +272,17 @@ test('启动先复位、确认后才下发参数与 start，并记录通讯命�
   assert.match(cookingSource, /const handleStartCooking = async \(\) => \{[\s\S]*?107: 'start_requested'[\s\S]*?HeyboTuya\.startDiyCooking\([\s\S]*?107: 'start_sent'/);
   assert.doesNotMatch(cookingSource, /handleStartCooking[\s\S]{0,1400}HeyboTuya\.resetCooking/);
   assert.match(cookingSource, /api\.recordDeviceCommunication/);
+  assert.match(cookingSource, /107: 'reset_failed'/);
+  assert.match(cookingSource, /107: 'start_failed'/);
+  assert.match(iosPluginSource, /let parameterDps: \[AnyHashable: Any\] = \[[\s\S]*?"1": true[\s\S]*?"108": speed/);
+  assert.doesNotMatch(iosPluginSource, /let parameterDps: \[AnyHashable: Any\] = \[[^\]]*"107": "start"/);
+  assert.match(iosPluginSource, /device\.publishDps\(parameterDps[\s\S]*?device\.publishDps\(startDps/);
+  assert.match(iosPluginSource, /let dps: \[AnyHashable: Any\] = \[\s*"107": "reset"/);
+});
+
+test('iOS设备列表将SDK设备模型的MAC地址交给现有设备登记链路', () => {
+  assert.match(iosPluginSource, /"macAddress": device\.mac \?\? ""/);
+  assert.match(cookingSource, /mac_address: device\.macAddress \|\| device\.mac \|\| device\.address \|\| ''/);
 });
 
 test('零食自制提供完整参数并复用启动前确认流程', () => {
@@ -327,6 +349,39 @@ test('设备名称可编辑并同步Web、Android和iOS Tuya SDK', () => {
   assert.match(nativeBridgeSource, /async renameDevice\(\{ devId, name \}\)/);
   assert.match(androidPluginSource, /device\.renameDevice\(trimmedName/);
   assert.match(iosPluginSource, /device\.updateName\(name/);
+});
+
+test('iOS 配网先请求蓝牙和定位权限，未授权时禁止启动 BLE 扫描', () => {
+  const scanBlock = cookingSource.match(/async function scan\(\) \{([\s\S]*?)\n  \}/)?.[1] || '';
+  const iosScanBlock = iosPluginSource.match(/@objc func startBleScan\(_ call: CAPPluginCall\) \{([\s\S]*?)\n    \}/)?.[1] || '';
+  assert.match(scanBlock, /HeyboTuya\.checkPairingPermissions/);
+  assert.match(scanBlock, /HeyboTuya\.requestPairingPermissions/);
+  assert.doesNotMatch(scanBlock, /HeyboTuya\.requestPermissions/);
+  assert.match(scanBlock, /PAIRING_PERMISSION_STATUS_UNAVAILABLE/);
+  assert.doesNotMatch(scanBlock, /canStartBleScan:\s*true/);
+  assert.match(cookingSource, /console\.info\(`\[PetChef BLE\]/);
+  assert.match(iosPluginSource, /import CoreBluetooth/);
+  assert.match(iosPluginSource, /import CoreLocation/);
+  assert.match(iosPluginSource, /CBCentralManagerDelegate/);
+  assert.match(iosPluginSource, /CLLocationManagerDelegate/);
+  assert.match(iosPluginSource, /CAPPluginMethod\(name: "checkPairingPermissions"/);
+  assert.match(iosPluginSource, /CAPPluginMethod\(name: "requestPairingPermissions"/);
+  assert.match(iosPluginSource, /CAPPluginMethod\(name: "ensureNativeSession"/);
+  assert.match(iosPluginSource, /CAPPluginMethod\(name: "syncAuthState"/);
+  assert.match(iosPluginSource, /func ensureNativeSession\(_ call: CAPPluginCall\)/);
+  assert.match(iosPluginSource, /AUTH_NOT_SYNCED: H5 login state has not been synced to native/);
+  assert.match(iosPluginSource, /CAPPluginMethod\(name: "openAppSettings"/);
+  assert.match(iosScanBlock, /PAIRING_PERMISSION_MISSING/);
+  assert.match(iosScanBlock, /canStartBleScan/);
+});
+
+test('iOS 主桥在 WebView 加载前显式注册 HeyboTuya 原生插件', () => {
+  assert.match(iosAppDelegateSource, /class HeyboBridgeViewController:\s*CAPBridgeViewController/);
+  assert.match(iosAppDelegateSource, /override func capacitorDidLoad\(\)/);
+  assert.match(iosAppDelegateSource, /bridge\?\.registerPluginInstance\(HeyboTuyaPlugin\(\)\)/);
+  assert.match(iosMainStoryboardSource, /customClass="HeyboBridgeViewController"/);
+  assert.match(iosMainStoryboardSource, /customModule="App"/);
+  assert.doesNotMatch(iosMainStoryboardSource, /customClass="CAPBridgeViewController"/);
 });
 
 test('鲜食机弹窗高于底部导航且配网结果可滚动到选定按钮', () => {

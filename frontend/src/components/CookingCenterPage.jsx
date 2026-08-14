@@ -414,6 +414,7 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
 
   const addScanLog = (message) => {
     const time = new Date().toLocaleTimeString(lang, { hour12: false });
+    console.info(`[PetChef BLE] ${message}`);
     setScanLogs(prev => [...prev.slice(-79), `${time} ${message}`]);
   };
 
@@ -465,9 +466,15 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
 
       let permission = await HeyboTuya.checkPairingPermissions?.().catch(error => ({ error: error?.message || String(error) }));
       if (!permission || permission.error) {
+        const nativePermissionSnapshotAvailable = status?.permBluetoothScan !== undefined || status?.permLocation !== undefined;
         permission = {
-          canStartBleScan: true,
-          missingPermissions: [],
+          canStartBleScan: status?.platform === 'web' || (status?.permBluetoothScan === true && status?.permLocation === true),
+          missingPermissions: nativePermissionSnapshotAvailable
+            ? [
+              ...(status?.permBluetoothScan === true ? [] : ['BLUETOOTH_SCAN', 'BLUETOOTH_CONNECT']),
+              ...(status?.permLocation === true ? [] : ['ACCESS_FINE_LOCATION']),
+            ]
+            : ['PAIRING_PERMISSION_STATUS_UNAVAILABLE'],
           permissions: {
             BLUETOOTH_SCAN: status?.permBluetoothScan === undefined ? 'unknown' : status.permBluetoothScan ? 'granted' : 'denied',
             BLUETOOTH_CONNECT: status?.permBluetoothConnect === undefined ? 'unknown' : status.permBluetoothConnect ? 'granted' : 'denied',
@@ -483,8 +490,8 @@ function AddDeviceBottomSheet({ open, onClose, onBound, homeId, onHomeId }) {
 
       if (!permission.canStartBleScan) {
         addScanLog('permission missing: skip BLE scan and request permission');
-        const nativeRequest = await HeyboTuya.requestPermissions?.({ permissions: ['location', 'bluetooth'] }).catch(error => ({ error: error?.message || String(error) }));
-        addScanLog(`native permission request result: ${nativeRequest?.error ? nativeRequest.error : `location=${nativeRequest?.location || '--'} bluetooth=${nativeRequest?.bluetooth || '--'}`}`);
+        const nativeRequest = await HeyboTuya.requestPairingPermissions?.().catch(error => ({ error: error?.message || String(error) }));
+        addScanLog(`native permission request result: ${nativeRequest?.error ? nativeRequest.error : formatPairingPermissionLog(nativeRequest)}`);
         const requested = await HeyboTuya.checkPairingPermissions?.().catch(error => ({ error: error?.message || String(error) }));
         addScanLog(`permission recheck result: ${requested?.error ? requested.error : formatPairingPermissionLog(requested)}`);
         const missingAfterRequest = listPermissions(requested?.missingPermissions);
@@ -1086,6 +1093,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   const deviceCommunicationFlushRef = useRef(new Map());
   const selectedDeviceDpsRef = useRef({});
   const nativeDpSyncRef = useRef({ devId: '', ready: Promise.resolve(false), apply: null });
+  const nativeSessionRef = useRef({ authToken: '', promise: null });
   const snackAnalysisRef = useRef({ key: '', promise: null });
   const recipeEntryHandledRef = useRef(false);
   const autoStartHandledRef = useRef(false);
@@ -1138,6 +1146,17 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     });
   }, [records, selectedDevice, lang]);
   const latestRecord = selectedDeviceRecords[0] || records[0];
+
+  const ensureNativeSessionReady = () => {
+    if (nativeSessionRef.current.authToken !== authToken || !nativeSessionRef.current.promise) {
+      const promise = HeyboTuya.ensureNativeSession().catch(error => {
+        if (nativeSessionRef.current.promise === promise) nativeSessionRef.current.promise = null;
+        throw error;
+      });
+      nativeSessionRef.current = { authToken, promise };
+    }
+    return nativeSessionRef.current.promise;
+  };
 
   const flushCookingOperationOutbox = () => {
     if (!authToken) return Promise.resolve();
@@ -1299,7 +1318,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
   useEffect(() => {
     if (!authToken) return undefined;
     let alive = true;
-    HeyboTuya.ensureNativeSession()
+    ensureNativeSessionReady()
       .then(async session => {
         if (!alive) return;
         const homeId = session?.homeId;
@@ -1397,9 +1416,13 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
     })
       .then(result => {
         listener = result;
+        return ensureNativeSessionReady();
+      })
+      .then(() => {
+        if (!alive) return false;
         return HeyboTuya.subscribeDevice({ devId });
       })
-      .then(() => true)
+      .then(result => result !== false)
       .catch(error => {
         if (alive) setLiveStatusError(error?.message || t('tuyaSessionInitFailed'));
         return false;
@@ -1457,6 +1480,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       void reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_sent' });
       setStartConfirmOpen(true);
     } catch (error) {
+      void reportDeviceCommunication(selectedDevice.devId, { 107: 'reset_failed' });
       setMessage(error?.message || t('deviceCommandFailed'));
     } finally {
       setStartSending(false);
@@ -1534,6 +1558,7 @@ export default function CookingCenterPage({ onBack, authToken, recipeContext, on
       }
     } catch (error) {
       clearCookingRuntime(selectedDevice.devId);
+      void reportDeviceCommunication(selectedDevice.devId, { 107: 'start_failed' });
       await reportCookingOperation({
         ...operationContext,
         operation_type: 'start_cooking',

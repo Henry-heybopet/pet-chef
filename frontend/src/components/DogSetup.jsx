@@ -4,7 +4,7 @@ import TopBar from './TopBar';
 import { api } from '../api/index';
 import { useTranslation } from '../i18n/translations';
 import { tData } from '../i18n/dataTranslations';
-import { getPetAvatarUrl, handlePetAvatarError } from '../utils/petAvatar';
+import { getPetAvatarUrl, handlePetAvatarError, preparePetAvatarForUpload } from '../utils/petAvatar';
 
 export default function DogSetup({ onBack, profile, onSave, onSelectCategory, onShowAnalysis, lang }) {
   const t = useTranslation(lang);
@@ -310,14 +310,15 @@ export default function DogSetup({ onBack, profile, onSave, onSelectCategory, on
     setShowBreedDropdown(false);
   };
 
-  const handleAvatarChange = (e) => {
+  const handleAvatarChange = async (e) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatar(reader.result);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    try {
+      setAvatar(await preparePetAvatarForUpload(file));
+    } catch (error) {
+      window.alert(error?.message || t('uploadAvatarFailed'));
+    } finally {
+      e.target.value = '';
     }
   };
 
